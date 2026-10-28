@@ -5,33 +5,34 @@ import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { sendPushToUser } from "@/lib/push/web-push";
-import { fetchPnL } from "@/lib/cashflow/pnl";
+import { fetchPnL, type PnLReport } from "@/lib/cashflow/pnl";
+import { classifyCategories, usesPosRegime } from "@/lib/unit-scorecard/finance";
 import { computeMetricsAsOf, type ScorecardBranch } from "./scorecard.actions";
 import { hasActiveSpInMonth } from "./cleaning-review.actions";
 import { findPosAccount } from "./pos.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { sumCakeRevenue } from "@/lib/scorecard/cake-revenue";
+import { bonusPool, distributeShares, scorecardPoints } from "@/lib/bonus/logic";
+import { isValidPeriod, isValidQuarter, lastDayOf, monthsOfQuarter, nextMonthStart, quarterOf, shiftQuarter } from "@/lib/bonus/periods";
 
 /**
  * Kalkulator Bonus Tim (PRD-10) — Perjanjian Kerja Lampiran C.
  *
- * LK_aktual (laba kotor) pakai `fetchPnL` — DEFINISI GROSS PROFIT YANG
- * SAMA dengan dashboard investor (lib/investor/dashboard.ts), bukan
- * dihitung ulang dengan cara berbeda yang bisa menyimpang dari situ.
+ *   kolam = p% × max(0, LK aktual − LK dasar) × (poin scorecard / 4), dibagi menurut jam hadir
  *
- * Pengali scorecard pakai `computeMetricsAsOf` dengan asOf = HARI
- * TERAKHIR bulan yang dibayar (bukan hari ini) — jadi skornya memang
- * mencerminkan performa bulan itu, konsisten dipanggil kapan pun bonus
- * dihitung.
+ * Penerima TETAP per cabang (`bonus_recipients`: koordinator toko & kepala produksi). Perhitungan otomatis untuk bulan
+ * mana pun; owner hanya menentukan p dan LK dasar per kuartal dan (opsional) menerbitkan bulan yang sudah selesai.
  *
- * Eligibilitas "tidak ada tidak-hadir-tanpa-kabar" SENGAJA TIDAK otomatis
- * — belum ada sumber data yang membedakan absen-berizin vs mangkir tanpa
- * rekonsiliasi jadwal penuh (di luar cakupan PRD ini). Admin
- * mengecualikan orang secara manual dengan alasan; SP aktif TETAP dicek
- * otomatis lewat `hasActiveSpInMonth` (SP aktif kapan pun sepanjang
- * bulan yang dibayar, bukan cuma hari ini).
+ * LK aktual memakai definisi omzet yang SAMA dengan Scorecard Unit & target omzet cabang: sejak Mei 2026 omzet = POS +
+ * Custom Cake + Other Revenue (laba-rugi saja tidak memuat Custom Cake), sebelumnya laporan laba-rugi. HPP = pembelian
+ * bahan (Cost of Goods Sold) di buku kas. Rincian ini dibekukan di `bonus_runs.breakdown` saat terbit supaya slip gaji
+ * bisa menampilkannya transparan.
  *
- * `bonus_*` belum di generated `Database` type — pola `db(): any` sama
- * dengan modul PRD lain sesi ini.
+ * Pengali scorecard pakai `computeMetricsAsOf` pada hari terakhir bulan (atau hari ini untuk bulan berjalan).
+ * Eligibilitas "tidak ada tidak-hadir-tanpa-kabar" SENGAJA TIDAK otomatis (belum ada sumber data mangkir vs izin);
+ * SP aktif sepanjang bulan dan akun nonaktif dikecualikan otomatis.
+ *
+ * `bonus_*` belum di generated `Database` type — pola `db(): any`.
  */
 
 export type ActionResult<T = undefined> =
@@ -43,30 +44,9 @@ function db(): any {
   return createAdminClient();
 }
 
-const COGS_CATEGORY = "Cost of Goods Sold";
+const num = (v: unknown) => (v == null || v === "" ? 0 : Number(v) || 0);
+const BONUS_BRANCHES: ScorecardBranch[] = ["Pare", "Semarang"];
 
-function currentQuarter(): string {
-  const [y, m] = jakartaDateString(new Date()).split("-").map(Number);
-  return `${y}-Q${Math.ceil(m / 3)}`;
-}
-
-function scorecardPoints(band: string): number {
-  if (band === "red") return 0;
-  if (band === "yellow") return 0.5;
-  return 1; // green, measuring, unset — manfaat keraguan ke tim
-}
-
-async function namesFor(ids: string[]): Promise<Map<string, string>> {
-  const unique = [...new Set(ids.filter((id): id is string => !!id))];
-  if (unique.length === 0) return new Map();
-  const { data } = await createAdminClient()
-    .from("profiles")
-    .select("id, full_name")
-    .in("id", unique);
-  return new Map((data ?? []).map((p) => [p.id, p.full_name]));
-}
-
-/** Jam hadir (checked_in → checked_out) satu karyawan dalam [startIso, endIso). */
 async function hoursWorked(userId: string, startIso: string, endIso: string): Promise<number> {
   const { data } = await createAdminClient()
     .from("attendance_logs")
@@ -83,58 +63,138 @@ async function hoursWorked(userId: string, startIso: string, endIso: string): Pr
   return totalMs / 3_600_000;
 }
 
-export interface BonusParameters {
-  branch: ScorecardBranch;
-  quarter: string;
+// ─── Tipe tampilan ───────────────────────────────────────────────────────────
+
+export interface BonusParams {
   p: number;
   lkDasar: number;
+  /** Terkunci bila sudah ada bonus terbit di kuartal ini. */
   locked: boolean;
 }
 
-export async function getBonusParameters(
-  branch: ScorecardBranch,
-  quarter?: string
-): Promise<BonusParameters | null> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return null;
-  const q = quarter ?? currentQuarter();
-  const { data } = await db()
-    .from("bonus_parameters")
-    .select("*")
-    .eq("branch", branch)
-    .eq("quarter", q)
-    .maybeSingle();
+export interface BonusQuarterView {
+  quarter: string;
+  params: Record<ScorecardBranch, BonusParams | null>;
+  /** Parameter kuartal sebelumnya (untuk "salin"), tanpa status kunci. */
+  previous: Record<ScorecardBranch, { p: number; lkDasar: number } | null>;
+  /** Bulan di kuartal ini yang bonusnya sudah terbit (semua cabang berparameter). */
+  publishedPeriods: string[];
+}
+
+export interface BonusMetricView {
+  key: string;
+  label: string;
+  displayValue: string;
+  band: string;
+  points: number;
+}
+
+export interface BonusBreakdown {
+  regime: "pos_cake" | "laba_rugi";
+  revenue: { pos: number; cake: number; other: number; total: number };
+  cogs: number;
+  grossProfit: number;
+  metrics: BonusMetricView[];
+  /** Tanggal terakhir data yang dihitung ("YYYY-MM-DD"). */
+  asOf: string;
+}
+
+export interface BonusShareView {
+  userId: string;
+  name: string;
+  label: string;
+  hours: number;
+  share: number;
+  /** Porsi dari kolam (0–1). */
+  fraction: number;
+  excluded: boolean;
+  excludedReason: string | null;
+}
+
+export interface BranchBonusView {
+  branch: ScorecardBranch;
+  params: { p: number; lkDasar: number } | null;
+  breakdown: BonusBreakdown;
+  surplus: number;
+  multiplier: number;
+  pool: number;
+  shares: BonusShareView[];
+  /** Angka dari bonus yang sudah terbit (dibekukan), bukan hitungan hidup. */
+  frozen: boolean;
+  runStatus: "draft" | "finalized" | null;
+  notes: string[];
+  error: string | null;
+}
+
+export interface BonusMonthView {
+  period: string;
+  quarter: string;
+  isCurrent: boolean;
+  /** Bulan sudah berakhir sehingga boleh diterbitkan. */
+  canPublish: boolean;
+  branches: BranchBonusView[];
+}
+
+// ─── Parameter per kuartal ───────────────────────────────────────────────────
+
+async function loadParams(branch: ScorecardBranch, quarter: string): Promise<BonusParams | null> {
+  const { data } = await db().from("bonus_parameters").select("*").eq("branch", branch).eq("quarter", quarter).maybeSingle();
   if (!data) return null;
-  const [qYear, qNum] = q.split("-Q").map(Number);
-  const quarterMonths = [1, 2, 3]
-    .map((i) => (qNum - 1) * 3 + i)
-    .map((mo) => `${qYear}-${String(mo).padStart(2, "0")}`);
   const { count } = await db()
     .from("bonus_runs")
     .select("id", { count: "exact", head: true })
     .eq("branch", branch)
     .eq("status", "finalized")
-    .in("period", quarterMonths);
-  return { branch, quarter: q, p: data.p, lkDasar: data.lk_dasar, locked: (count ?? 0) > 0 };
+    .in("period", monthsOfQuarter(quarter));
+  return { p: num(data.p), lkDasar: num(data.lk_dasar), locked: (count ?? 0) > 0 };
+}
+
+export async function getBonusQuarter(quarter: string): Promise<BonusQuarterView | null> {
+  const gate = await requireAdmin();
+  if (!gate.ok || !isValidQuarter(quarter)) return null;
+  const prevQ = shiftQuarter(quarter, -1);
+  const [params, previous, runs] = await Promise.all([
+    Promise.all(BONUS_BRANCHES.map((b) => loadParams(b, quarter))),
+    Promise.all(
+      BONUS_BRANCHES.map(async (b) => {
+        const { data } = await db().from("bonus_parameters").select("p, lk_dasar").eq("branch", b).eq("quarter", prevQ).maybeSingle();
+        return data ? { p: num(data.p), lkDasar: num(data.lk_dasar) } : null;
+      })
+    ),
+    db().from("bonus_runs").select("branch, period").eq("status", "finalized").in("period", monthsOfQuarter(quarter)),
+  ]);
+  const byPeriod = new Map<string, Set<string>>();
+  for (const r of (runs.data ?? []) as { branch: string; period: string }[]) {
+    byPeriod.set(r.period, (byPeriod.get(r.period) ?? new Set()).add(r.branch));
+  }
+  return {
+    quarter,
+    params: { Pare: params[0], Semarang: params[1] },
+    previous: { Pare: previous[0], Semarang: previous[1] },
+    publishedPeriods: [...byPeriod].filter(([, s]) => BONUS_BRANCHES.every((b) => s.has(b))).map(([p]) => p),
+  };
 }
 
 export async function setBonusParameters(input: {
   branch: ScorecardBranch;
-  quarter?: string;
+  quarter: string;
   p: number;
   lkDasar: number;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  const quarter = input.quarter ?? currentQuarter();
-  const existing = await getBonusParameters(input.branch, quarter);
-  if (existing?.locked) {
-    return { ok: false, error: "Sudah ada bonus final kuartal ini — parameter tidak bisa diubah." };
+  if (!BONUS_BRANCHES.includes(input.branch)) return { ok: false, error: "Cabang tidak valid" };
+  if (!isValidQuarter(input.quarter)) return { ok: false, error: "Kuartal tidak valid" };
+  if (!Number.isFinite(input.p) || input.p < 0 || input.p > 100) return { ok: false, error: "p harus antara 0 dan 100 (%)" };
+  if (!Number.isInteger(input.lkDasar) || input.lkDasar < 0 || input.lkDasar > 100_000_000_000) {
+    return { ok: false, error: "LK dasar harus bilangan bulat rupiah ≥ 0" };
   }
+  const existing = await loadParams(input.branch, input.quarter);
+  if (existing?.locked) return { ok: false, error: "Sudah ada bonus terbit di kuartal ini — parameter tidak bisa diubah." };
   const { error } = await db()
     .from("bonus_parameters")
     .upsert(
-      { branch: input.branch, quarter, p: input.p, lk_dasar: input.lkDasar, set_by: gate.userId },
+      { branch: input.branch, quarter: input.quarter, p: input.p, lk_dasar: input.lkDasar, set_by: gate.userId },
       { onConflict: "branch,quarter" }
     );
   if (error) return { ok: false, error: error.message };
@@ -142,140 +202,253 @@ export async function setBonusParameters(input: {
   return { ok: true };
 }
 
-export async function listActiveEmployeesForBonus(): Promise<{ id: string; name: string }[]> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return [];
-  const { data } = await createAdminClient()
-    .from("profiles")
-    .select("id, full_name")
-    .eq("business_unit", "Haengbocake")
-    .eq("is_active", true)
-    .order("full_name", { ascending: true });
-  return (data ?? []).map((p) => ({ id: p.id, name: p.full_name }));
-}
+// ─── Perhitungan ─────────────────────────────────────────────────────────────
 
-export interface BonusSharePreview {
+interface Recipient {
   userId: string;
   name: string;
-  hours: number;
-  share: number;
-  excluded: boolean;
-  excludedReason: string | null;
+  label: string;
+  active: boolean;
 }
 
-export interface BonusPreview {
-  branch: ScorecardBranch;
-  period: string;
-  grossProfit: number;
-  lkDasar: number;
-  p: number;
-  scorecardMultiplier: number;
-  pool: number;
-  shares: BonusSharePreview[];
+async function loadRecipients(branch: ScorecardBranch): Promise<Recipient[]> {
+  const { data } = await db().from("bonus_recipients").select("user_id, label, sort_order").eq("branch", branch).order("sort_order");
+  const rows = (data ?? []) as { user_id: string; label: string }[];
+  if (rows.length === 0) return [];
+  const { data: profs } = await db()
+    .from("profiles")
+    .select("id, full_name, nickname, is_active, resigned_at")
+    .in("id", rows.map((r) => r.user_id));
+  const byId = new Map(((profs ?? []) as any[]).map((p) => [p.id as string, p]));
+  return rows.map((r) => {
+    const p = byId.get(r.user_id);
+    return {
+      userId: r.user_id,
+      name: (p?.nickname?.trim() || p?.full_name || "—") as string,
+      label: r.label,
+      active: !!p && p.is_active !== false && !p.resigned_at,
+    };
+  });
 }
 
-/** Pratinjau — TIDAK disimpan. Admin menyimpan via `saveBonusRun` setelah puas. */
-export async function computeBonusPreview(input: {
-  branch: ScorecardBranch;
-  period: string; // 'YYYY-MM'
-  employeeUserIds: string[];
-  manualExclusions?: Record<string, string>; // userId -> alasan
-}): Promise<ActionResult<BonusPreview>> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate;
+function emptyBreakdown(asOf: string, regime: BonusBreakdown["regime"]): BonusBreakdown {
+  return { regime, revenue: { pos: 0, cake: 0, other: 0, total: 0 }, cogs: 0, grossProfit: 0, metrics: [], asOf };
+}
 
-  const [year, month] = input.period.split("-").map(Number);
-  const quarter = `${year}-Q${Math.ceil(month / 3)}`;
-  const params = await getBonusParameters(input.branch, quarter);
-  if (!params) return { ok: false, error: "Parameter bonus (p, LK dasar) belum diatur kuartal ini" };
+/** Hitungan hidup satu cabang untuk satu bulan. `report` = laba-rugi Haengbocake bulan itu (dibagi untuk kedua cabang). */
+async function computeLive(
+  branch: ScorecardBranch,
+  period: string,
+  today: string,
+  report: PnLReport | null,
+  params: BonusParams | null
+): Promise<BranchBonusView> {
+  const first = `${period}-01`;
+  const end = lastDayOf(period) < today ? lastDayOf(period) : today;
+  const isCurrent = today.slice(0, 7) === period;
+  const regime: BonusBreakdown["regime"] = usesPosRegime(first) ? "pos_cake" : "laba_rugi";
+  const notes: string[] = [];
+  const base: BranchBonusView = {
+    branch,
+    params: params ? { p: params.p, lkDasar: params.lkDasar } : null,
+    breakdown: emptyBreakdown(end, regime),
+    surplus: 0,
+    multiplier: 0,
+    pool: 0,
+    shares: [],
+    frozen: false,
+    runStatus: null,
+    notes,
+    error: null,
+  };
 
-  const admin = createAdminClient();
-  const posAccount = await findPosAccount(input.branch);
-  if (!posAccount) return { ok: false, error: "Rekening POS cabang ini tidak ditemukan" };
-  const { data: bankAccount } = await admin
-    .from("bank_accounts")
-    .select("daily_revenue_target")
-    .eq("id", posAccount.id)
-    .maybeSingle();
+  try {
+    const admin = createAdminClient();
+    const m = report?.months[0];
+    const bp = m?.byBranch[branch];
+    if (!bp) notes.push("Data laba-rugi bulan ini belum ada.");
+    const fin = classifyCategories((bp?.byCategory ?? []).map((c) => ({ category: c.category, credit: c.credit, debit: c.debit, kind: c.kind })));
+    if ((m?.unallocatedCount ?? 0) > 0) notes.push("Alokasi biaya Pusat bulan ini belum lengkap — HPP/omzet cabang bisa kurang dari sebenarnya.");
 
-  const startIso = `${input.period}-01T00:00:00+07:00`;
-  const endMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
-  const endIso = `${endMonth}-01T00:00:00+07:00`;
-  const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const asOf = `${input.period}-${String(lastDayOfMonth).padStart(2, "0")}`;
+    let pos = 0;
+    let cake = 0;
+    let other = 0;
+    if (regime === "pos_cake") {
+      const r = await admin.rpc("scorecard_pos_total" as never, { p_pos_branch: branch, p_from: first, p_to: end } as never);
+      if (r.error) throw new Error(r.error.message);
+      pos = num(r.data);
+      cake = await sumCakeRevenue(admin, branch, first, end);
+      other = fin.otherRevenue;
+    } else {
+      pos = fin.pnlRevenue;
+    }
+    const total = pos + cake + other;
+    const cogs = fin.cogs;
+    const grossProfit = total - cogs;
 
-  const [report, metrics] = await Promise.all([
-    fetchPnL(admin, "Haengbocake", { year, month }, { year, month }),
-    computeMetricsAsOf(input.branch, posAccount.id, bankAccount?.daily_revenue_target ?? null, asOf),
-  ]);
-  const m = report.months[0];
-  const branchPnl = m?.byBranch[input.branch];
-  if (!branchPnl) return { ok: false, error: "Data PnL bulan ini belum ada" };
-  const cogs = branchPnl.byCategory.find((c) => c.category === COGS_CATEGORY)?.debit ?? 0;
-  const grossProfit = branchPnl.operatingRevenue - cogs;
+    // Pengali scorecard.
+    const account = await findPosAccount(branch);
+    let metrics: BonusMetricView[] = [];
+    let multiplier = 1;
+    if (account) {
+      const { data: bank } = await admin.from("bank_accounts").select("daily_revenue_target").eq("id", account.id).maybeSingle();
+      const ms = await computeMetricsAsOf(branch, account.id, bank?.daily_revenue_target ?? null, end);
+      metrics = ms.map((x) => ({ key: x.key, label: x.label, displayValue: x.displayValue, band: x.band, points: scorecardPoints(x.band) }));
+      multiplier = metrics.reduce((s, x) => s + x.points, 0) / 4;
+    } else {
+      notes.push("Rekening POS cabang tidak ditemukan — pengali scorecard dianggap penuh.");
+    }
 
-  const points = metrics.reduce((s, mt) => s + scorecardPoints(mt.band), 0);
-  const multiplier = points / 4;
-  const pool = (params.p / 100) * Math.max(0, grossProfit - params.lkDasar) * multiplier;
+    const surplus = params ? Math.max(0, grossProfit - params.lkDasar) : 0;
+    const pool = params ? bonusPool(grossProfit, params.lkDasar, params.p, multiplier) : 0;
+    if (!params) notes.push("Parameter kuartal belum diisi — kolam belum bisa dihitung.");
+    if (isCurrent) notes.push("Bulan berjalan: angka sementara sampai akhir bulan.");
 
-  const names = await namesFor(input.employeeUserIds);
-  const hoursByUser = new Map<string, number>();
-  await Promise.all(
-    input.employeeUserIds.map(async (uid) => {
-      hoursByUser.set(uid, await hoursWorked(uid, startIso, endIso));
-    })
-  );
+    // Penerima & jam hadir.
+    const recipients = await loadRecipients(branch);
+    const startIso = `${first}T00:00:00+07:00`;
+    const endIso = `${nextMonthStart(period)}T00:00:00+07:00`;
+    const detail = await Promise.all(
+      recipients.map(async (r) => {
+        const hours = await hoursWorked(r.userId, startIso, endIso);
+        const sp = await hasActiveSpInMonth(r.userId, first, end);
+        const excludedReason = !r.active ? "Tidak aktif" : sp ? "SP aktif" : null;
+        return { r, hours, excludedReason };
+      })
+    );
+    const amounts = distributeShares(pool, detail.map((d) => ({ hours: d.hours, excluded: !!d.excludedReason })));
+    const shares: BonusShareView[] = detail.map((d, i) => ({
+      userId: d.r.userId,
+      name: d.r.name,
+      label: d.r.label,
+      hours: d.hours,
+      share: amounts[i],
+      fraction: pool > 0 ? amounts[i] / pool : 0,
+      excluded: !!d.excludedReason,
+      excludedReason: d.excludedReason,
+    }));
+    if (recipients.length === 0) notes.push("Belum ada penerima bonus untuk cabang ini.");
+    else if (pool > 0 && amounts.every((a) => a === 0)) notes.push("Belum ada jam hadir tercatat untuk penerima — kolam belum bisa dibagi.");
 
-  const exclusions = input.manualExclusions ?? {};
-  const eligible: { userId: string; hours: number }[] = [];
-  const shares: BonusSharePreview[] = [];
-  for (const uid of input.employeeUserIds) {
-    const hours = hoursByUser.get(uid) ?? 0;
-    const spActive = await hasActiveSpInMonth(uid, startIso.slice(0, 10), asOf);
-    const manualReason = exclusions[uid];
-    const excluded = spActive || !!manualReason;
-    const excludedReason = spActive ? "SP aktif" : manualReason ?? null;
-    if (!excluded) eligible.push({ userId: uid, hours });
-    shares.push({ userId: uid, name: names.get(uid) ?? "—", hours, share: 0, excluded, excludedReason });
-  }
-  const totalHours = eligible.reduce((s, e) => s + e.hours, 0);
-  for (const s of shares) {
-    if (s.excluded || totalHours <= 0) continue;
-    s.share = pool * (s.hours / totalHours);
-  }
-
-  return {
-    ok: true,
-    data: {
-      branch: input.branch,
-      period: input.period,
-      grossProfit,
-      lkDasar: params.lkDasar,
-      p: params.p,
-      scorecardMultiplier: multiplier,
+    return {
+      ...base,
+      breakdown: { regime, revenue: { pos, cake, other, total }, cogs, grossProfit, metrics, asOf: end },
+      surplus,
+      multiplier,
       pool,
       shares,
-    },
+    };
+  } catch (e) {
+    return { ...base, error: e instanceof Error ? e.message : "Gagal menghitung bonus" };
+  }
+}
+
+/** Bonus yang sudah terbit: tampilkan angka yang dibekukan, bukan hitung ulang. */
+async function loadFrozen(branch: ScorecardBranch, period: string): Promise<BranchBonusView | null> {
+  const { data: run } = await db().from("bonus_runs").select("*").eq("branch", branch).eq("period", period).maybeSingle();
+  if (!run || run.status !== "finalized") return null;
+  const { data: sharesData } = await db()
+    .from("bonus_run_shares")
+    .select("user_id, hours, share, excluded, excluded_reason")
+    .eq("run_id", run.id);
+  const recipients = await loadRecipients(branch);
+  const labelById = new Map(recipients.map((r) => [r.userId, r]));
+  const profIds = ((sharesData ?? []) as any[]).map((s) => s.user_id as string).filter((id) => !labelById.has(id));
+  const extra = new Map<string, string>();
+  if (profIds.length) {
+    const { data: profs } = await db().from("profiles").select("id, full_name, nickname").in("id", profIds);
+    for (const p of (profs ?? []) as any[]) extra.set(p.id, (p.nickname?.trim() || p.full_name || "—") as string);
+  }
+  const pool = num(run.pool);
+  const stored = (run.breakdown ?? null) as BonusBreakdown | null;
+  const grossProfit = num(run.gross_profit);
+  return {
+    branch,
+    params: { p: num(run.p), lkDasar: num(run.lk_dasar) },
+    breakdown: stored ?? { ...emptyBreakdown(lastDayOf(period), usesPosRegime(`${period}-01`) ? "pos_cake" : "laba_rugi"), grossProfit },
+    surplus: Math.max(0, grossProfit - num(run.lk_dasar)),
+    multiplier: num(run.scorecard_multiplier),
+    pool,
+    shares: ((sharesData ?? []) as any[]).map((s) => ({
+      userId: s.user_id,
+      name: labelById.get(s.user_id)?.name ?? extra.get(s.user_id) ?? "—",
+      label: labelById.get(s.user_id)?.label ?? "",
+      hours: num(s.hours),
+      share: num(s.share),
+      fraction: pool > 0 ? num(s.share) / pool : 0,
+      excluded: !!s.excluded,
+      excludedReason: s.excluded_reason ?? null,
+    })),
+    frozen: true,
+    runStatus: "finalized",
+    notes: stored ? [] : ["Rincian omzet & HPP tidak tersimpan untuk bonus ini (diterbitkan sebelum rincian dibekukan)."],
+    error: null,
   };
 }
 
-export async function saveBonusRun(preview: BonusPreview): Promise<ActionResult<{ runId: string }>> {
+export async function getBonusMonth(period: string): Promise<BonusMonthView | null> {
+  const gate = await requireAdmin();
+  if (!gate.ok || !isValidPeriod(period)) return null;
+  const today = jakartaDateString(new Date());
+  const thisMonth = today.slice(0, 7);
+  if (period > thisMonth) return null;
+  const quarter = quarterOf(period);
+  const [y, mo] = period.split("-").map(Number);
+
+  const frozen = await Promise.all(BONUS_BRANCHES.map((b) => loadFrozen(b, period)));
+  const needLive = frozen.some((f) => !f);
+  let report: PnLReport | null = null;
+  if (needLive) {
+    try {
+      report = await fetchPnL(createAdminClient(), "Haengbocake", { year: y, month: mo }, { year: y, month: mo });
+    } catch {
+      report = null;
+    }
+  }
+  const branches = await Promise.all(
+    BONUS_BRANCHES.map(async (b, i) => frozen[i] ?? computeLive(b, period, today, report, await loadParams(b, quarter)))
+  );
+  return { period, quarter, isCurrent: period === thisMonth, canPublish: period < thisMonth, branches };
+}
+
+// ─── Terbitkan ───────────────────────────────────────────────────────────────
+
+/** Bekukan hitungan bulan yang sudah selesai dan umumkan ke penerima. Mengunci parameter kuartalnya. */
+export async function publishBonusRun(input: { branch: ScorecardBranch; period: string }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
+  if (!BONUS_BRANCHES.includes(input.branch) || !isValidPeriod(input.period)) return { ok: false, error: "Cabang atau bulan tidak valid" };
+  const today = jakartaDateString(new Date());
+  if (input.period >= today.slice(0, 7)) return { ok: false, error: "Bonus baru bisa diterbitkan setelah bulannya selesai." };
+
+  const existing = await db().from("bonus_runs").select("status").eq("branch", input.branch).eq("period", input.period).maybeSingle();
+  if (existing.data?.status === "finalized") return { ok: false, error: "Bonus bulan ini sudah terbit." };
+
+  const params = await loadParams(input.branch, quarterOf(input.period));
+  if (!params) return { ok: false, error: "Isi parameter kuartal (p dan LK dasar) dulu." };
+
+  const [y, mo] = input.period.split("-").map(Number);
+  const report = await fetchPnL(createAdminClient(), "Haengbocake", { year: y, month: mo }, { year: y, month: mo });
+  const v = await computeLive(input.branch, input.period, today, report, params);
+  if (v.error) return { ok: false, error: v.error };
+  if (v.shares.length === 0) return { ok: false, error: "Belum ada penerima bonus untuk cabang ini." };
 
   const { data: run, error } = await db()
     .from("bonus_runs")
     .upsert(
       {
-        branch: preview.branch,
-        period: preview.period,
-        gross_profit: preview.grossProfit,
-        lk_dasar: preview.lkDasar,
-        p: preview.p,
-        scorecard_multiplier: preview.scorecardMultiplier,
-        pool: preview.pool,
-        status: "draft",
+        branch: input.branch,
+        period: input.period,
+        gross_profit: v.breakdown.grossProfit,
+        lk_dasar: params.lkDasar,
+        p: params.p,
+        scorecard_multiplier: v.multiplier,
+        pool: v.pool,
+        breakdown: v.breakdown,
+        status: "finalized",
         created_by: gate.userId,
+        finalized_by: gate.userId,
+        finalized_at: new Date().toISOString(),
       },
       { onConflict: "branch,period" }
     )
@@ -285,98 +458,39 @@ export async function saveBonusRun(preview: BonusPreview): Promise<ActionResult<
   const runId = (run as { id: string }).id;
 
   await db().from("bonus_run_shares").delete().eq("run_id", runId);
-  if (preview.shares.length > 0) {
-    const { error: sharesErr } = await db().from("bonus_run_shares").insert(
-      preview.shares.map((s) => ({
-        run_id: runId,
-        user_id: s.userId,
-        hours: s.hours,
-        share: s.share,
-        excluded: s.excluded,
-        excluded_reason: s.excludedReason,
-      }))
-    );
-    if (sharesErr) return { ok: false, error: sharesErr.message };
-  }
-
-  revalidatePath("/admin/bonus");
-  return { ok: true, data: { runId } };
-}
-
-export async function finalizeBonusRun(runId: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate;
-
-  const { error } = await db()
-    .from("bonus_runs")
-    .update({ status: "finalized", finalized_by: gate.userId, finalized_at: new Date().toISOString() })
-    .eq("id", runId)
-    .eq("status", "draft");
-  if (error) return { ok: false, error: error.message };
-
-  const { data: shares } = await db()
-    .from("bonus_run_shares")
-    .select("user_id, share, excluded")
-    .eq("run_id", runId)
-    .eq("excluded", false);
-  await Promise.all(
-    (shares ?? []).map((s: { user_id: string; share: number }) =>
-      sendPushToUser(s.user_id, {
-        title: "Bonus bulan ini sudah terbit",
-        body: `Bagianmu Rp${Math.round(s.share).toLocaleString("id-ID")} — lihat rinciannya di app.`,
-        url: "/bonus",
-      })
-    )
-  );
-
-  revalidatePath("/admin/bonus");
-  return { ok: true };
-}
-
-export interface BonusRunView extends BonusPreview {
-  id: string;
-  status: "draft" | "finalized";
-}
-
-export async function getBonusRun(branch: ScorecardBranch, period: string): Promise<BonusRunView | null> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return null;
-  const { data: run } = await db()
-    .from("bonus_runs")
-    .select("*")
-    .eq("branch", branch)
-    .eq("period", period)
-    .maybeSingle();
-  if (!run) return null;
-  const { data: sharesData } = await db()
-    .from("bonus_run_shares")
-    .select("user_id, hours, share, excluded, excluded_reason")
-    .eq("run_id", run.id);
-  const names = await namesFor((sharesData ?? []).map((s: { user_id: string }) => s.user_id));
-  return {
-    id: run.id,
-    status: run.status,
-    branch,
-    period,
-    grossProfit: run.gross_profit,
-    lkDasar: run.lk_dasar,
-    p: run.p,
-    scorecardMultiplier: run.scorecard_multiplier,
-    pool: run.pool,
-    shares: (sharesData ?? []).map((s: any) => ({
-      userId: s.user_id,
-      name: names.get(s.user_id) ?? "—",
+  const { error: sharesErr } = await db().from("bonus_run_shares").insert(
+    v.shares.map((s) => ({
+      run_id: runId,
+      user_id: s.userId,
       hours: s.hours,
       share: s.share,
       excluded: s.excluded,
-      excludedReason: s.excluded_reason,
-    })),
-  };
+      excluded_reason: s.excludedReason,
+    }))
+  );
+  if (sharesErr) return { ok: false, error: sharesErr.message };
+
+  await Promise.all(
+    v.shares
+      .filter((s) => !s.excluded && s.share > 0)
+      .map((s) =>
+        sendPushToUser(s.userId, {
+          title: "Bonus bulan ini sudah terbit",
+          body: `Bagianmu Rp${Math.round(s.share).toLocaleString("id-ID")} — lihat rinciannya di app.`,
+          url: "/bonus",
+        }).catch((err) => console.error("[bonus] push failed", err))
+      )
+  );
+  revalidatePath("/admin/bonus");
+  revalidatePath("/bonus");
+  return { ok: true };
 }
+
+// ─── Penerima: lihat bonusnya sendiri ────────────────────────────────────────
 
 /** Transparansi: siapa pun bisa lihat rincian bonusnya sendiri dan cara hitungnya. */
 export async function listMyBonusShares(): Promise<
-  (BonusSharePreview & { period: string; branch: ScorecardBranch; pool: number; grossProfit: number; lkDasar: number; p: number; scorecardMultiplier: number })[]
+  (BonusShareRow & { period: string; branch: ScorecardBranch; pool: number; grossProfit: number; lkDasar: number; p: number; scorecardMultiplier: number })[]
 > {
   const user = await getCurrentUser();
   if (!user) return [];
@@ -400,4 +514,13 @@ export async function listMyBonusShares(): Promise<
     p: s.bonus_runs.p,
     scorecardMultiplier: s.bonus_runs.scorecard_multiplier,
   }));
+}
+
+interface BonusShareRow {
+  userId: string;
+  name: string;
+  hours: number;
+  share: number;
+  excluded: boolean;
+  excludedReason: string | null;
 }

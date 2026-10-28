@@ -7,6 +7,7 @@ import { getComplaintCount, getComplaintCountBetween } from "./customer-complain
 import { WITHDRAWAL_REASON_META, type WithdrawalReason } from "@/lib/pos/withdrawal-reasons";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { workingDaysBetween, workingDaysInMonth } from "@/lib/scorecard/working-days";
+import { sumCakeRevenue as sumCakeRevenueShared } from "@/lib/scorecard/cake-revenue";
 import { resolveUserBranches } from "@/lib/branches/user-branches";
 import {
   SERVICE_LEVEL_GREEN_MIN,
@@ -120,41 +121,7 @@ async function sumPaidPosTotal(
   return { total, count };
 }
 
-/**
- * Omzet Custom Cake cabang pada [from, to] (inklusif, tanggal WIB menurut `scheduled_at`): total − ongkir − refund,
- * tanpa order batal/dibuang/gratis. Aturan yang sama dengan petunjuk alokasi di laporan laba-rugi (`fetchPnL`).
- */
-async function sumCakeRevenue(branch: ScorecardBranch, from: string, to: string): Promise<number> {
-  const admin = createAdminClient();
-  const startIso = `${from}T00:00:00+07:00`;
-  const endIso = `${addDays(to, 1)}T00:00:00+07:00`;
-  const PAGE = 1000;
-  let total = 0;
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await admin
-      .from("cake_orders")
-      .select("total_idr, delivery_fee_idr, refund_idr, status, free_claim")
-      .ilike("branch", branch)
-      .gte("scheduled_at", startIso)
-      .lt("scheduled_at", endIso)
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as unknown as {
-      total_idr: number | null;
-      delivery_fee_idr: number | null;
-      refund_idr: number | null;
-      status: string | null;
-      free_claim: boolean | null;
-    }[];
-    for (const c of rows) {
-      if (c.status === "cancelled" || c.status === "discarded" || c.free_claim) continue;
-      total += (Number(c.total_idr) || 0) - (Number(c.delivery_fee_idr) || 0) - (Number(c.refund_idr) || 0);
-    }
-    if (rows.length < PAGE) break;
-  }
-  return total;
-}
+const sumCakeRevenue = (branch: ScorecardBranch, from: string, to: string) => sumCakeRevenueShared(createAdminClient(), branch, from, to);
 
 const rupiah = (n: number) => `Rp${Math.round(n).toLocaleString("id-ID")}`;
 
