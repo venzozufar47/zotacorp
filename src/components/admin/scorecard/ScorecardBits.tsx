@@ -181,6 +181,16 @@ export function ScorecardPanel({ unit, months, changes }: { unit: HomeUnitCard; 
               {delta && <span className={cn("text-[11.5px] font-semibold tabular-nums", TONE_ARROW[m.tone])}>{delta}</span>}
               {changed.has(m.code) && <span className="text-[10.5px] font-semibold text-warning">▲ berubah</span>}
             </div>
+            {m.t12 !== undefined && (
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                12 bulan terakhir:{" "}
+                {m.t12 === null ? (
+                  <span>belum cukup periode</span>
+                ) : (
+                  <span className="font-semibold tabular-nums text-foreground">{m.t12.value == null ? "modal tak kembali" : formatMetricValue(m.t12.value, m.t12.unit)}</span>
+                )}
+              </div>
+            )}
             <div className="mt-2">
               <TrendChart values={m.spark} months={months} status={m.status} green={m.green} red={m.red} direction={m.direction} />
             </div>
