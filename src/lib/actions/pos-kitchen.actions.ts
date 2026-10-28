@@ -9,11 +9,13 @@ import {
   computeVerdict,
   diagnose,
   idleHours,
+  monthlySeries,
   weeklySeries,
   type CapacityVerdict,
   type Diagnosis,
   type HourPoint,
   type KitchenDay,
+  type MonthPoint,
   type WeekPoint,
 } from "@/lib/pos/kitchen-capacity";
 
@@ -26,6 +28,9 @@ const KITCHEN_BRANCHES: Record<string, { from: string; locationLike: string }> =
   Pare: { from: "2026-06-01", locationLike: "%Pare%" },
 };
 
+/** Grafik bulanan menampilkan semua bulan sejak POS dipakai; rekor tetap dihitung dari `from` saja. */
+const SERIES_FROM = "2026-04-01";
+
 const BAKER_ROLES = ["Baker", "Staf Dapur", "Baker & Kepala Produksi", "Kitchen Helper"];
 /** Produksi satu baris di atas ini dianggap salah ketik (sama dengan WASTE_QTY_SANITY_CAP). */
 const QTY_CAP = 10_000;
@@ -36,6 +41,7 @@ export interface KitchenCapacityData {
   asOf: string;
   verdict: CapacityVerdict | null;
   weekly: WeekPoint[];
+  monthly: MonthPoint[];
   hours: HourPoint[];
   idle: number[];
   /** Persen susut (expired + rusak) 30 hari; null bila tak ada produksi. */
@@ -62,6 +68,7 @@ export async function getKitchenCapacity(bankAccountId: string): Promise<ActionR
     asOf: today,
     verdict: null,
     weekly: [],
+    monthly: [],
     hours: [],
     idle: [],
     wastePct: null,
@@ -88,7 +95,7 @@ export async function getKitchenCapacity(bankAccountId: string): Promise<ActionR
         .select("id, product_id, qty, movement_date, movement_time")
         .eq("bank_account_id", bankAccountId)
         .eq("type", "production")
-        .gte("movement_date", cfg.from)
+        .gte("movement_date", SERIES_FROM)
         .lte("qty", QTY_CAP)
     );
 
@@ -123,13 +130,14 @@ export async function getKitchenCapacity(bankAccountId: string): Promise<ActionR
         .in("user_id", bakerIds)
         .in("matched_location_id", locIds)
         .eq("is_overtime", true)
-        .gte("date", cfg.from)
+        .gte("date", SERIES_FROM)
         .limit(5000);
       for (const l of logs ?? []) overtime.add(l.date);
     }
 
     const verdict = computeVerdict(days, overtime, cfg.from);
     const weekly = weeklySeries(days, overtime, cfg.from, 16);
+    const monthly = monthlySeries(days, overtime, SERIES_FROM, today);
 
     // Pola jam: batch per hari kerja pada tiap jam (60 hari terakhir). Jam = jam pencatatan, bukan jam di oven.
     const since = jakartaDateMinusDays(today, 59);
@@ -175,6 +183,7 @@ export async function getKitchenCapacity(bankAccountId: string): Promise<ActionR
         asOf: today,
         verdict,
         weekly,
+        monthly,
         hours,
         idle: idleHours(hours),
         wastePct,

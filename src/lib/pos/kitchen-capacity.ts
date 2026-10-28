@@ -101,6 +101,40 @@ export function weeklySeries(days: KitchenDay[], overtime: Set<string>, from: st
     .map(([weekStart, v]) => ({ weekStart, avgPerDay: Math.round(v.sum / v.n), days: v.n, overtimeDays: v.ot }));
 }
 
+export interface MonthPoint {
+  month: string; // YYYY-MM
+  avgPerDay: number;
+  /** Hari terbaik bulan itu (satu hari saja — bukan kapasitas). */
+  peak: number;
+  days: number;
+  overtimeDays: number;
+  /** Bulan berjalan atau data kurang dari 10 hari kerja: batangnya belum bisa dibandingkan. */
+  partial: boolean;
+}
+
+export function monthlySeries(days: KitchenDay[], overtime: Set<string>, from: string, today: string): MonthPoint[] {
+  const by = new Map<string, { sum: number; n: number; peak: number; ot: number }>();
+  for (const d of workdays(days, from)) {
+    const m = d.date.slice(0, 7);
+    const cur = by.get(m) ?? { sum: 0, n: 0, peak: 0, ot: 0 };
+    cur.sum += d.qty;
+    cur.n += 1;
+    cur.peak = Math.max(cur.peak, d.qty);
+    if (overtime.has(d.date)) cur.ot += 1;
+    by.set(m, cur);
+  }
+  return [...by.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([month, v]) => ({
+      month,
+      avgPerDay: Math.round(v.sum / v.n),
+      peak: v.peak,
+      days: v.n,
+      overtimeDays: v.ot,
+      partial: v.n < 10 || month === today.slice(0, 7),
+    }));
+}
+
 export type Diagnosis = "sehat_permintaan" | "terbatas" | "kelebihan" | "salah_rencana" | "belum_cukup";
 
 /**

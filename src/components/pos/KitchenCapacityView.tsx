@@ -104,6 +104,7 @@ function Loaded({ data }: { data: KitchenCapacityData }) {
         </section>
       )}
 
+      <MonthlyChart data={data} />
       <WeeklyChart data={data} />
       <HoursChart data={data} />
 
@@ -284,6 +285,64 @@ function WeeklyChart({ data }: { data: KitchenCapacityData }) {
       </div>
       <p className="text-[11px] text-muted-foreground">
         Titik kuning = minggu itu ada hari lembur. Batang pudar = minggu berjalan (belum penuh).
+      </p>
+    </section>
+  );
+}
+
+const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+function MonthlyChart({ data }: { data: KitchenCapacityData }) {
+  const months = data.monthly;
+  const record = data.verdict?.record?.avg ?? null;
+  const max = Math.max(1, record ?? 0, ...months.map((m) => m.peak)) * 1.06;
+  if (months.length === 0) return null;
+  return (
+    <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Rata-rata per bulan dan hari puncaknya
+        </p>
+        {record != null && <p className="text-[11px] text-muted-foreground">garis = rekor reguler {record}</p>}
+      </div>
+      <div className="relative">
+        <div className="flex h-40 items-end gap-2 border-b border-border">
+          {months.map((m) => (
+            <div key={m.month} className="relative flex h-full min-w-0 flex-1 items-end justify-center">
+              <div
+                className={cn("w-3/5 rounded-t", m.partial ? "bg-primary/35" : "bg-primary/80")}
+                style={{ height: `${(m.avgPerDay / max) * 100}%` }}
+                title={`${m.avgPerDay} pcs/hari rata-rata, puncak ${m.peak} (${m.days} hari kerja${
+                  m.overtimeDays ? `, ${m.overtimeDays} lembur` : ""
+                })`}
+              />
+              <span
+                aria-hidden
+                className="absolute left-[30%] right-[30%] h-0.5 rounded bg-destructive"
+                style={{ bottom: `${(m.peak / max) * 100}%` }}
+              />
+            </div>
+          ))}
+        </div>
+        {record != null && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 border-t-2 border-dashed border-foreground/60"
+            style={{ bottom: `${(record / max) * 100}%` }}
+          />
+        )}
+      </div>
+      <div className="flex gap-2 text-center text-[11px] text-muted-foreground">
+        {months.map((m) => (
+          <span key={m.month} className="min-w-0 flex-1 leading-tight">
+            <span className="block">{MONTHS_ID[Number(m.month.slice(5)) - 1]}</span>
+            <b className="font-semibold text-foreground tabular-nums">{m.avgPerDay}</b>
+          </span>
+        ))}
+      </div>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Biru = rata-rata per hari kerja (pudar = bulan berjalan atau datanya kurang dari 10 hari kerja). Garis merah =
+        satu hari terbaik bulan itu, bukan kapasitas. Rata-rata mencakup hari lembur; rekor tidak.
       </p>
     </section>
   );
