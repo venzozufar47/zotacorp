@@ -34,6 +34,9 @@ import {
   YEOBO_HARDCODE_BEFORE,
 } from "./pnl-yeobo-hardcode";
 
+/** Selisih alokasi gaji vs nominal transfer yang masih dianggap lunas (biaya transfer / pembulatan). */
+const SALARY_ALLOCATION_TOLERANCE_IDR = 25_000;
+
 export type PnLSide = "credit" | "debit";
 export type PnLCategoryClass = "operating" | "nonop";
 
@@ -523,7 +526,8 @@ export async function fetchYeoboPnL(
         status.totalTx += 1;
         if (allocs.length === 0) {
           status.un += 1;
-        } else if (Math.abs(allocatedTotal - debit) <= 1) {
+        } else if (Math.abs(allocatedTotal - debit) <= SALARY_ALLOCATION_TOLERANCE_IDR) {
+          // Selisih kecil (biaya transfer bank / pembulatan) dianggap lunas; sisanya tetap dibagi rata otomatis di bawah.
           status.full += 1;
         } else {
           status.partial += 1;
