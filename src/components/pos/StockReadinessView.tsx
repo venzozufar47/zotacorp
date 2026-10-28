@@ -97,16 +97,9 @@ export function StockReadinessView({ bankAccountId }: Props) {
           <Loader2 size={14} className="animate-spin" /> Memuat timeline…
         </div>
       ) : data ? (
-        // Break-out wrapper: card lepas dari container parent dan
-        // melar selebar viewport. `overflow-x: clip` mencegah dampak
-        // ke scroll horizontal halaman kalau lebar 100vw kebetulan
-        // melampaui content area parent (mis. saat ada scrollbar).
-        <div
-          className="relative left-1/2 right-1/2 -translate-x-1/2 w-screen px-2"
-          style={{ overflowX: "clip" }}
-        >
-          <ChartView data={data} focused={focused} onFocus={setFocused} />
-        </div>
+        // Lebar mengikuti kolom halaman (dulu dipaksa selebar layar dengan w-screen, yang melewati sidebar POS
+        // dan memotong legend di desktop serta melebar di HP).
+        <ChartView data={data} focused={focused} onFocus={setFocused} />
       ) : null}
     </section>
   );
@@ -251,7 +244,7 @@ function ChartView({
   // scroll kalau monitor wajar.
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr]">
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
         <LegendList
           rows={enriched}
           focused={focused}
@@ -293,11 +286,11 @@ function LegendList({
   inactiveCount: number;
 }) {
   return (
-    <div className="border-b sm:border-b-0 sm:border-r border-border bg-muted/20">
+    <div className="min-w-0 border-b lg:border-b-0 lg:border-r border-border bg-muted/20">
       <div className="px-3 py-2 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground border-b border-border">
         Produk · qty · ↑in / ↓out
       </div>
-      <ul className="overflow-y-auto max-h-[60vh] divide-y divide-border/40">
+      <ul className="overflow-y-auto max-h-48 lg:max-h-[60vh] divide-y divide-border/40">
         {rows.map((e) => {
           const isFocused = focused === e.id;
           const dim = focused != null && !isFocused;
@@ -490,7 +483,7 @@ function ChartCanvas({
   const nowX = nowIdx >= 0 ? xAt(nowIdx) : null;
 
   return (
-    <div ref={wrapRef} className="relative" style={{ height: CHART_H }}>
+    <div ref={wrapRef} className="relative min-w-0 overflow-hidden" style={{ height: CHART_H }}>
       {wrapWidth > 0 ? (
         <svg
           width={innerW}
