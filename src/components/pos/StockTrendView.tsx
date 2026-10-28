@@ -5,7 +5,6 @@ import { Loader2, Info } from "lucide-react";
 import { getStockTrend, type StockTrend, type StockTrendRow } from "@/lib/actions/pos-stock-trend.actions";
 import { dayTotals, pooledSellThrough, sellThrough, type DayCell } from "@/lib/pos/stock-trend";
 import { cn } from "@/lib/utils";
-import { StockReadinessView } from "./StockReadinessView";
 
 const WINDOWS = [7, 14] as const;
 
@@ -32,7 +31,6 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
   const [data, setData] = useState<StockTrend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [showHourly, setShowHourly] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,21 +104,6 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
           </p>
         </>
       ) : null}
-
-      <div className="border-t border-border pt-3">
-        <button
-          type="button"
-          onClick={() => setShowHourly((v) => !v)}
-          className="text-xs font-semibold text-primary hover:underline"
-        >
-          {showHourly ? "Sembunyikan garis stok per jam" : "Lihat garis stok per jam (tampilan lama)"}
-        </button>
-        {showHourly && (
-          <div className="mt-3">
-            <StockReadinessView bankAccountId={bankAccountId} />
-          </div>
-        )}
-      </div>
     </section>
   );
 }
