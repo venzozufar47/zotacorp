@@ -50,18 +50,18 @@ function StatusPanel({ items, onChanged }: { items: DataStatusItem[]; onChanged:
   function refreshAll() {
     start(async () => {
       let created = 0;
-      let failed = 0;
+      const failed: string[] = [];
       for (let i = 0; i < items.length; i++) {
         setBusy(items[i].month);
         setProgress(`${i + 1}/${items.length}`);
         const r = await refreshScorecardNow(items[i].month);
-        if (!r.ok) failed += 1;
+        if (!r.ok) failed.push(`${items[i].label} (${r.error})`);
         else if (r.data?.created) created += 1;
       }
       setBusy(null);
       setProgress(null);
-      const msg = `Semua bulan dihitung ulang: ${created} bulan berubah${failed ? `, ${failed} gagal` : ""}`;
-      if (failed) toast.error(msg);
+      const msg = `Semua bulan dihitung ulang: ${created} bulan berubah${failed.length ? `. Gagal: ${failed.join("; ")}` : ""}`;
+      if (failed.length) toast.error(msg);
       else toast.success(msg);
       onChanged();
     });
