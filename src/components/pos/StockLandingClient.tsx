@@ -20,7 +20,7 @@ import {
 } from "@/lib/actions/pos-stock.actions";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { StockMovementDialog } from "./StockMovementDialog";
-import { StockReadinessView } from "./StockReadinessView";
+import { StockTrendView } from "./StockTrendView";
 import { KitchenCapacityView } from "./KitchenCapacityView";
 import { WITHDRAWAL_REASON_META } from "@/lib/pos/withdrawal-reasons";
 
@@ -165,7 +165,7 @@ export function StockLandingClient({
       {tab === "dapur" && <KitchenCapacityView bankAccountId={bankAccountId} />}
 
       {tab === "pantauan" && (
-        <StockReadinessView bankAccountId={bankAccountId} />
+        <StockTrendView bankAccountId={bankAccountId} />
       )}
 
       {dialog !== null && (
