@@ -27,6 +27,7 @@ import {
   isCompanyCentralized,
   normalizePnLCategory,
 } from "./categories";
+import { autoAllocatesCake, suggestSalesSplit } from "./sales-allocation";
 
 export type PnLSide = "credit" | "debit";
 export type PnLCategoryClass = "operating" | "nonop";
@@ -120,6 +121,11 @@ export interface PusatBreakdownRow {
   semarangAlloc: number;
   pareAlloc: number;
   balanced: boolean;
+  /**
+   * Sisa Sales Pusat dibagi OTOMATIS menurut rasio Custom Cake (belum ada alokasi manual yang seimbang/terkunci);
+   * `semarangAlloc`/`pareAlloc` berisi hasil otomatis itu dan ikut masuk laba-rugi cabang.
+   */
+  autoAllocated?: boolean;
   /** No allocation row yet in DB. */
   unallocated: boolean;
   /** Has a row but sum ≠ netForAllocation. */
@@ -807,6 +813,16 @@ export async function fetchPnL(
         }
       }
 
+      // Sisa Sales Pusat = uang Custom Cake. Bila belum ada alokasi manual yang seimbang, bagi otomatis menurut rasio cake
+      // supaya Custom Cake masuk laba-rugi cabang (alokasi manual yang seimbang/terkunci tetap menang).
+      const cakeHint = salesHintByMonth.get(monthKey);
+      const auto =
+        isSalesCredit && !balanced && !effectiveLocked && cakeHint && autoAllocatesCake(monthKey)
+          ? suggestSalesSplit(netForAllocation, cakeHint.cakeSemarang, cakeHint.cakePare)
+          : null;
+      const effSemarang = auto ? auto.semarang : semarangAlloc;
+      const effPare = auto ? auto.pare : pareAlloc;
+
       const details = PUSAT_DETAIL_CATEGORIES.has(category)
         ? detailsByBucket
             .get(`${monthKey}|${k}`)
@@ -820,11 +836,12 @@ export async function fetchPnL(
         autoDeductPare,
         autoDeductSemarang,
         netForAllocation,
-        semarangAlloc,
-        pareAlloc,
-        balanced,
-        unallocated,
-        unbalanced,
+        semarangAlloc: effSemarang,
+        pareAlloc: effPare,
+        balanced: balanced || !!auto,
+        autoAllocated: !!auto,
+        unallocated: unallocated && !auto,
+        unbalanced: unbalanced && !auto,
         locked: effectiveLocked,
         details,
       });
@@ -838,13 +855,13 @@ export async function fetchPnL(
         addToBranch("Semarang", "posQris", category, autoDeductSemarang, 0);
       }
 
-      if (balanced) {
+      if (balanced || auto) {
         if (side === "credit") {
-          addToBranch("Semarang", "pusat", category, semarangAlloc, 0);
-          addToBranch("Pare", "pusat", category, pareAlloc, 0);
+          addToBranch("Semarang", "pusat", category, effSemarang, 0);
+          addToBranch("Pare", "pusat", category, effPare, 0);
         } else {
-          addToBranch("Semarang", "pusat", category, 0, semarangAlloc);
-          addToBranch("Pare", "pusat", category, 0, pareAlloc);
+          addToBranch("Semarang", "pusat", category, 0, effSemarang);
+          addToBranch("Pare", "pusat", category, 0, effPare);
         }
       }
     }

@@ -986,6 +986,12 @@ function CategoryGroup({
                         </span>
                       </li>
                     </ul>
+                    {r.autoAllocated && (
+                      <p className="mt-2 text-[10.5px] text-sky-700 dark:text-sky-300">
+                        Sisa ini sudah dialokasikan <strong>otomatis</strong> menurut rasio Custom Cake, jadi sudah masuk laba-rugi cabang. Simpan
+                        alokasi sendiri bila ingin menimpanya.
+                      </p>
+                    )}
                     {canApply ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className="text-muted-foreground">
