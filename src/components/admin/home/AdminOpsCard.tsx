@@ -8,7 +8,7 @@ import { formatDuration, RECENT_RESOLUTION_TARGET_MS } from "@/lib/tickets/types
 import { cn } from "@/lib/utils";
 
 /**
- * Kartu operasional di Home admin: Service Level & "ditarik expired" per
+ * Kartu operasional di Home admin: Service Level & "ditarik expired & rusak" per
  * outlet POS (30 hari), utilisasi slot Yeobo Space, + KPI kecepatan tiket
  * Kepala Studio. Angka dan warnanya memakai fungsi yang sama dengan halaman
  * Service Level dan dashboard Kepala Studio, jadi tidak pernah berbeda
@@ -123,7 +123,7 @@ export function AdminOpsCard({
             Service level
           </span>
           <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground text-right">
-            Ditarik expired
+            Ditarik expired &amp; rusak
           </span>
           {outlets.map((o) => (
             <OutletRow key={o.id} o={o} />

@@ -105,7 +105,7 @@ export async function getWaste(
 }
 
 /**
- * Angka "ditarik expired" untuk dashboard penanggung jawab metrik.
+ * Angka "ditarik expired & rusak" (SAMA dengan waste di Scorecard) untuk dashboard penanggung jawab metrik.
  *
  * Gate-nya `requireServiceLevelViewer` (bukan AdminOrPosAssignee) karena
  * penanggung jawab non-POS memang harus bisa melihatnya. Konsekuensinya
@@ -128,7 +128,8 @@ export async function getExpiredWasteSummary(
     fromDate,
     toDate,
   });
-  return { ok: true, data: { expiredRate: data.expiredRate } };
+  // Nama field `expiredRate` dipertahankan agar pemanggil tak berubah, tetapi isinya expired + rusak (lossRate).
+  return { ok: true, data: { expiredRate: data.lossRate } };
 }
 
 export interface ServiceLevelSummary {

@@ -36,7 +36,7 @@ function tone(pct: number | null, target: number): string {
   }
 }
 
-/** Arah terbalik dari tone() — untuk ditarik expired, kecil itu baik. */
+/** Arah terbalik dari tone() — untuk ditarik expired & rusak, kecil itu baik. */
 function wasteToneClass(rate: number | null): string {
   switch (wasteTone(rate)) {
     case "success":
@@ -122,7 +122,7 @@ export async function ServiceLevelPanel({
                       : `${(expiredRate * 100).toFixed(1)}%`}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    ditarik expired · target di bawah{" "}
+                    ditarik expired &amp; rusak · target di bawah{" "}
                     {(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
                   </span>
                 </div>

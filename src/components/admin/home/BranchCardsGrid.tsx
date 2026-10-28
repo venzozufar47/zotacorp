@@ -278,7 +278,7 @@ export function BranchCardsGrid({
       for (const m of u.metrics) if (m.status === "red") f.push(`${m.label} ${formatMetricValue(m.value, m.valueUnit)}`);
     }
     if (extra.serviceLevel && extra.serviceLevel.tone === "destructive") f.push(`Service level ${pct(extra.serviceLevel.v)}`);
-    if (extra.expired && extra.expired.tone === "destructive") f.push(`Ditarik expired ${pct(extra.expired.v)}`);
+    if (extra.expired && extra.expired.tone === "destructive") f.push(`Ditarik expired & rusak ${pct(extra.expired.v)}`);
     if (extra.deltaPct != null && extra.deltaPct <= -25) {
       f.push(`Omzet ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(extra.deltaPct)}% vs bulan lalu`);
     }
@@ -352,7 +352,7 @@ export function BranchCardsGrid({
           {sl && (
             <>
               <StatLine label="Service level" value={pct(sl.serviceLevel)} tone={serviceLevelTone(sl.serviceLevel, sl.serviceLevelTarget)} />
-              <StatLine label="Ditarik expired" value={pct(sl.expiredRate)} tone={wasteTone(sl.expiredRate)} />
+              <StatLine label="Expired & rusak" value={pct(sl.expiredRate)} tone={wasteTone(sl.expiredRate)} />
             </>
           )}
           {cashByBranch.has(b.name) && <StatLine label="Saldo kas" value={formatRp(cashByBranch.get(b.name)!)} />}

@@ -302,7 +302,7 @@ export async function computeWaste(
   };
 }
 
-/** Target "ditarik expired" — batas atas, kecil itu baik. Sama dengan ambang hijau di wasteTone. */
+/** Target "ditarik expired & rusak" — batas atas, kecil itu baik. Sama dengan ambang hijau di wasteTone. */
 export const WASTE_EXPIRED_TARGET = 0.05;
 
 export type WasteTone = "success" | "warning" | "destructive" | "muted";

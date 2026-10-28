@@ -157,13 +157,13 @@ export function ServiceLevelAdminClient({
               <div>
                 <p
                   className={`font-display text-3xl font-extrabold tabular-nums leading-none ${wasteToneOf(
-                    o.waste?.expiredRate ?? null
+                    o.waste?.lossRate ?? null
                   )}`}
                 >
-                  {pctLabel(o.waste?.expiredRate ?? null)}
+                  {pctLabel(o.waste?.lossRate ?? null)}
                 </p>
                 <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Ditarik expired · target &lt;{(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
+                  Ditarik expired &amp; rusak · target &lt;{(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
                 </p>
               </div>
             </div>
