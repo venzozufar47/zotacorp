@@ -290,7 +290,7 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
   const out: MetricResult[] = [];
   const pnlMonth = finance.haeng.get(ymKey(month));
   const branch: BranchPnL | undefined = pnlMonth?.byBranch[unit.pnl_branch as "Pare" | "Semarang"];
-  const fin: FinanceBreakdown | null = branch ? classifyCategories(toCategoryRows(branch.byCategory)) : null;
+  const fin: FinanceBreakdown | null = branch ? applyRentAccrual(classifyCategories(toCategoryRows(branch.byCategory)), unit.pnl_branch, ymKey(month)) : null;
   const posRegime = usesPosRegime(month);
   const from = month;
   const to = monthEndIso(month);
@@ -476,6 +476,7 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
       ...base,
       pembilang_sewa_rp: rd(fin.rent),
       penyebut_revenue_rp: rd(revenue),
+      sewa_kas_tercatat_rp: fin.rentCash !== undefined ? rd(fin.rentCash) : undefined,
       peringatan: rentMissing ? "Tidak ada biaya sewa tercatat bulan ini (dibayar di muka / belum dicatat?): tidak dinilai." : undefined,
     })
   );

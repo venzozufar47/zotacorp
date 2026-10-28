@@ -74,3 +74,14 @@ test("sewa tahunan tidak berlaku di luar masa sewa atau cabang lain", () => {
   assert.equal(applyRentAccrual(f, "Tembalang", "2027-01"), f);
   assert.equal(applyRentAccrual(f, "Tlogosari", "2026-03"), f);
 });
+
+test("sewa tambahan Pare: bayar 10 jt di Okt dikeluarkan, jatah 15 bulan ditambahkan di samping sewa bulanan", () => {
+  const okt = applyRentAccrual(classifyCategories([op("Rent", 0, 11_300_000)]), "Pare", "2026-10");
+  assert.equal(okt.rent, 1_300_000 + 666_667);
+  assert.equal(okt.rentCash, 11_300_000);
+  const nov = applyRentAccrual(classifyCategories([op("Rent", 0, 1_300_000)]), "Pare", "2026-11");
+  assert.equal(nov.rent, 1_300_000 + 666_667);
+  const sep = classifyCategories([op("Rent", 0, 1_300_000)]);
+  assert.equal(applyRentAccrual(sep, "Pare", "2026-09"), sep);
+  assert.equal(applyRentAccrual(sep, "Pare", "2028-01"), sep);
+});
