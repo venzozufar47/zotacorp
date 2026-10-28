@@ -24,6 +24,7 @@ import {
   sweepCleaningReviewAttachmentRetention,
 } from "@/lib/storage/cleaning-retention";
 import { sweepMediaRetention } from "@/lib/storage/media-retention";
+import { sweepLegacyCompress } from "@/lib/storage/legacy-compress";
 import { checkCronAuth } from "@/lib/utils/cron-auth";
 
 export async function GET(req: Request) {
@@ -43,6 +44,8 @@ export async function GET(req: Request) {
   // Selfie absensi + lampiran kue/tugas, ambang 90 hari (nota keuangan sengaja dikecualikan, tidak dihapus).
   const media = await sweepMediaRetention().catch(() => []);
   const gc = await gcOrphanStorage().catch(() => []);
+  // Kompres bertahap foto lama (dibatasi 20 MB unduhan & 60 dtk per malam; lihat legacy-compress.ts).
+  const legacyCompress = await sweepLegacyCompress().catch(() => null);
 
   const check = await dueForCron();
   if (!check.due) {
@@ -53,6 +56,7 @@ export async function GET(req: Request) {
       retention,
       reviewAttachmentRetention,
       media,
+      legacyCompress,
     });
   }
   const res = await runBackupCron();
@@ -70,5 +74,6 @@ export async function GET(req: Request) {
     retention,
     reviewAttachmentRetention,
     media,
+    legacyCompress,
   });
 }
