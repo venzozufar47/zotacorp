@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  fetchGoogleRatingsNow,
   refreshScorecardNow,
   saveManualRating,
   saveThreshold,
@@ -314,8 +315,25 @@ function RatingPanel({ data, months }: { data: ThresholdAdminData; months: DataS
     });
   }
 
+  function fetchFromGoogle() {
+    start(async () => {
+      const r = await fetchGoogleRatingsNow(month);
+      if (!r.ok) return void toast.error(r.error);
+      const res = r.data ?? [];
+      const name = (code: string) => studios.find((u) => u.code === code)?.name ?? code;
+      const line = res.map((x) => `${name(x.unit)}: ${x.status === "saved" ? x.value : x.status === "kept" ? "sudah ada (tidak ditimpa)" : `gagal (${x.error})`}`).join(" · ");
+      if (res.some((x) => x.status === "failed")) toast.error(line);
+      else toast.success(line);
+    });
+  }
+
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <button type="button" onClick={fetchFromGoogle} disabled={pending || !month} className={btnPrimary}>
+          {pending ? "Mengambil…" : "Ambil rating Google sekarang"}
+        </button>
+      </div>
       <p className="text-[12.5px] text-muted-foreground">Rata-rata rating Google bulan itu, diisi manual (skala 1,0–5,0). Masuk ke scorecard pada hitung ulang malam berikutnya, atau langsung lewat tombol Hitung ulang sekarang.</p>
       <label className="flex items-center gap-2 text-[12.5px] font-semibold">
         Bulan
