@@ -472,6 +472,42 @@ export interface CreatePurchaseInput {
   vendor?: string | null;
   notes?: string | null;
   lines: PurchaseLineInput[];
+  /**
+   * Mode EDIT: nota yang digantikan. Isinya dibalik dulu (buku kas, barang masuk, harga acuan) lalu ditulis ulang dari
+   * payload ini — jadi pengalamannya seperti input ulang. Identitas nota (id, pencatat, waktu catat) dipertahankan
+   * supaya hitungan kas laci per shift tidak bergeser.
+   */
+  replaceId?: string;
+  /** Mode edit: pakai foto nota yang sudah tersimpan (tanpa unggah baru). */
+  keepReceipt?: boolean;
+}
+
+interface OldSnapshot {
+  head: Record<string, unknown>;
+  lines: Record<string, unknown>[];
+  txs: Record<string, unknown>[];
+  receipts: Record<string, unknown>[];
+}
+
+async function loadOldSnapshot(admin: Admin, id: string): Promise<OldSnapshot | null> {
+  const { data: head } = await admin.from("procurement_purchases" as never).select("*").eq("id", id).maybeSingle();
+  if (!head) return null;
+  const { data: lineRows } = await admin.from("procurement_purchase_lines" as never).select("*").eq("purchase_id", id);
+  const lines = (lineRows ?? []) as Record<string, unknown>[];
+  const txIds = lines.map((l) => l.cashflow_transaction_id as string | null).filter((v): v is string => !!v);
+  const lineIds = lines.map((l) => l.id as string);
+  const [{ data: txs }, { data: recs }] = await Promise.all([
+    txIds.length ? admin.from("cashflow_transactions").select("*").in("id", txIds) : Promise.resolve({ data: [] }),
+    lineIds.length
+      ? admin.from("costing_material_receipts" as never).select("*").in("purchase_line_id", lineIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  return {
+    head: head as Record<string, unknown>,
+    lines,
+    txs: (txs ?? []) as unknown as Record<string, unknown>[],
+    receipts: (recs ?? []) as unknown as Record<string, unknown>[],
+  };
 }
 
 interface Created {
@@ -505,13 +541,36 @@ export async function createPurchase(
 
   const admin = createAdminClient();
   const acct = auth.acct;
+
+  // Mode edit: muat nota lama + cek hak. Aturan sama dengan hapus: admin kapan saja; pencatatnya sendiri hanya di hari
+  // yang sama, dan nota uang laci hanya selama shift-nya masih berjalan.
+  const replaceId = input.replaceId ?? null;
+  let old: OldSnapshot | null = null;
+  if (replaceId) {
+    old = await loadOldSnapshot(admin, replaceId);
+    if (!old || old.head.business_unit !== input.businessUnit) return { ok: false, error: "Nota tidak ditemukan" };
+    if (!auth.isAdmin) {
+      const createdAt = old.head.created_at as string;
+      if (old.head.created_by !== gate.userId) return { ok: false, error: "Hanya pencatatnya yang bisa mengubah nota" };
+      if (jakartaDateString(new Date(createdAt)) !== jakartaDateString(new Date()))
+        return { ok: false, error: "Hanya bisa diubah di hari yang sama — minta owner untuk koreksi" };
+      if (old.head.money_source === "laci" || input.moneySource === "laci") {
+        const sh = auth.shift;
+        if (!sh || new Date(createdAt).getTime() < new Date(sh.openedAt).getTime())
+          return { ok: false, error: "Nota uang laci hanya bisa diubah selama shift-nya masih berjalan — minta owner untuk koreksi" };
+      }
+    }
+  }
+  const keepReceipt = !!old && input.keepReceipt === true;
   if (
-    !input.receiptPath ||
-    input.receiptPath.includes("..") ||
-    !input.receiptPath.startsWith(`${acct.id}/purchase-tmp/${gate.userId}-`)
+    !keepReceipt &&
+    (!input.receiptPath ||
+      input.receiptPath.includes("..") ||
+      !input.receiptPath.startsWith(`${acct.id}/purchase-tmp/${gate.userId}-`))
   ) {
     return { ok: false, error: "Foto nota wajib — ambil foto notanya dulu" };
   }
+  const oldDate = old ? (old.head.purchase_date as string) : null;
 
   const now = new Date();
   const today = jakartaDateString(now);
@@ -520,10 +579,12 @@ export async function createPurchase(
   if (date > today) return { ok: false, error: "Tanggal nota tidak boleh di masa depan" };
   // Uang laci selalu "hari ini": kas laci dihitung dari saat dicatat (shift berjalan). Nota susulan dengan tanggal
   // kemarin akan terhitung di hitungan shift hari ini dan memunculkan selisih palsu.
-  if (input.moneySource === "laci" && date !== today)
+  // (Edit nota uang laci yang tanggalnya tidak diubah dikecualikan: tanggalnya memang sudah "hari itu".)
+  const sameAsOldLaci = !!old && old.head.money_source === "laci" && date === oldDate;
+  if (input.moneySource === "laci" && date !== today && !sameAsOldLaci)
     return { ok: false, error: "Pengeluaran uang laci hanya bisa dicatat untuk hari ini" };
   const oldest = jakartaDateString(new Date(now.getTime() - MAX_BACKDATE_DAYS * 86_400_000));
-  if (date < oldest) return { ok: false, error: `Nota susulan maksimal ${MAX_BACKDATE_DAYS} hari ke belakang` };
+  if (date < oldest && date !== oldDate) return { ok: false, error: `Nota susulan maksimal ${MAX_BACKDATE_DAYS} hari ke belakang` };
 
   // Validasi + hitung ulang tiap baris di server.
   const units = await fetchUnitsMap(admin);
@@ -536,14 +597,18 @@ export async function createPurchase(
       .in("id", matIds);
     for (const m of (mats ?? []) as Record<string, unknown>[]) matById.set(m.id as string, m);
   }
-  const procRows = matIds.length
-    ? new Map(
-        (await loadBrandProcurement(admin, { businessUnit: input.businessUnit, includeUntracked: true })).rows.map((r) => [
-          r.material.id,
-          r,
-        ])
-      )
-    : new Map();
+  type ProcRow = Awaited<ReturnType<typeof loadBrandProcurement>>["rows"][number];
+  const loadProcRows = async (): Promise<Map<string, ProcRow>> =>
+    matIds.length
+      ? new Map(
+          (await loadBrandProcurement(admin, { businessUnit: input.businessUnit, includeUntracked: true })).rows.map((r) => [
+            r.material.id,
+            r,
+          ])
+        )
+      : new Map();
+  // Edit: stok perkiraan baru dimuat SETELAH nota lama dibalik (barang masuk lama tidak boleh terhitung dua kali).
+  let procRows: Map<string, ProcRow> = old ? new Map() : await loadProcRows();
 
   interface Calc {
     sort: number;
@@ -619,7 +684,7 @@ export async function createPurchase(
   // ── Tulis ──
   const created: Created = { txIds: [], txFiles: [], receiptIds: [], filePaths: [] };
   const priceUndo: { materialId: string; before: number; after: number; priceUpdatedAt: string }[] = [];
-  const clientId = input.clientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.clientId) ? input.clientId : null;
+  const clientId = !old && input.clientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.clientId) ? input.clientId : null;
   if (clientId) {
     const { data: existing } = await admin
       .from("procurement_purchases" as never)
@@ -631,7 +696,49 @@ export async function createPurchase(
     if (ex && ex.created_by === gate.userId) return { ok: true, data: { id: ex.id, total: num(ex.total), flagged: 0 } };
     if (ex) return { ok: false, error: "Nota dengan kode ini sudah ada" };
   }
-  const purchaseId = clientId ?? crypto.randomUUID();
+  const purchaseId = replaceId ?? clientId ?? crypto.randomUUID();
+  // Mode edit: identitas & waktu catat nota lama dipertahankan (hitungan kas laci per shift dikunci dari created_at).
+  const purchaseTime = old ? ((old.head.purchase_time as string | null) ?? jakartaHHMM(now)) : jakartaHHMM(now);
+  const ownerId = old ? ((old.head.created_by as string | null) ?? gate.userId) : gate.userId;
+  const ledgerCreatedAt =
+    old && old.head.money_source === input.moneySource ? (old.head.created_at as string) : now.toISOString();
+  let reverted = false;
+  const priceReverts: { materialId: string; from: number; to: number }[] = [];
+  const restoreOld = async () => {
+    if (!old || !reverted) return;
+    try {
+      await admin.from("procurement_purchases" as never).insert(old.head as never);
+      if (old.txs.length)
+        await admin.from("cashflow_transactions").insert(
+          old.txs.map((t) => {
+            const rest = { ...t };
+            delete rest.effective_period;
+            return rest;
+          }) as never
+        );
+      if (old.receipts.length)
+        await admin
+          .from("costing_material_receipts" as never)
+          .insert(old.receipts.map((r) => ({ ...r, purchase_line_id: null })) as never);
+      if (old.lines.length) await admin.from("procurement_purchase_lines" as never).insert(old.lines as never);
+      for (const r of old.receipts) {
+        if (r.purchase_line_id)
+          await admin
+            .from("costing_material_receipts" as never)
+            .update({ purchase_line_id: r.purchase_line_id } as never)
+            .eq("id", r.id as string);
+      }
+      for (const pr of priceReverts) {
+        await admin
+          .from("costing_materials" as never)
+          .update({ purchase_price: pr.from } as never)
+          .eq("id", pr.materialId)
+          .eq("purchase_price", pr.to);
+      }
+    } catch {
+      // Pemulihan terbaik-usaha: kegagalan di sini tak boleh menutupi error aslinya.
+    }
+  };
   const rollback = async () => {
     for (const u of priceUndo.reverse()) {
       await admin
@@ -644,12 +751,15 @@ export async function createPurchase(
     await admin.from("procurement_purchases" as never).delete().eq("id", purchaseId);
     const files = [...created.txFiles, ...created.filePaths];
     if (files.length) await admin.storage.from(RECEIPT_BUCKET).remove(files);
+    await restoreOld();
   };
 
-  const { data: blob, error: dlErr } = await admin.storage.from(TMP_BUCKET).download(input.receiptPath);
+  const srcBucket = keepReceipt ? RECEIPT_BUCKET : TMP_BUCKET;
+  const srcPath = keepReceipt ? (old!.head.receipt_path as string) : input.receiptPath;
+  const { data: blob, error: dlErr } = await admin.storage.from(srcBucket).download(srcPath);
   if (dlErr || !blob) return { ok: false, error: "Foto nota tidak ditemukan — ambil ulang fotonya" };
   const bytes = Buffer.from(await blob.arrayBuffer());
-  const ext = input.receiptPath.split(".").pop() ?? "jpg";
+  const ext = srcPath.split(".").pop() ?? "jpg";
   const contentType = blob.type || "image/jpeg";
   const upload = async (path: string) =>
     admin.storage.from(RECEIPT_BUCKET).upload(path, bytes, { contentType, upsert: true });
@@ -659,18 +769,74 @@ export async function createPurchase(
   if (up0.error) return { ok: false, error: up0.error.message };
   created.filePaths.push(mainPath);
 
+  if (old) {
+    // Balik nota lama: buku kas dulu, lalu nota (baris + barang masuk ikut terhapus lewat cascade), lalu harga acuan.
+    const oldTxIds = old.txs.map((t) => t.id as string);
+    if (oldTxIds.length) {
+      const { error } = await admin.from("cashflow_transactions").delete().in("id", oldTxIds);
+      if (error) {
+        reverted = true; // sebagian mungkin sudah terhapus: pulihkan dari snapshot
+        await rollback();
+        return { ok: false, error: error.message };
+      }
+    }
+    reverted = true;
+    const { error: delErr } = await admin.from("procurement_purchases" as never).delete().eq("id", purchaseId);
+    if (delErr) {
+      await rollback();
+      return { ok: false, error: delErr.message };
+    }
+    for (const l of [...old.lines].sort((a, b) => num(b.sort_order) - num(a.sort_order))) {
+      if (!l.material_id || l.ref_price_before == null || l.ref_price_after == null) continue;
+      if (round2(num(l.ref_price_before)) === round2(num(l.ref_price_after))) continue;
+      const { data: mat } = await admin
+        .from("costing_materials" as never)
+        .select("purchase_price, content_per_purchase")
+        .eq("id", l.material_id as string)
+        .maybeSingle();
+      const mrow = mat as Record<string, unknown> | null;
+      if (mrow && round2(num(mrow.purchase_price)) === round2(num(l.ref_price_after))) {
+        await admin
+          .from("costing_materials" as never)
+          .update({ purchase_price: num(l.ref_price_before), price_updated_at: new Date().toISOString() } as never)
+          .eq("id", l.material_id as string);
+        priceReverts.push({
+          materialId: l.material_id as string,
+          from: num(l.ref_price_after),
+          to: num(l.ref_price_before),
+        });
+      }
+    }
+    procRows = await loadProcRows();
+    // Harga acuan di master bisa berubah oleh pembalikan di atas: muat ulang supaya acuan baru dihitung dari yang benar.
+    if (matIds.length) {
+      const { data: fresh } = await admin
+        .from("costing_materials" as never)
+        .select("id, purchase_price, price_updated_at")
+        .in("id", matIds);
+      for (const m of (fresh ?? []) as Record<string, unknown>[]) {
+        const cur = matById.get(m.id as string);
+        if (cur) {
+          cur.purchase_price = m.purchase_price;
+          cur.price_updated_at = m.price_updated_at;
+        }
+      }
+    }
+  }
+
   const { error: hErr } = await admin.from("procurement_purchases" as never).insert({
     id: purchaseId,
     business_unit: input.businessUnit,
     bank_account_id: acct.id,
     purchase_date: date,
-    purchase_time: jakartaHHMM(now),
+    purchase_time: purchaseTime,
     vendor: input.vendor?.trim() || null,
     total: grandTotal,
     receipt_path: mainPath,
     notes: input.notes?.trim() || null,
     money_source: input.moneySource,
-    created_by: gate.userId,
+    created_by: ownerId,
+    ...(old ? { created_at: old.head.created_at as string } : {}),
   } as never);
   if (hErr) {
     await rollback();
@@ -731,7 +897,7 @@ export async function createPurchase(
     }
   }
 
-  const { data: me } = await admin.from("profiles").select("full_name, nickname").eq("id", gate.userId).maybeSingle();
+  const { data: me } = await admin.from("profiles").select("full_name, nickname").eq("id", ownerId).maybeSingle();
   const actor = me?.nickname || me?.full_name || "petugas pengadaan";
   const vendorLabel = input.vendor?.trim() ? ` · ${input.vendor.trim()}` : "";
 
@@ -748,10 +914,13 @@ export async function createPurchase(
       .insert({
         statement_id: statementId,
         transaction_date: date,
-        transaction_time: jakartaHHMM(now),
+        transaction_time: purchaseTime,
+        created_at: ledgerCreatedAt,
         description: `${c.description}${vendorLabel}`,
         notes:
-          input.moneySource === "laci"
+          old && old.head.money_source === input.moneySource && typeof old.txs[0]?.notes === "string"
+            ? (old.txs[0].notes as string)
+            : input.moneySource === "laci"
             ? `Pengeluaran uang laci · dicatat ${actor}${auth.shift ? ` · kasir shift ${auth.shift.cashierName}` : ""} — nota terlampir`
             : `Nota pengadaan · dicatat ${actor} — nota terlampir`,
         debit: c.total,
@@ -834,9 +1003,9 @@ export async function createPurchase(
           supplier: input.vendor?.trim() || null,
           purchase_url_snapshot: (c.mat.shopee_url as string | null) ?? null,
           receipt_date: date,
-          receipt_time: jakartaHHMM(now),
+          receipt_time: purchaseTime,
           notes: "Dari nota belanja pengadaan",
-          created_by: gate.userId,
+          created_by: ownerId,
         } as never)
         .select("id")
         .single();
@@ -910,9 +1079,17 @@ export async function createPurchase(
     } as never);
   }
 
-  await admin.storage.from(TMP_BUCKET).remove([input.receiptPath]);
+  if (!keepReceipt) await admin.storage.from(TMP_BUCKET).remove([input.receiptPath]);
+  if (old) {
+    // Foto lama baru dibuang setelah semuanya berhasil (foto baru sudah disalin ke jalurnya sendiri).
+    const oldFiles = [
+      old.head.receipt_path as string,
+      ...old.txs.map((t) => t.attachment_path as string | null).filter((v): v is string => !!v),
+    ];
+    if (oldFiles.length) await admin.storage.from(RECEIPT_BUCKET).remove(oldFiles);
+  }
   // Uang yang diambil owner (Dividend) dicatat petugas: owner langsung diberi tahu supaya bisa mencocokkan.
-  const dividend = calcs.filter((c) => c.category === "Dividend").reduce((sum, c) => sum + c.total, 0);
+  const dividend = old ? 0 : calcs.filter((c) => c.category === "Dividend").reduce((sum, c) => sum + c.total, 0);
   if (dividend > 0) {
     try {
       await sendPushToAdmins({
@@ -946,6 +1123,10 @@ export interface PurchaseLineView {
   priceFlag: "ok" | "tinjau";
   /** Selisih relatif vs harga acuan saat dibeli (+0,2 = 20% lebih mahal). */
   deviation: number | null;
+  /** Data mentah untuk mengedit nota (bahan: id + jumlah + satuan yang diketik). */
+  materialId: string | null;
+  qtyInput: number | null;
+  unitInput: string | null;
 }
 
 export interface PurchaseView {
@@ -960,6 +1141,8 @@ export interface PurchaseView {
   createdAt: string;
   receiptUrl: string | null;
   canDelete: boolean;
+  /** Edit semua isi nota (seperti input ulang). Aturan sama dengan canDelete. */
+  canEdit: boolean;
   /** Sama aturan dengan canDelete: admin kapan saja, pencatatnya sendiri hanya di hari yang sama. */
   canChangeSource: boolean;
   moneySource: MoneySource;
@@ -1051,6 +1234,9 @@ export async function listPurchases(
       usageUnit: info?.usageUnit ?? null,
       priceFlag: (l.price_flag as "ok" | "tinjau") ?? "ok",
       deviation: dev,
+      materialId: (l.material_id as string | null) ?? null,
+      qtyInput: l.qty_input == null ? null : num(l.qty_input),
+      unitInput: (l.unit_input as string | null) ?? null,
     };
     const arr = byPurchase.get(l.purchase_id as string) ?? [];
     arr.push(view);
@@ -1074,6 +1260,7 @@ export async function listPurchases(
         createdAt: h.created_at as string,
         receiptUrl: urls.get(h.receipt_path as string) ?? null,
         canDelete: isAdmin || (createdBy === userId && sameDay),
+        canEdit: isAdmin || (createdBy === userId && sameDay),
         // Nota Saldo Shopee tidak punya baris buku kas yang bisa dibalik: koreksinya hapus lalu catat ulang.
         canChangeSource: h.money_source !== "shopee" && (isAdmin || (createdBy === userId && sameDay)),
         moneySource: h.money_source === "laci" ? "laci" : h.money_source === "shopee" ? "shopee" : "pengadaan",

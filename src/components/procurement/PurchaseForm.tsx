@@ -50,6 +50,7 @@ import {
   type PurchaseFormData,
   type PurchaseLineInput,
   type PurchaseMaterialOption,
+  type PurchaseView,
 } from "@/lib/actions/procurement-purchases.actions";
 
 /** Ketikan nominal: hanya angka, titik, koma ("45.500", "45.500,00", "45500.00" semuanya Rp 45.500). */
@@ -72,11 +73,42 @@ type DraftLine =
     }
   | { key: string; kind: "lain"; category: string; description: string; total: number };
 
+/** Isi form dari nota yang sudah tersimpan (mode edit). Baris bahan yang bahannya sudah tak aktif dihitung di `skipped`. */
+function draftFromView(v: PurchaseView, materials: PurchaseMaterialOption[]): { lines: DraftLine[]; skipped: number } {
+  const lines: DraftLine[] = [];
+  let skipped = 0;
+  for (const l of v.lines) {
+    if (l.kind === "bahan") {
+      const m = materials.find((x) => x.id === l.materialId);
+      if (!m || l.qtyInput == null || !l.unitInput) {
+        skipped++;
+        continue;
+      }
+      lines.push({
+        key: crypto.randomUUID(),
+        kind: "bahan",
+        material: m,
+        qty: l.qtyInput,
+        unit: l.unitInput,
+        total: l.total,
+        perUsage: l.unitPriceUsage ?? 0,
+        deviation: l.deviation,
+      });
+    } else {
+      lines.push({ key: crypto.randomUUID(), kind: "lain", category: l.category, description: l.description, total: l.total });
+    }
+  }
+  return { lines, skipped };
+}
+
 export function PurchaseForm({
   data,
   initialMaterialId,
   onSaved,
+  editing,
 }: {
+  /** Mode edit: nota yang diubah. Semua isinya bisa diganti (seperti input ulang); disimpan menggantikan nota ini. */
+  editing?: PurchaseView;
   data: PurchaseFormData;
   /** Bahan yang sudah terpilih (dari tombol "Catat belanja" di papan stok). */
   initialMaterialId?: string;
@@ -89,18 +121,27 @@ export function PurchaseForm({
 
   const [materials, setMaterials] = useState<PurchaseMaterialOption[]>(data.materials);
   const [receiptPath, setReceiptPath] = useState<string | null>(null);
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(editing?.receiptUrl ?? null);
+  // Mode edit: foto nota lama dipakai kembali sampai petugas memilih foto baru.
+  const [keepReceipt, setKeepReceipt] = useState(!!editing);
   const [uploading, setUploading] = useState(false);
-  const [vendor, setVendor] = useState("");
-  const [date, setDate] = useState(today);
-  const [editDate, setEditDate] = useState(false);
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [vendor, setVendor] = useState(editing?.vendor ?? "");
+  const [date, setDate] = useState(editing?.purchaseDate ?? today);
+  const [editDate, setEditDate] = useState(!!editing);
+  const initialDraft = useMemo(
+    () => (editing ? draftFromView(editing, data.materials) : { lines: [] as DraftLine[], skipped: 0 }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  const [lines, setLines] = useState<DraftLine[]>(initialDraft.lines);
   const preselected = initialMaterialId ? data.materials.find((m) => m.id === initialMaterialId) ?? null : null;
   const [composer, setComposer] = useState<"bahan" | "lain" | null>(preselected ? "bahan" : null);
   const { access } = data;
   // Sumber uang: bila hanya satu yang tersedia dipilih otomatis; bila dua, WAJIB dipilih (tanpa bawaan) —
   // salah sumber membuat kas laci tidak cocok.
-  const [source, setSource] = useState<MoneySource | null>(!access.pengadaan && access.laci ? "laci" : null);
+  const [source, setSource] = useState<MoneySource | null>(
+    editing ? editing.moneySource : !access.pengadaan && access.laci ? "laci" : null
+  );
   const [saving, startSaving] = useTransition();
   const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
@@ -115,6 +156,7 @@ export function PurchaseForm({
   // halaman ini ikut dihitung, karena `data` tidak dimuat ulang.
   const [sessionExpenses, setSessionExpenses] = useState<RecentExpense[]>([]);
   const dups = useMemo(() => {
+    if (editing) return []; // nota yang sedang diedit sudah ada di daftar pengeluaran terbaru: bukan duplikat
     const pool = [...data.recentExpenses, ...sessionExpenses];
     const out: { amount: number; label: string; at: string }[] = [];
     for (const l of lines) {
@@ -122,7 +164,7 @@ export function PurchaseForm({
       if (hit && !out.some((o) => o.amount === hit.amount)) out.push(hit);
     }
     return out;
-  }, [lines, data.recentExpenses, sessionExpenses]);
+  }, [lines, data.recentExpenses, sessionExpenses, editing]);
   const dupText = (d: { amount: number; label: string; at: string }) =>
     `${formatRp(d.amount)}${d.label ? ` (“${d.label.slice(0, 40)}”)` : ""}, tercatat ${new Date(d.at).toLocaleString("id-ID", {
       timeZone: "Asia/Jakarta",
@@ -134,7 +176,7 @@ export function PurchaseForm({
 
   const missing = !source
     ? "Pilih sumber uang dulu"
-    : !receiptPath
+    : !receiptPath && !keepReceipt
     ? "Tambahkan foto nota dulu"
     : lines.length === 0
       ? "Tambahkan minimal satu baris"
@@ -156,7 +198,8 @@ export function PurchaseForm({
         return;
       }
       if (receiptPath) void discardPurchaseReceipt({ businessUnit, path: receiptPath });
-      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+      if (receiptPreview?.startsWith("blob:")) URL.revokeObjectURL(receiptPreview);
+      setKeepReceipt(false);
       setReceiptPath(res.data.path);
       setReceiptPreview(URL.createObjectURL(small));
     } catch (e) {
@@ -169,7 +212,7 @@ export function PurchaseForm({
   }
 
   function save() {
-    if (missing || !receiptPath || !source) return;
+    if (missing || (!receiptPath && !keepReceipt) || !source) return;
     if (
       dups.length > 0 &&
       !confirm(
@@ -185,9 +228,11 @@ export function PurchaseForm({
     startSaving(async () => {
       const res = await createPurchase({
         businessUnit,
-        clientId: clientIdRef.current,
+        clientId: editing ? undefined : clientIdRef.current,
+        replaceId: editing?.id,
+        keepReceipt: editing ? keepReceipt : undefined,
         moneySource: source,
-        receiptPath,
+        receiptPath: receiptPath ?? "",
         purchaseDate: date,
         vendor: vendor.trim() || null,
         lines: payload,
@@ -196,7 +241,12 @@ export function PurchaseForm({
         toast.error(res.ok ? "Gagal menyimpan nota" : res.error);
         return;
       }
-      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+      if (editing) {
+        toast.success("Nota diperbarui");
+        onSaved?.();
+        return;
+      }
+      if (receiptPreview?.startsWith("blob:")) URL.revokeObjectURL(receiptPreview);
       clientIdRef.current = crypto.randomUUID();
       const nowIso = new Date().toISOString();
       setSessionExpenses((s) => [
@@ -279,8 +329,11 @@ export function PurchaseForm({
           disabledReason={access.laciReason ?? undefined}
           onClick={() => {
             setSource("laci");
-            setDate(today); // uang laci selalu hari ini
-            setEditDate(false);
+            // Uang laci selalu hari ini — kecuali mengedit nota laci lama (tanggalnya dipertahankan).
+            if (editing?.moneySource !== "laci") {
+              setDate(today);
+              setEditDate(false);
+            }
           }}
         />
         <SourceCard
@@ -302,6 +355,18 @@ export function PurchaseForm({
 
   return (
     <div className="mx-auto max-w-xl space-y-4 pb-48 md:pb-28">
+      {editing && (
+        <div className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs leading-snug">
+          <b>Edit nota</b> — ubah apa saja (sumber uang, foto, toko, tanggal, baris), lalu simpan. Nota lama diganti, buku kas
+          dan stok ikut disesuaikan.
+          {initialDraft.skipped > 0 && (
+            <span className="mt-1 block font-semibold text-destructive">
+              {initialDraft.skipped} baris bahan tidak bisa dimuat (bahannya sudah tidak aktif) dan akan hilang bila disimpan.
+              Tambahkan lagi bila perlu.
+            </span>
+          )}
+        </div>
+      )}
       {source === "pengadaan" && !access.laci && access.walletBalance != null && access.walletBalance <= 0 && (
         <div className="rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
           Uang laci kasir belum tersedia ({(access.laciReason ?? "tidak ada shift terbuka").toLowerCase()}) dan saldo uang
@@ -317,7 +382,7 @@ export function PurchaseForm({
           </span>
           <button
             type="button"
-            disabled={lines.length > 0}
+            disabled={lines.length > 0 && !editing}
             onClick={() => setSource(null)}
             className="font-semibold text-primary hover:underline disabled:opacity-40"
             title={lines.length > 0 ? "Kosongkan baris dulu untuk mengganti sumber" : undefined}
@@ -573,7 +638,7 @@ export function PurchaseForm({
             )}
           </div>
           <Button type="button" onClick={save} disabled={!!missing || saving} loading={saving} className="px-6">
-            <ReceiptText size={15} className="mr-1.5" /> Simpan nota
+            <ReceiptText size={15} className="mr-1.5" /> {editing ? "Simpan perubahan" : "Simpan nota"}
           </Button>
         </div>
       </div>

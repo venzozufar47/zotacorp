@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeftRight, ChevronDown, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, ChevronDown, ChevronRight, ExternalLink, Pencil, Trash2 } from "lucide-react";
+import { PurchaseEditDialog } from "./PurchaseEditDialog";
 import { cn } from "@/lib/utils";
 import { formatRp } from "@/lib/cashflow/format";
 import { categoryLabelFull } from "@/lib/procurement/categories";
@@ -114,6 +115,7 @@ export function PurchaseHistory({
 function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
   const flagged = p.lines.filter((l) => l.priceFlag === "tinjau").length;
 
@@ -210,6 +212,11 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
             ))}
           </ul>
           {p.notes && <p className="text-xs text-muted-foreground">Catatan: {p.notes}</p>}
+          {!p.canEdit && !p.canDelete && (
+            <p className="text-[11px] text-muted-foreground">
+              Edit/hapus hanya untuk pencatat nota di hari yang sama, atau owner.
+            </p>
+          )}
           <div className="flex items-center justify-between gap-2">
             {p.receiptUrl ? (
               <a
@@ -224,6 +231,16 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
               <span className="text-xs text-muted-foreground">Foto tidak tersedia</span>
             )}
             <div className="flex items-center gap-3">
+              {p.canEdit && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary disabled:opacity-50"
+                >
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
               {p.canChangeSource && (
                 <button
                   type="button"
@@ -258,6 +275,7 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
           </div>
         </div>
       )}
+      {editing && <PurchaseEditDialog purchase={p} onClose={() => setEditing(false)} />}
     </article>
   );
 }
