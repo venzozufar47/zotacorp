@@ -557,7 +557,7 @@ export function PhotoReviewGallery({
             <p className="text-[12.5px] text-muted-foreground mt-0.5">
               {mode === "queue"
                 ? "Foto TERBARU per titik yang belum di-Acc atau diminta ulang. Kalau titik yang sama sudah difoto lagi tanpa sempat ditinjau, foto lama otomatis dianggap Acc."
-                : "Telusuri bukti foto yang sudah dikirim karyawan. Foto disimpan 90 hari, setelah itu terhapus otomatis — catatan pengerjaannya tetap ada."}
+                : "Telusuri bukti foto yang sudah dikirim karyawan. Foto disimpan 30 hari, setelah itu terhapus otomatis — catatan pengerjaannya tetap ada."}
             </p>
           </div>
           {mode === "browse" && (
@@ -772,7 +772,7 @@ export function PhotoReviewGallery({
                           <div className="absolute inset-0 grid place-items-center text-muted-foreground gap-1 px-2 text-center">
                             <ImageOff size={18} />
                             <span className="text-[10.5px] leading-tight">
-                              {r.purged ? "Terhapus (retensi 90 hari)" : "Foto hilang"}
+                              {r.purged ? "Terhapus (retensi 30 hari)" : "Foto hilang"}
                             </span>
                           </div>
                         )}

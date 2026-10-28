@@ -40,7 +40,7 @@ export async function GET(req: Request) {
   const reviewAttachmentRetention = await sweepCleaningReviewAttachmentRetention().catch(
     () => null
   );
-  // Bukti transaksi + selfie absensi, ambang 90 hari yang sama.
+  // Selfie absensi + lampiran kue/tugas, ambang 90 hari (nota keuangan sengaja dikecualikan, tidak dihapus).
   const media = await sweepMediaRetention().catch(() => []);
   const gc = await gcOrphanStorage().catch(() => []);
 

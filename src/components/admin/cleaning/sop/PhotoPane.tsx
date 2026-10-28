@@ -66,7 +66,7 @@ export function PhotoPane({
           <div className="grid aspect-[4/3] w-full place-items-center px-4 text-center text-[12px] text-muted-foreground">
             <span className="flex flex-col items-center gap-1.5">
               <ImageOff size={20} />
-              {cur.purged ? "Foto sudah dihapus (retensi 90 hari)" : "File foto tidak ditemukan"}
+              {cur.purged ? "Foto sudah dihapus (retensi 30 hari)" : "File foto tidak ditemukan"}
             </span>
           </div>
         )}

@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { TicketPhotos } from "./TicketPhotos";
 import { holderLabel } from "@/lib/tickets/chain-logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { compressImageStrict, extensionFor, MAX_EDGE_DOCUMENT } from "@/lib/images/compress-image";
 import {
   startTicket,
   resolveTicket,
@@ -122,10 +123,11 @@ export function TicketCard({
     const paths: string[] = [];
     try {
       for (const f of files) {
-        const path = `${uid}/${crypto.randomUUID()}.jpg`;
+        const c = await compressImageStrict(f, { maxDim: MAX_EDGE_DOCUMENT });
+        const path = `${uid}/${crypto.randomUUID()}.${extensionFor(c)}`;
         const { error } = await supabase.storage
           .from("ticket-attachments")
-          .upload(path, f, { contentType: f.type || "image/jpeg", upsert: false });
+          .upload(path, c, { contentType: c.type, upsert: false });
         if (error) throw error;
         paths.push(path);
       }

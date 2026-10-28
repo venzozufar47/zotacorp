@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { VerifierPicker } from "@/components/verification/VerifierPicker";
 import { NO_VERIFIER, verifierIdsOf, verifierIncomplete, type VerifierValue } from "@/lib/verification/logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { compressImageStrict, extensionFor, MAX_EDGE_DOCUMENT } from "@/lib/images/compress-image";
 import { createTicket, createDownTicket, type TicketFormOptions } from "@/lib/actions/tickets.actions";
 import { TICKET_CATEGORY_LABELS, type TicketCategory, type TicketPriority } from "@/lib/tickets/types";
 
@@ -75,8 +76,10 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
     const paths: string[] = [];
     try {
       for (const f of files) {
-        const path = `${uid}/${crypto.randomUUID()}.jpg`;
-        const { error } = await supabase.storage.from("ticket-attachments").upload(path, f, { contentType: f.type || "image/jpeg", upsert: false });
+        // Foto kamera mentah 1–4 MB; bucket ini dulu rata-rata 1,5 MB/berkas vs ±40 KB di bucket lain.
+        const c = await compressImageStrict(f, { maxDim: MAX_EDGE_DOCUMENT });
+        const path = `${uid}/${crypto.randomUUID()}.${extensionFor(c)}`;
+        const { error } = await supabase.storage.from("ticket-attachments").upload(path, c, { contentType: c.type, upsert: false });
         if (error) throw error;
         paths.push(path);
       }

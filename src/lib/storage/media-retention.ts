@@ -5,7 +5,7 @@
  *
  * Generalisasi dari `cleaning-retention.ts`, yang sudah terbukti jalan untuk
  * foto kebersihan. Target:
- *   - `cashflow-receipts`      : 2,5 GB, 87% dari SELURUH storage org saat itu.
+ *   - (`cashflow-receipts` dulu termasuk; dikeluarkan 2026-10-28 — nota keuangan tidak lagi dihapus.)
  *   - `attendance-selfies`     : tumbuh ±50 MB/bulan tanpa batas.
  *   - `cake-order-attachments` : ditambahkan 2026-09 — dulu sengaja dilewati
  *     saat masih 67 MB, sekarang ±44 MB dan terus naik ±12 MB/bulan tanpa
@@ -49,14 +49,8 @@ interface MediaRetentionTarget {
 }
 
 export const MEDIA_RETENTION_TARGETS: MediaRetentionTarget[] = [
-  {
-    label: "cashflow-receipts",
-    table: "cashflow_transactions",
-    bucket: "cashflow-receipts",
-    dateColumn: "transaction_date",
-    pathColumn: "attachment_path",
-    purgedColumn: "attachment_purged_at",
-  },
+  // cashflow-receipts SENGAJA tidak ada di sini: nota keuangan adalah bukti pembukuan dan tidak boleh dihapus
+  // otomatis (keputusan owner, 2026-10-28). Hematnya lewat kompresi saat unggah (rata-rata ±48 KB/berkas).
   {
     label: "attendance-selfies",
     table: "attendance_logs",

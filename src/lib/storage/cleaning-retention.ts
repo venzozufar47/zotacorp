@@ -4,7 +4,7 @@
  *
  * Bedanya dengan GC yatim: GC membuang file yang TIDAK direferensikan siapa
  * pun (kecelakaan upload). Sweeper ini membuang file yang MASIH direferensikan
- * tapi sudah kedaluwarsa — bukti kebersihan berumur >90 hari praktis tidak
+ * tapi sudah kedaluwarsa — bukti kebersihan berumur >30 hari praktis tidak
  * pernah dibuka lagi, sementara volumenya tumbuh ±3,4 GB/tahun.
  *
  * Yang dihapus hanya GAMBARNYA. Baris cleaning_task_completions tetap utuh —
@@ -22,7 +22,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 /** Berapa lama bukti foto disimpan sebelum dihapus otomatis. */
-export const CLEANING_PHOTO_RETENTION_DAYS = 90;
+export const CLEANING_PHOTO_RETENTION_DAYS = 30;
 
 const BUCKET = "cleaning-photos";
 /** Batas per eksekusi cron supaya tidak menabrak maxDuration 300 dtk. */
@@ -55,7 +55,7 @@ function admin() {
 }
 
 /** YYYY-MM-DD, `days` hari sebelum hari ini (UTC — presisi jam tidak relevan
- *  untuk ambang 90 hari, dan menghindari ketergantungan zona waktu server). */
+ *  untuk ambang retensi, dan menghindari ketergantungan zona waktu server). */
 function cutoffDate(days: number): string {
   const d = new Date(Date.now() - days * 24 * 3600 * 1000);
   return d.toISOString().slice(0, 10);
@@ -110,7 +110,7 @@ export async function sweepCleaningPhotoRetention(
 
 /**
  * Retensi lampiran review (foto contoh/anotasi yang OWNER unggah saat verdict
- * redo — lihat migrasi 157). Sama 90 hari, sama bucket privat `cleaning-photos`
+ * redo — lihat migrasi 157). Sama 30 hari, sama bucket privat `cleaning-photos`
  * (path lain, `review-attachments/...`), tapi cutoff-nya dibaca dari TANGGAL
  * completion INDUKNYA (tabel ini sendiri tidak punya kolom tanggal) — jadi
  * lampiran ikut kedaluwarsa bersamaan dengan foto bukti yang direviewnya.
