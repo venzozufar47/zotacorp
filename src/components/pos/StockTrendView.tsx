@@ -311,6 +311,20 @@ function Kpi({ label, value, prev, lowerIsBetter = false }: { label: string; val
 
 /* ───────────── C · peta panas ───────────── */
 
+/** Rata-rata jumlah produksi per hari yang ADA produksinya (dibulatkan). */
+function avgQty(row: StockTrendRow, dates: string[]): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const d of dates) {
+    const c = row.days[d];
+    if (c && c.production > 0) {
+      sum += c.production;
+      n += 1;
+    }
+  }
+  return n > 0 ? Math.round(sum / n) : null;
+}
+
 function heatClass(st: number): string {
   if (st >= 0.7) return "bg-primary/70 text-primary-foreground";
   if (st >= 0.55) return "bg-primary/35";
@@ -318,6 +332,18 @@ function heatClass(st: number): string {
   if (st >= 0.25) return "bg-destructive/25 text-destructive";
   return "bg-destructive/40 text-destructive";
 }
+
+type HeatMode = "persen" | "kuantitas";
+
+/** Rentang jumlah produksi per hari → warna (satu rona, makin tua makin banyak). */
+const QTY_BANDS: { max: number; label: string; cls: string }[] = [
+  { max: 5, label: "1–5", cls: "bg-primary/10" },
+  { max: 10, label: "6–10", cls: "bg-primary/25" },
+  { max: 15, label: "11–15", cls: "bg-primary/45" },
+  { max: 25, label: "16–25", cls: "bg-primary/65 text-primary-foreground" },
+  { max: Infinity, label: "26+", cls: "bg-primary text-primary-foreground" },
+];
+const qtyClass = (n: number) => (QTY_BANDS.find((b) => n <= b.max) ?? QTY_BANDS[QTY_BANDS.length - 1]).cls;
 
 function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: string | null; onSelect: (d: string) => void }) {
   const rows = useMemo(
@@ -332,6 +358,7 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
         .sort((a, b) => b.prod - a.prod),
     [data]
   );
+  const [mode, setMode] = useState<HeatMode>("persen");
   if (rows.length === 0) return null;
   const cell = "flex h-8 min-w-[2.6rem] items-center justify-center rounded text-[11px] tabular-nums";
 
@@ -339,10 +366,39 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
     <div className="space-y-2 rounded-2xl border border-border bg-card p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Peta panas · persen terjual per produk per hari
+          Peta panas · {mode === "persen" ? "persen terjual" : "jumlah produksi"} per produk per hari
         </p>
-        <p className="text-[11px] text-muted-foreground">terjual ÷ (stok awal + produksi)</p>
+        <div className="flex gap-1 rounded-full border border-border bg-muted/40 p-1">
+          {(["persen", "kuantitas"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              aria-pressed={mode === m}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition",
+                mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {m === "persen" ? "Persen terjual" : "Kuantitas produksi"}
+            </button>
+          ))}
+        </div>
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        {mode === "persen"
+          ? "terjual ÷ (stok awal + produksi)"
+          : "pcs diproduksi per hari; warna menurut rentang jumlah"}
+      </p>
+      {mode === "kuantitas" && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          {QTY_BANDS.map((b) => (
+            <span key={b.label} className="flex items-center gap-1">
+              <i className={cn("inline-block size-3 rounded-sm border border-border/60", b.cls)} /> {b.label}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full border-separate border-spacing-0.5 text-left">
           <thead>
@@ -355,7 +411,7 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
                   </button>
                 </th>
               ))}
-              <th className="pl-1 text-center font-semibold text-foreground">Rata²*</th>
+              <th className="pl-1 text-center font-semibold text-foreground">{mode === "persen" ? "Rata²*" : "Rata²/hari*"}</th>
             </tr>
           </thead>
           <tbody>
@@ -367,7 +423,8 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
                   {data.dates.map((d) => {
                     const c = r.days[d];
                     const st = c ? sellThrough(c) : null;
-                    const noProd = c && c.production === 0 && c.withdrawnOld > 0;
+                    const noProd = mode === "persen" && c && c.production === 0 && c.withdrawnOld > 0;
+                    const qty = c && c.production > 0 ? c.production : null;
                     return (
                       <td key={d} className="p-0">
                         <button
@@ -381,22 +438,38 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
                           className={cn(
                             cell,
                             "w-full",
-                            noProd
-                              ? "border border-dashed border-destructive text-destructive"
-                              : st != null
-                                ? heatClass(st)
+                            mode === "kuantitas"
+                              ? qty != null
+                                ? qtyClass(qty)
                                 : "text-muted-foreground/50"
+                              : noProd
+                                ? "border border-dashed border-destructive text-destructive"
+                                : st != null
+                                  ? heatClass(st)
+                                  : "text-muted-foreground/50"
                           )}
                         >
-                          {noProd ? `tarik ${c!.withdrawnOld}` : st != null ? Math.round(st * 100) : "–"}
+                          {mode === "kuantitas"
+                            ? (qty ?? "–")
+                            : noProd
+                              ? `tarik ${c!.withdrawnOld}`
+                              : st != null
+                                ? Math.round(st * 100)
+                                : "–"}
                         </button>
                       </td>
                     );
                   })}
                   <td className="pl-1">
-                    <span className={cn(cell, "w-full font-semibold", avg.value != null ? heatClass(avg.value) : "text-muted-foreground/50")}>
-                      {avg.value != null ? Math.round(avg.value * 100) : "–"}
-                    </span>
+                    {mode === "persen" ? (
+                      <span className={cn(cell, "w-full font-semibold", avg.value != null ? heatClass(avg.value) : "text-muted-foreground/50")}>
+                        {avg.value != null ? Math.round(avg.value * 100) : "–"}
+                      </span>
+                    ) : (
+                      <span className={cn(cell, "w-full font-semibold", avgQty(r, data.dates) != null ? qtyClass(avgQty(r, data.dates)!) : "text-muted-foreground/50")}>
+                        {avgQty(r, data.dates) ?? "–"}
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
@@ -405,9 +478,19 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
         </table>
       </div>
       <p className="text-[11px] leading-snug text-muted-foreground">
-        *Rata-rata hanya dari hari yang ada produksinya. Sel putus-putus merah = stok lama ditarik tanpa produksi
-        (jumlahnya tetap masuk &ldquo;Ditarik&rdquo; di papan skor). Biru tua = hampir habis terjual; merah = banyak sisa
-        atau terbuang. Ketuk sel atau tanggal untuk membuka papan skor hari itu.
+        {mode === "persen" ? (
+          <>
+            *Rata-rata hanya dari hari yang ada produksinya. Sel putus-putus merah = stok lama ditarik tanpa produksi
+            (jumlahnya tetap masuk &ldquo;Ditarik&rdquo; di papan skor). Biru tua = hampir habis terjual; merah = banyak sisa
+            atau terbuang.
+          </>
+        ) : (
+          <>
+            *Rata-rata per hari yang ada produksinya. Warna hanya menunjukkan seberapa banyak diproduksi, bukan seberapa
+            laku. Tanda &ldquo;–&rdquo; = tidak diproduksi hari itu.
+          </>
+        )}{" "}
+        Ketuk sel atau tanggal untuk membuka papan skor hari itu.
       </p>
     </div>
   );
