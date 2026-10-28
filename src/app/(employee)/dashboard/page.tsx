@@ -51,8 +51,6 @@ import { SocialReportReminderCard } from "@/components/social/SocialReportRemind
 import { VerificationInbox } from "@/components/verification/VerificationInbox";
 import { TaskAssignmentCard } from "@/components/dashboard/TaskAssignmentCard";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
-import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
-import { listMyServiceLevelOutlets } from "@/lib/pos/service-level-access";
 import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
 import { getRevenueSummaryForHome } from "@/lib/actions/admin-home.actions";
 import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
@@ -151,7 +149,6 @@ export default async function DashboardPage() {
     branchQueue,
     studioQueueCount,
     isHeadOfStudio,
-    serviceLevelOutlets,
     coachingNotes,
     cleaningRedoPhotos,
     ticketResolutionKpi,
@@ -199,7 +196,6 @@ export default async function DashboardPage() {
     getBranchQueue(),
     getStudioQueueCount(),
     isStudioHead(),
-    listMyServiceLevelOutlets(),
     listMyCoachingNotes(),
     getMyPendingRedoPhotos(),
     getStudioHeadRecentResolutionKpi(),
@@ -665,11 +661,6 @@ export default async function DashboardPage() {
           <span className="text-sm font-bold shrink-0">→</span>
         </Link>
       )}
-
-      {/* Tanggung jawab berjalan, bukan aksi hari ini — jadi masuk
-          kelompok panel substantif, bukan tumpukan banner di atas.
-          Render sendiri nol kalau user bukan penanggung jawab. */}
-      <ServiceLevelPanel outlets={serviceLevelOutlets} />
 
       {/* Kartu Omzet admin, ditunjukkan ke karyawan yang di-assign admin
           (revenue_dashboard_viewers) — data sama, reuse komponen admin
