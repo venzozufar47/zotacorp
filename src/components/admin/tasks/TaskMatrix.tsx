@@ -125,7 +125,8 @@ export function TaskMatrix({
   onChanged: () => void;
 }) {
   const todayNow = jakartaDateString(new Date());
-  const [from, setFrom] = useState(() => jakartaDateMinusDays(jakartaDateString(new Date()), 3));
+  // Kolom paling kiri = hari ini (tak ada kolom hari lampau); tugas yang belum selesai digeser ke kolom ini.
+  const [from, setFrom] = useState(() => jakartaDateString(new Date()));
   const [days, setDays] = useState<number>(14);
   const [data, setData] = useState<TaskMatrixData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,7 +196,7 @@ export function TaskMatrix({
     const todayVisible = dates.includes(today);
     for (const row of data?.rows ?? []) {
       for (const c of row.copies) {
-        const overdueRunning = c.status === "open" && c.startDate < today;
+        const overdueRunning = (c.status === "open" || c.status === "submitted") && c.startDate < today;
         const col = overdueRunning && todayVisible ? today : c.startDate < from ? from : c.startDate;
         const key = `${row.rowId}|${col}`;
         const list = m.get(key) ?? [];
@@ -488,14 +489,20 @@ export function TaskMatrix({
           <button
             type="button"
             aria-label="Mundur 7 hari"
-            onClick={() => setFrom((f) => jakartaDateMinusDays(f, 7))}
-            className="size-10 grid place-items-center rounded-xl border border-border hover:bg-muted"
+            disabled={from <= todayNow}
+            onClick={() =>
+              setFrom((f) => {
+                const prev = jakartaDateMinusDays(f, 7);
+                return prev < todayNow ? todayNow : prev;
+              })
+            }
+            className="size-10 grid place-items-center rounded-xl border border-border hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
           >
             <ChevronLeft size={16} />
           </button>
           <button
             type="button"
-            onClick={() => setFrom(jakartaDateMinusDays(todayNow, 3))}
+            onClick={() => setFrom(todayNow)}
             className="h-10 px-3 rounded-xl border border-border text-sm font-medium hover:bg-muted"
           >
             Hari ini
