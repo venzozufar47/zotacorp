@@ -181,8 +181,57 @@ export interface PurchaseMaterialOption {
   unitChoices: string[];
 }
 
+/** Pengeluaran cabang dalam 36 jam terakhir — dasar peringatan "nominal ini sudah tercatat". */
+export interface RecentExpense {
+  amount: number;
+  at: string;
+  label: string;
+}
+
+const RECENT_EXPENSE_HOURS = 36;
+
+/**
+ * Debit buku kas cabang (nota pengadaan, pengeluaran shift, catatan manual) + nota Saldo Shopee (tak masuk buku kas)
+ * dalam jendela terakhir. Hanya untuk mendeteksi pencatatan ganda: nominal yang sama = patut dicek ulang.
+ */
+async function loadRecentExpenses(admin: Admin, businessUnit: string): Promise<RecentExpense[]> {
+  const sinceIso = new Date(Date.now() - RECENT_EXPENSE_HOURS * 3_600_000).toISOString();
+  const out: RecentExpense[] = [];
+  const acct = await resolveCashAccount(admin, businessUnit);
+  if (acct) {
+    const { data: stmts } = await admin.from("cashflow_statements").select("id").eq("bank_account_id", acct.id);
+    const ids = (stmts ?? []).map((s) => s.id);
+    if (ids.length > 0) {
+      const { data } = await admin
+        .from("cashflow_transactions")
+        .select("debit, created_at, description, notes, category")
+        .in("statement_id", ids)
+        .gt("debit", 0)
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      for (const t of data ?? []) {
+        out.push({ amount: Number(t.debit), at: t.created_at, label: String(t.notes ?? t.description ?? t.category ?? "") });
+      }
+    }
+  }
+  const { data: shopee } = await admin
+    .from("procurement_purchases" as never)
+    .select("total, created_at, vendor")
+    .eq("business_unit", businessUnit)
+    .eq("money_source", "shopee")
+    .gte("created_at", sinceIso)
+    .limit(100);
+  for (const p of (shopee ?? []) as Record<string, unknown>[]) {
+    out.push({ amount: num(p.total), at: String(p.created_at), label: `Nota Saldo Shopee${p.vendor ? ` · ${p.vendor}` : ""}` });
+  }
+  return out;
+}
+
 export interface PurchaseFormData {
   businessUnit: string;
+  /** Pengeluaran 36 jam terakhir, untuk peringatan duplikat nominal. */
+  recentExpenses: RecentExpense[];
   materials: PurchaseMaterialOption[];
   /** Toko/supplier yang pernah dipakai, terbaru dulu — untuk isian cepat. */
   vendors: string[];
@@ -230,11 +279,13 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
     accessInfo.shopeeBalance = await shopeeBalance(admin, businessUnit);
   }
   // Petugas non-pengadaan (akun kasir): tanpa master bahan / harga acuan — hanya pengeluaran laci.
+  const recentExpenses = await loadRecentExpenses(admin, businessUnit);
   if (!auth.isStaff) {
     return {
       ok: true,
       data: {
         businessUnit,
+        recentExpenses,
         materials: [],
         vendors: [],
         usageUnits: [],
@@ -283,6 +334,7 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
     ok: true,
     data: {
       businessUnit,
+      recentExpenses,
       materials,
       vendors,
       usageUnits: [
