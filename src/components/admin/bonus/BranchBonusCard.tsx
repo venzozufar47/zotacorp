@@ -28,7 +28,7 @@ function Row({ label, value, strong, minus, hint }: { label: string; value: stri
  * Hitungan bonus satu cabang untuk satu bulan: omzet → HPP → LK aktual → selisih dari LK dasar → × p → × pengali
  * scorecard → kolam, lalu pembagian ke penerima. Semua langkah ditampilkan supaya transparan (dan siap dipakai slip gaji).
  */
-export function BranchBonusCard({ view, period, canPublish }: { view: BranchBonusView; period: string; canPublish: boolean }) {
+export function BranchBonusCard({ view, period, canPublish, simulated }: { view: BranchBonusView; period: string; canPublish: boolean; simulated?: boolean }) {
   const b = view.breakdown;
   const params = view.params;
   const legacy = b.regime === "laba_rugi";
@@ -45,11 +45,15 @@ export function BranchBonusCard({ view, period, canPublish }: { view: BranchBonu
         <span
           className={cn(
             "inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide",
-            status === "terbit" ? "border-success/60 bg-success/10 text-success" : "border-border bg-muted text-muted-foreground"
+            simulated
+              ? "border-warning/60 bg-warning/10 text-warning"
+              : status === "terbit"
+                ? "border-success/60 bg-success/10 text-success"
+                : "border-border bg-muted text-muted-foreground"
           )}
         >
-          {status === "terbit" ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-          {status === "terbit" ? "Sudah terbit" : canPublish ? "Belum terbit" : "Sementara"}
+          {status === "terbit" && !simulated ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+          {simulated ? "Simulasi" : status === "terbit" ? "Sudah terbit" : canPublish ? "Belum terbit" : "Sementara"}
         </span>
       </header>
 
@@ -107,7 +111,7 @@ export function BranchBonusCard({ view, period, canPublish }: { view: BranchBonu
           )}
 
           <div>
-            <h4 className="mb-1 text-[13px] font-bold">Pembagian menurut jam hadir</h4>
+            <h4 className="mb-1 text-[13px] font-bold">Pembagian sama rata</h4>
             {view.shares.length === 0 ? (
               <p className="text-[12.5px] text-muted-foreground">Belum ada penerima bonus untuk cabang ini.</p>
             ) : (
@@ -118,8 +122,8 @@ export function BranchBonusCard({ view, period, canPublish }: { view: BranchBonu
                       <p className="truncate text-[14px] font-semibold">{s.name}</p>
                       <p className="text-[11.5px] text-muted-foreground">
                         {s.label ? `${s.label} · ` : ""}
-                        {s.hours.toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam
-                        {!s.excluded && view.pool > 0 && ` · ${(s.fraction * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`}
+                        {s.hours.toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam hadir
+                        {!s.excluded && view.pool > 0 && ` · bagian ${(s.fraction * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`}
                       </p>
                     </div>
                     {s.excluded ? (

@@ -1,7 +1,7 @@
 /**
  * Rumus Kalkulator Bonus Tim (Perjanjian Kerja Lampiran C), murni agar bisa diuji:
  *   kolam = p% × max(0, LK aktual − LK dasar) × (poin scorecard / 4)
- * dan pembagian kolam menurut jam hadir di antara penerima yang berhak.
+ * dan pembagian kolam SAMA RATA di antara penerima yang berhak.
  */
 
 /** Poin satu metrik scorecard: merah 0, kuning 0,5, selain itu 1 (hijau, belum diukur, atau belum diatur → manfaat keraguan ke tim). */
@@ -16,16 +16,15 @@ export function bonusPool(grossProfit: number, lkDasar: number, p: number, multi
 }
 
 export interface ShareInput {
-  hours: number;
   excluded: boolean;
 }
 
 /**
- * Bagian tiap penerima = kolam × (jam hadirnya ÷ total jam penerima yang berhak). Penerima yang dikecualikan atau tanpa
- * jam hadir mendapat 0. Bila total jam 0, semua 0 (kolam belum bisa dibagi).
+ * Bagian tiap penerima = kolam ÷ jumlah penerima yang berhak (sama rata). Penerima yang dikecualikan (SP aktif / tidak
+ * aktif) mendapat 0 dan bagiannya dibagi ke yang lain. Bila semua dikecualikan, semua 0.
  */
 export function distributeShares(pool: number, rows: ShareInput[]): number[] {
-  const total = rows.reduce((s, r) => s + (r.excluded ? 0 : Math.max(0, r.hours)), 0);
-  if (total <= 0) return rows.map(() => 0);
-  return rows.map((r) => (r.excluded ? 0 : (pool * Math.max(0, r.hours)) / total));
+  const eligible = rows.filter((r) => !r.excluded).length;
+  if (eligible === 0) return rows.map(() => 0);
+  return rows.map((r) => (r.excluded ? 0 : pool / eligible));
 }

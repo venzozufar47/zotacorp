@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Lock, Pencil } from "lucide-react";
@@ -27,7 +28,7 @@ interface Draft {
  * Parameter bonus per kuartal (p dan LK dasar) untuk kedua cabang — kuartal berjalan maupun yang sudah lewat.
  * Ringkas bila sudah lengkap, terbuka otomatis bila ada yang belum diisi. Terkunci setelah ada bonus terbit.
  */
-export function BonusParametersCard({ view }: { view: BonusQuarterView }) {
+export function BonusParametersCard({ view, period, sim }: { view: BonusQuarterView; period: string; sim?: string | null }) {
   const router = useRouter();
   const missing = BRANCHES.some((b) => !view.params[b]);
   const [editing, setEditing] = useState(missing);
@@ -155,6 +156,39 @@ export function BonusParametersCard({ view }: { view: BonusQuarterView }) {
               </Button>
             )}
           </div>
+        </div>
+      )}
+
+      {view.simulationSources.length > 0 && (
+        <div className="mt-4 space-y-2 border-t border-border pt-3">
+          <p className="text-[12.5px] font-semibold">Simulasi — lihat hasil {quarterLabel(view.quarter)} seandainya memakai parameter kuartal lain</p>
+          <div className="flex flex-wrap gap-2">
+            {view.simulationSources.map((s) => {
+              const active = sim === s.quarter;
+              return (
+                <Link
+                  key={s.quarter}
+                  href={`/admin/bonus?bulan=${period}&sim=${s.quarter}`}
+                  scroll={false}
+                  aria-pressed={active}
+                  className={`rounded-xl border-2 px-3 py-1.5 text-[12px] font-semibold transition ${
+                    active ? "border-warning bg-warning/10 text-warning" : "border-border bg-background hover:border-foreground/50"
+                  }`}
+                >
+                  {quarterLabel(s.quarter)}
+                  <span className="block font-normal text-muted-foreground">
+                    Pare {s.params.Pare.p}% · {formatRp(s.params.Pare.lkDasar)} · Semarang {s.params.Semarang.p}% · {formatRp(s.params.Semarang.lkDasar)}
+                  </span>
+                </Link>
+              );
+            })}
+            {sim && (
+              <Link href={`/admin/bonus?bulan=${period}`} scroll={false} className="self-center text-[12px] font-semibold text-primary hover:underline">
+                Matikan simulasi
+              </Link>
+            )}
+          </div>
+          <p className="text-[11.5px] text-muted-foreground">Hanya tampilan: tidak disimpan, tidak bisa diterbitkan, dan tidak masuk slip gaji.</p>
         </div>
       )}
     </section>

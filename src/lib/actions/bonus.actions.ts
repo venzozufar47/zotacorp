@@ -18,7 +18,7 @@ import { isValidPeriod, isValidQuarter, lastDayOf, monthsOfQuarter, nextMonthSta
 /**
  * Kalkulator Bonus Tim (PRD-10) — Perjanjian Kerja Lampiran C.
  *
- *   kolam = p% × max(0, LK aktual − LK dasar) × (poin scorecard / 4), dibagi menurut jam hadir
+ *   kolam = p% × max(0, LK aktual − LK dasar) × (poin scorecard / 4), dibagi SAMA RATA ke penerima yang berhak
  *
  * Penerima TETAP per cabang (`bonus_recipients`: koordinator toko & kepala produksi). Perhitungan otomatis untuk bulan
  * mana pun; owner hanya menentukan p dan LK dasar per kuartal dan (opsional) menerbitkan bulan yang sudah selesai.
@@ -28,7 +28,8 @@ import { isValidPeriod, isValidQuarter, lastDayOf, monthsOfQuarter, nextMonthSta
  * bahan (Cost of Goods Sold) di buku kas. Rincian ini dibekukan di `bonus_runs.breakdown` saat terbit supaya slip gaji
  * bisa menampilkannya transparan.
  *
- * Pengali scorecard pakai `computeMetricsAsOf` pada hari terakhir bulan (atau hari ini untuk bulan berjalan).
+ * Pengali scorecard = poin empat metrik kartu Scorecard Cabang (`computeMetricsAsOf` mode "month") pada hari terakhir
+ * bulan (atau hari ini untuk bulan berjalan): waste & service level 30 hari terakhir, omzet terhadap target bulanan, keluhan.
  * Eligibilitas "tidak ada tidak-hadir-tanpa-kabar" SENGAJA TIDAK otomatis (belum ada sumber data mangkir vs izin);
  * SP aktif sepanjang bulan dan akun nonaktif dikecualikan otomatis.
  *
@@ -79,6 +80,8 @@ export interface BonusQuarterView {
   previous: Record<ScorecardBranch, { p: number; lkDasar: number } | null>;
   /** Bulan di kuartal ini yang bonusnya sudah terbit (semua cabang berparameter). */
   publishedPeriods: string[];
+  /** Kuartal lain yang parameternya lengkap, untuk simulasi "andai parameter ini dipakai di kuartal ini" (terbaru dulu). */
+  simulationSources: { quarter: string; params: Record<ScorecardBranch, { p: number; lkDasar: number }> }[];
 }
 
 export interface BonusMetricView {
@@ -105,7 +108,7 @@ export interface BonusShareView {
   label: string;
   hours: number;
   share: number;
-  /** Porsi dari kolam (0–1). */
+  /** Porsi dari kolam (0–1); sama rata di antara penerima yang berhak. */
   fraction: number;
   excluded: boolean;
   excludedReason: string | null;
@@ -132,6 +135,8 @@ export interface BonusMonthView {
   isCurrent: boolean;
   /** Bulan sudah berakhir sehingga boleh diterbitkan. */
   canPublish: boolean;
+  /** Kuartal sumber parameter bila ini SIMULASI (hanya tampilan: tidak tersimpan, tidak bisa diterbitkan). */
+  simulation: string | null;
   branches: BranchBonusView[];
 }
 
@@ -153,7 +158,7 @@ export async function getBonusQuarter(quarter: string): Promise<BonusQuarterView
   const gate = await requireAdmin();
   if (!gate.ok || !isValidQuarter(quarter)) return null;
   const prevQ = shiftQuarter(quarter, -1);
-  const [params, previous, runs] = await Promise.all([
+  const [params, previous, runs, allParams] = await Promise.all([
     Promise.all(BONUS_BRANCHES.map((b) => loadParams(b, quarter))),
     Promise.all(
       BONUS_BRANCHES.map(async (b) => {
@@ -162,7 +167,16 @@ export async function getBonusQuarter(quarter: string): Promise<BonusQuarterView
       })
     ),
     db().from("bonus_runs").select("branch, period").eq("status", "finalized").in("period", monthsOfQuarter(quarter)),
+    db().from("bonus_parameters").select("branch, quarter, p, lk_dasar").neq("quarter", quarter).order("quarter", { ascending: false }),
   ]);
+  const byQuarter = new Map<string, Partial<Record<ScorecardBranch, { p: number; lkDasar: number }>>>();
+  for (const r of (allParams.data ?? []) as { branch: ScorecardBranch; quarter: string; p: unknown; lk_dasar: unknown }[]) {
+    byQuarter.set(r.quarter, { ...byQuarter.get(r.quarter), [r.branch]: { p: num(r.p), lkDasar: num(r.lk_dasar) } });
+  }
+  const simulationSources = [...byQuarter]
+    .filter(([, v]) => BONUS_BRANCHES.every((b) => v[b]))
+    .slice(0, 4)
+    .map(([q, v]) => ({ quarter: q, params: { Pare: v.Pare!, Semarang: v.Semarang! } }));
   const byPeriod = new Map<string, Set<string>>();
   for (const r of (runs.data ?? []) as { branch: string; period: string }[]) {
     byPeriod.set(r.period, (byPeriod.get(r.period) ?? new Set()).add(r.branch));
@@ -172,6 +186,7 @@ export async function getBonusQuarter(quarter: string): Promise<BonusQuarterView
     params: { Pare: params[0], Semarang: params[1] },
     previous: { Pare: previous[0], Semarang: previous[1] },
     publishedPeriods: [...byPeriod].filter(([, s]) => BONUS_BRANCHES.every((b) => s.has(b))).map(([p]) => p),
+    simulationSources,
   };
 }
 
@@ -292,7 +307,12 @@ async function computeLive(
     let multiplier = 1;
     if (account) {
       const { data: bank } = await admin.from("bank_accounts").select("daily_revenue_target").eq("id", account.id).maybeSingle();
-      const ms = await computeMetricsAsOf(branch, account.id, bank?.daily_revenue_target ?? null, end);
+      // Pengali mengikuti kartu Scorecard Cabang yang baru: waste & service level 30 hari terakhir, omzet (POS + Custom Cake)
+      // terhadap target bulanan, keluhan bulan itu. Target omzet yang dipakai = target yang berlaku sekarang (belum berversi).
+      const { data: tr } = await db().from("scorecard_branch_targets").select("monthly_pos_target, monthly_cake_target").eq("branch", branch).maybeSingle();
+      const posTarget = tr?.monthly_pos_target == null ? null : Number(tr.monthly_pos_target);
+      const cakeTarget = tr?.monthly_cake_target == null ? null : Number(tr.monthly_cake_target);
+      const ms = await computeMetricsAsOf(branch, account.id, bank?.daily_revenue_target ?? null, end, "month", { posTarget, cakeTarget });
       metrics = ms.map((x) => ({ key: x.key, label: x.label, displayValue: x.displayValue, band: x.band, points: scorecardPoints(x.band) }));
       multiplier = metrics.reduce((s, x) => s + x.points, 0) / 4;
     } else {
@@ -316,7 +336,7 @@ async function computeLive(
         return { r, hours, excludedReason };
       })
     );
-    const amounts = distributeShares(pool, detail.map((d) => ({ hours: d.hours, excluded: !!d.excludedReason })));
+    const amounts = distributeShares(pool, detail.map((d) => ({ excluded: !!d.excludedReason })));
     const shares: BonusShareView[] = detail.map((d, i) => ({
       userId: d.r.userId,
       name: d.r.name,
@@ -328,7 +348,7 @@ async function computeLive(
       excludedReason: d.excludedReason,
     }));
     if (recipients.length === 0) notes.push("Belum ada penerima bonus untuk cabang ini.");
-    else if (pool > 0 && amounts.every((a) => a === 0)) notes.push("Belum ada jam hadir tercatat untuk penerima — kolam belum bisa dibagi.");
+    else if (pool > 0 && amounts.every((a) => a === 0)) notes.push("Semua penerima dikecualikan (SP aktif / tidak aktif) — kolam belum bisa dibagi.");
 
     return {
       ...base,
@@ -386,7 +406,7 @@ async function loadFrozen(branch: ScorecardBranch, period: string): Promise<Bran
   };
 }
 
-export async function getBonusMonth(period: string): Promise<BonusMonthView | null> {
+export async function getBonusMonth(period: string, simulateWithQuarter?: string | null): Promise<BonusMonthView | null> {
   const gate = await requireAdmin();
   if (!gate.ok || !isValidPeriod(period)) return null;
   const today = jakartaDateString(new Date());
@@ -395,7 +415,13 @@ export async function getBonusMonth(period: string): Promise<BonusMonthView | nu
   const quarter = quarterOf(period);
   const [y, mo] = period.split("-").map(Number);
 
-  const frozen = await Promise.all(BONUS_BRANCHES.map((b) => loadFrozen(b, period)));
+  // Simulasi: pakai parameter kuartal lain, hitung hidup (abaikan bonus yang sudah terbit), tidak ada yang disimpan.
+  let simParams: Record<ScorecardBranch, BonusParams> | null = null;
+  if (simulateWithQuarter && isValidQuarter(simulateWithQuarter) && simulateWithQuarter !== quarter) {
+    const ps = await Promise.all(BONUS_BRANCHES.map((b) => loadParams(b, simulateWithQuarter)));
+    if (ps.every(Boolean)) simParams = { Pare: ps[0]!, Semarang: ps[1]! };
+  }
+  const frozen = await Promise.all(BONUS_BRANCHES.map((b) => (simParams ? Promise.resolve(null) : loadFrozen(b, period))));
   const needLive = frozen.some((f) => !f);
   let report: PnLReport | null = null;
   if (needLive) {
@@ -406,9 +432,16 @@ export async function getBonusMonth(period: string): Promise<BonusMonthView | nu
     }
   }
   const branches = await Promise.all(
-    BONUS_BRANCHES.map(async (b, i) => frozen[i] ?? computeLive(b, period, today, report, await loadParams(b, quarter)))
+    BONUS_BRANCHES.map(async (b, i) => frozen[i] ?? computeLive(b, period, today, report, simParams ? simParams[b] : await loadParams(b, quarter)))
   );
-  return { period, quarter, isCurrent: period === thisMonth, canPublish: period < thisMonth, branches };
+  return {
+    period,
+    quarter,
+    isCurrent: period === thisMonth,
+    canPublish: period < thisMonth && !simParams,
+    simulation: simParams ? simulateWithQuarter! : null,
+    branches,
+  };
 }
 
 // ─── Terbitkan ───────────────────────────────────────────────────────────────

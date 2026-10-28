@@ -15,15 +15,12 @@ test("kolam = p% × selisih LK × pengali, tidak pernah negatif", () => {
   assert.equal(bonusPool(20_000_000, 25_000_000, 50, 1), 0);
 });
 
-test("pembagian menurut jam hadir; dikecualikan atau tanpa jam = 0", () => {
-  const s = distributeShares(1_000_000, [
-    { hours: 300, excluded: false },
-    { hours: 100, excluded: false },
-    { hours: 200, excluded: true },
-  ]);
-  assert.deepEqual(s.map(Math.round), [750_000, 250_000, 0]);
-  assert.deepEqual(distributeShares(1_000_000, [{ hours: 0, excluded: false }]), [0]);
-  assert.equal(Math.round(s.reduce((a, b) => a + b, 0)), 1_000_000);
+test("pembagian sama rata; yang dikecualikan mendapat 0 dan bagiannya dibagi ke yang lain", () => {
+  assert.deepEqual(distributeShares(1_000_000, [{ excluded: false }, { excluded: false }]), [500_000, 500_000]);
+  const s = distributeShares(900_000, [{ excluded: false }, { excluded: false }, { excluded: true }]);
+  assert.deepEqual(s, [450_000, 450_000, 0]);
+  assert.deepEqual(distributeShares(1_000_000, [{ excluded: true }]), [0]);
+  assert.equal(Math.round(s.reduce((a, b) => a + b, 0)), 900_000);
 });
 
 test("kalender kuartal dan bulan", () => {

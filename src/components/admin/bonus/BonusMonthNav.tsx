@@ -3,13 +3,15 @@ import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { monthShort, monthsOfQuarter, quarterLabel, quarterOf, shiftQuarter } from "@/lib/bonus/periods";
 
-const href = (period: string) => `/admin/bonus?bulan=${period}`;
+const hrefOf = (period: string, sim?: string | null) => `/admin/bonus?bulan=${period}${sim ? `&sim=${sim}` : ""}`;
 
 /**
  * Navigasi kuartal + bulan: panah kuartal, tiga tombol bulan, dan pintasan "Bulan ini". Bulan yang belum tiba
  * dinonaktifkan; bulan yang bonusnya sudah terbit bertanda centang. Server component murni (hanya tautan).
  */
-export function BonusMonthNav({ period, thisMonth, published }: { period: string; thisMonth: string; published: string[] }) {
+export function BonusMonthNav({ period, thisMonth, published, sim }: { period: string; thisMonth: string; published: string[]; sim?: string | null }) {
+  // Simulasi hanya berlaku untuk kuartal yang sedang dilihat; pindah kuartal = keluar dari simulasi.
+  const href = (p: string) => hrefOf(p, sim && quarterOf(p) === quarterOf(period) ? sim : null);
   const quarter = quarterOf(period);
   const months = monthsOfQuarter(quarter);
   const prev = shiftQuarter(quarter, -1);

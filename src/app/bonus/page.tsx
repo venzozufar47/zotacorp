@@ -49,7 +49,7 @@ export default async function BonusPage() {
                 Laba kotor {formatRp(s.grossProfit)} − LK dasar {formatRp(s.lkDasar)} · p={s.p}% · pengali{" "}
                 {s.scorecardMultiplier.toFixed(2)} → kolam {formatRp(s.pool)}
               </p>
-              <p className="text-xs text-muted-foreground">Jam hadirmu: {s.hours.toFixed(1)} jam</p>
+              <p className="text-xs text-muted-foreground">Kolam dibagi sama rata di antara penerima bonus cabang.</p>
             </div>
           ))}
         </div>
