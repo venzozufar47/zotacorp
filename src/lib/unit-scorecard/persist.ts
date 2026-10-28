@@ -143,7 +143,8 @@ export async function dataChecks(sb: Sb, deps: ComputeDeps | null, monthIso: str
     if (hm.unallocatedCount > 0 || hm.unbalancedCount > 0) {
       warnings.push(`Alokasi biaya Pusat Haengbocake belum lengkap: ${hm.unallocatedCount} belum diisi, ${hm.unbalancedCount} tidak seimbang.`);
     }
-    const unlocked = hm.pusatBreakdown.filter((r) => !r.locked).length;
+    // Baris yang dialokasikan otomatis (sisa Sales Pusat menurut rasio Custom Cake) memang tidak dikunci manual.
+    const unlocked = hm.pusatBreakdown.filter((r) => !r.locked && !r.autoAllocated).length;
     if (unlocked > 0) warnings.push(`${unlocked} alokasi Pusat Haengbocake belum dikunci.`);
   }
   const ym = deps?.finance.yeobo.get(monthIso.slice(0, 7));

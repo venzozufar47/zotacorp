@@ -20,6 +20,8 @@ import {
   type UnitStatus,
 } from "./engine";
 import { classifyCategories, rentLooksMissing, usesPosRegime, type CategoryRow, type FinanceBreakdown } from "./finance";
+import { cakeHpp } from "./cake-hpp";
+import { listCakeOrdersNet } from "@/lib/scorecard/cake-revenue";
 
 type Sb = SupabaseClient<Database>;
 /** Client schema `yeobo` (untyped), lihat src/lib/supabase/yeobo-admin.ts. */
@@ -198,17 +200,36 @@ function toCategoryRows(rows: { category: string; credit: number; debit: number;
 
 // ───────────────────────────── HPP per produk POS (resep costing) ─────────────────────────────
 
-/** key "productId|variantId" ("productId|" = tingkat produk) → biaya bahan per unit terjual. */
+/**
+ * key "productId|variantId" ("productId|" = tingkat produk) → biaya bahan per unit terjual.
+ * Ditambah key "name:<nama resep huruf kecil>" untuk SEMUA resep valid (termasuk yang tanpa tautan POS, mis. kue dasar
+ * Custom Cake) — dipakai peta HPP Custom Cake.
+ */
 export async function loadHppMap(sb: Sb, costingBrand: string): Promise<Map<string, number>> {
   const loaded = await loadBrandCosting(sb, { businessUnit: costingBrand });
   const map = new Map<string, number>();
   for (const row of computeAll(loaded)) {
-    const p = row.product as unknown as { pos_product_id: string | null; pos_variant_id: string | null; yield_qty: number };
-    if (!p.pos_product_id || row.items.length === 0 || !(p.yield_qty > 0)) continue;
+    const p = row.product as unknown as { name: string; pos_product_id: string | null; pos_variant_id: string | null; yield_qty: number };
+    if (row.items.length === 0 || !(p.yield_qty > 0)) continue;
     if (row.breakdown.components.some((c) => c.unitError)) continue;
-    map.set(`${p.pos_product_id}|${p.pos_variant_id ?? ""}`, row.breakdown.totalMaterial / p.yield_qty);
+    const perUnit = row.breakdown.totalMaterial / p.yield_qty;
+    map.set(`name:${p.name.trim().toLowerCase()}`, perUnit);
+    if (p.pos_product_id) map.set(`${p.pos_product_id}|${p.pos_variant_id ?? ""}`, perUnit);
   }
   return map;
+}
+
+/** Peta (kue dasar × diameter) → nama resep, plus label kue dasar untuk daftar kekurangan. */
+export async function loadCakeHppConfig(sb: Sb): Promise<{ map: Map<string, string>; labels: Map<string, string> }> {
+  const [m, o] = await Promise.all([
+    sb.from("cake_hpp_map" as never).select("base_option_id, diameter_cm, costing_name"),
+    sb.from("cake_options" as never).select("id, label"),
+  ]);
+  for (const r of [m, o]) if (r.error) throw new Error(r.error.message);
+  return {
+    map: new Map(((m.data ?? []) as { base_option_id: string; diameter_cm: number; costing_name: string }[]).map((r) => [`${r.base_option_id}|${r.diameter_cm}`, r.costing_name])),
+    labels: new Map(((o.data ?? []) as { id: string; label: string }[]).map((r) => [r.id, r.label])),
+  };
 }
 
 function lookupHpp(map: Map<string, number>, productId: string | null, variantId: string | null): number | null {
@@ -224,6 +245,7 @@ export interface ComputeDeps {
   config: ScConfig;
   finance: FinanceData;
   hppByBrand: Map<string, Map<string, number>>;
+  cake: { map: Map<string, string>; labels: Map<string, string> };
 }
 
 export async function buildDeps(sb: Sb, yeobo: YeoboSb, months: string[]): Promise<ComputeDeps> {
@@ -233,7 +255,8 @@ export async function buildDeps(sb: Sb, yeobo: YeoboSb, months: string[]): Promi
   for (const u of config.units) {
     if (u.costing_brand && !hppByBrand.has(u.costing_brand)) hppByBrand.set(u.costing_brand, await loadHppMap(sb, u.costing_brand));
   }
-  return { sb, yeobo, config, finance, hppByBrand };
+  const cake = await loadCakeHppConfig(sb);
+  return { sb, yeobo, config, finance, hppByBrand, cake };
 }
 
 function mk(
@@ -283,6 +306,8 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
   let hppCost = 0;
   let coveredNet = 0;
   let uncoveredNet = 0;
+  // Baris teks bebas kasir (tanpa produk) tidak mungkin punya resep: tetap masuk omzet, tapi tidak dituntut punya HPP.
+  let freeTextNet = 0;
   const hppMap = unit.costing_brand ? deps.hppByBrand.get(unit.costing_brand) ?? new Map<string, number>() : new Map<string, number>();
   if (unit.pos_branch && posRegime) {
     const [agg, tot] = await Promise.all([
@@ -293,6 +318,10 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
     if (tot.error) throw new Error(tot.error.message);
     posNet = num(tot.data);
     for (const r of (agg.data ?? []) as { product_id: string | null; variant_id: string | null; qty: unknown; net_revenue: unknown }[]) {
+      if (!r.product_id) {
+        freeTextNet += num(r.net_revenue);
+        continue;
+      }
       const h = lookupHpp(hppMap, r.product_id, r.variant_id);
       if (h == null) uncoveredNet += num(r.net_revenue);
       else {
@@ -301,6 +330,7 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
       }
     }
   }
+
 
   // ── B5 waste (operasional) ──
   {
@@ -380,6 +410,22 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
     return out;
   }
 
+  // Custom Cake: HPP dari resep kue dasar × diameter (setelah B5, yang penyebutnya HPP produk POS saja) (peta cake_hpp_map); pesanan tanpa peta/resep = belum punya HPP.
+  let cakeCovered = 0;
+  let cakeUncovered = 0;
+  let cakeMissing: { label: string; diameterCm: number | null; orders: number; net: number }[] = [];
+  if (posRegime && (unit.pnl_branch === "Pare" || unit.pnl_branch === "Semarang")) {
+    const orders = await listCakeOrdersNet(sb, unit.pnl_branch, from, to);
+    const hppByName = new Map<string, number>();
+    for (const [k, v] of hppMap) if (k.startsWith("name:")) hppByName.set(k.slice(5), v);
+    const res = cakeHpp(orders, deps.cake.map, hppByName, (id) => (id ? deps.cake.labels.get(id) ?? "Kue dasar tidak dikenal" : "Tanpa kue dasar"));
+    hppCost += res.hppCost;
+    cakeCovered = res.coveredNet;
+    cakeUncovered = res.uncoveredNet;
+    coveredNet += res.coveredNet;
+    cakeMissing = res.missing;
+  }
+
   // ── Pendapatan & biaya ──
   const cakeNet = posRegime
     ? num(unit.pnl_branch === "Pare" ? pnlMonth?.salesHint?.cakePare : pnlMonth?.salesHint?.cakeSemarang)
@@ -387,8 +433,11 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
   const revenue = posRegime ? posNet + cakeNet + fin.otherRevenue : fin.pnlRevenue;
   const cogs = posRegime ? hppCost : fin.cogs;
   const directOpex = posRegime ? fin.directOpex : fin.directOpex + fin.refund;
-  const coverage = posRegime ? (revenue > 0 ? coveredNet / revenue : null) : null;
-  const coverageOk = posRegime ? hppCoverageOk(coveredNet, revenue) : true;
+  // Penyebut cakupan = omzet tanpa baris teks bebas kasir.
+  const coverageBase = revenue - freeTextNet;
+  const coverage = posRegime ? (coverageBase > 0 ? coveredNet / coverageBase : null) : null;
+  const coverageOk = posRegime ? hppCoverageOk(coveredNet, coverageBase) : true;
+  const topMissing = cakeMissing.slice(0, 8).map((m) => ({ kue_dasar: m.label, diameter_cm: m.diameterCm, pesanan: m.orders, rp: rd(m.net) }));
   const base: Record<string, unknown> = {
     rezim: posRegime ? "POS + Custom Cake (mulai Mei 2026)" : "Laporan laba-rugi",
     revenue_neto_rp: rd(revenue),
@@ -406,10 +455,16 @@ async function computeBakery(deps: ComputeDeps, unit: ScUnit, month: string, onl
     sumber_hpp: posRegime ? "HPP resep × qty terjual (POS)" : "Cost of Goods Sold (laporan laba-rugi, basis kas)",
     ...(posRegime
       ? {
-          revenue_pos_dengan_hpp_rp: rd(coveredNet),
+          revenue_pos_dengan_hpp_rp: rd(coveredNet - cakeCovered),
           revenue_pos_tanpa_hpp_rp: rd(uncoveredNet),
+          revenue_pos_teks_bebas_rp: rd(freeTextNet),
+          revenue_cake_dengan_hpp_rp: rd(cakeCovered),
+          revenue_cake_tanpa_hpp_rp: rd(cakeUncovered),
+          cake_tanpa_hpp_rincian: topMissing,
           pembanding_cogs_buku_kas_rp: rd(fin.cogs),
-          peringatan: coverageOk ? undefined : "Cakupan HPP < 90% (custom cake belum punya HPP / produk belum tertaut resep): data belum lengkap.",
+          peringatan: coverageOk
+            ? undefined
+            : `Cakupan HPP < 90%: produk POS tanpa resep Rp${Math.round(uncoveredNet).toLocaleString("id-ID")} dan Custom Cake tanpa resep Rp${Math.round(cakeUncovered).toLocaleString("id-ID")} (lihat rincian di inputs).`,
         }
       : {}),
   };

@@ -44,3 +44,48 @@ export async function sumCakeRevenue(admin: any, branch: "Pare" | "Semarang", fr
   }
   return total;
 }
+
+export interface CakeOrderRow {
+  baseOptionId: string | null;
+  diameterCm: number | null;
+  /** total − ongkir − refund (rupiah). */
+  net: number;
+}
+
+/** Pesanan Custom Cake per baris (aturan sama dengan `sumCakeRevenue`) — untuk menghitung HPP per kue dasar × diameter. */
+export async function listCakeOrdersNet(admin: any, branch: "Pare" | "Semarang", from: string, to: string): Promise<CakeOrderRow[]> {
+  const startIso = `${from}T00:00:00+07:00`;
+  const endIso = `${addDays(to, 1)}T00:00:00+07:00`;
+  const PAGE = 1000;
+  const out: CakeOrderRow[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await admin
+      .from("cake_orders")
+      .select("base_cake_option_id, dimension_cm, total_idr, delivery_fee_idr, refund_idr, status, free_claim")
+      .ilike("branch", branch)
+      .gte("scheduled_at", startIso)
+      .lt("scheduled_at", endIso)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as {
+      base_cake_option_id: string | null;
+      dimension_cm: number | null;
+      total_idr: number | null;
+      delivery_fee_idr: number | null;
+      refund_idr: number | null;
+      status: string | null;
+      free_claim: boolean | null;
+    }[];
+    for (const c of rows) {
+      if (c.status === "cancelled" || c.status === "discarded" || c.free_claim) continue;
+      out.push({
+        baseOptionId: c.base_cake_option_id,
+        diameterCm: c.dimension_cm == null ? null : Number(c.dimension_cm),
+        net: (Number(c.total_idr) || 0) - (Number(c.delivery_fee_idr) || 0) - (Number(c.refund_idr) || 0),
+      });
+    }
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
