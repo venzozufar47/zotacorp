@@ -406,13 +406,13 @@ export default async function DashboardPage() {
           const { needBuy, staleDays, items } = procurementBadge;
           const first = items[0];
           const single = needBuy === 1 && first;
-          // 1 bahan → langsung ke form Catat belanja dengan bahan itu terpilih; beberapa → papan Stok
-          // (daftar yang bisa dipilih). Tanpa bahan kurang → ajakan opname.
-          const href = needBuy > 0 && first
-            ? single
-              ? `/pengadaan?tab=catat&bu=${encodeURIComponent(first.businessUnit)}&bahan=${first.id}`
-              : `/pengadaan?tab=stok&bu=${encodeURIComponent(first.businessUnit)}`
-            : "/pengadaan/opname";
+          // Selalu ke papan Stok cabang bahan itu: di sana terlihat sisa stok, titik pesan, dan saran jumlah, lalu
+          // tombol "Catat belanja" per bahan membuka form dengan bahan terpilih. (Langsung ke form membuat petugas
+          // mendarat di halaman yang tampak generik: form baru muncul setelah memilih sumber uang.)
+          const href =
+            needBuy > 0 && first
+              ? `/pengadaan?tab=stok&bu=${encodeURIComponent(first.businessUnit)}`
+              : "/pengadaan/opname";
           const stockText = (i: ProcurementBadgeItem) =>
             i.status === "habis"
               ? "stok habis"
@@ -438,8 +438,8 @@ export default async function DashboardPage() {
                 <span className="block text-xs text-muted-foreground">
                   {needBuy > 0
                     ? single
-                      ? `${first.businessUnit.replace("Haengbocake ", "")} · ${stockText(first)} · ketuk untuk catat belanja.`
-                      : `${names}${more > 0 ? ` +${more} lainnya` : ""} · ketuk untuk memilih bahan.`
+                      ? `${first.businessUnit.replace("Haengbocake ", "")} · ${stockText(first)} · ketuk untuk melihat stok & catat belanja.`
+                      : `${names}${more > 0 ? ` +${more} lainnya` : ""} · ketuk untuk melihat stok & catat belanja.`
                     : "Ketuk untuk mulai opname."}
                   {needBuy > 0 && (staleDays ?? 0) > 14 && ` Opname terakhir ${staleDays} hari lalu.`}
                 </span>
