@@ -70,7 +70,8 @@ import { BranchQueueCard } from "@/components/tickets/BranchQueueCard";
 import Link from "next/link";
 import { Brain, FileSignature, Ticket as TicketIcon, PackageSearch } from "lucide-react";
 import { isProcurementStaff } from "@/lib/procurement/access";
-import { getProcurementDashboardBadge } from "@/lib/actions/procurement.actions";
+import { getProcurementDashboardBadge,
+  type ProcurementBadgeItem, } from "@/lib/actions/procurement.actions";
 import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
 import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
 import { CalendarClock } from "lucide-react";
@@ -237,8 +238,11 @@ export default async function DashboardPage() {
   // Banner pengadaan — sengaja dihitung TERPISAH dan hanya untuk staf
   // pengadaan, supaya dashboard karyawan lain tidak ikut menanggung
   // biayanya (perhitungan ini menyapu seluruh bahan tiap unit bisnis).
-  let procurementBadge: { needBuy: number; staleDays: number | null } | null =
-    null;
+  let procurementBadge: {
+    needBuy: number;
+    staleDays: number | null;
+    items: ProcurementBadgeItem[];
+  } | null = null;
   if (await isProcurementStaff()) {
     const res = await getProcurementDashboardBadge();
     if (res.ok) procurementBadge = res.data ?? null;
@@ -397,30 +401,53 @@ export default async function DashboardPage() {
 
       {procurementBadge &&
         (procurementBadge.needBuy > 0 ||
-          (procurementBadge.staleDays ?? 0) > 14) && (
-          <Link
-            href="/pengadaan"
-            className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-          >
-            <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-              <PackageSearch size={18} />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block font-display font-bold text-sm">
-                {procurementBadge.needBuy > 0
-                  ? `${procurementBadge.needBuy} bahan perlu dibeli`
-                  : `Opname bahan sudah ${procurementBadge.staleDays} hari lalu`}
+          (procurementBadge.staleDays ?? 0) > 14) &&
+        (() => {
+          const { needBuy, staleDays, items } = procurementBadge;
+          const first = items[0];
+          const single = needBuy === 1 && first;
+          // 1 bahan → langsung ke form Catat belanja dengan bahan itu terpilih; beberapa → papan Stok
+          // (daftar yang bisa dipilih). Tanpa bahan kurang → ajakan opname.
+          const href = needBuy > 0 && first
+            ? single
+              ? `/pengadaan?tab=catat&bu=${encodeURIComponent(first.businessUnit)}&bahan=${first.id}`
+              : `/pengadaan?tab=stok&bu=${encodeURIComponent(first.businessUnit)}`
+            : "/pengadaan/opname";
+          const stockText = (i: ProcurementBadgeItem) =>
+            i.status === "habis"
+              ? "stok habis"
+              : `sisa ±${(i.onHand ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })} ${i.usageUnit}`;
+          const names = items.slice(0, 3).map((i) => i.name).join(", ");
+          const more = needBuy - Math.min(items.length, 3);
+          return (
+            <Link
+              href={href}
+              className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
+            >
+              <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+                <PackageSearch size={18} />
               </span>
-              <span className="block text-xs text-muted-foreground">
-                {procurementBadge.needBuy > 0 &&
-                (procurementBadge.staleDays ?? 0) > 14
-                  ? `Stok di bawah titik pesan — dan opname terakhir ${procurementBadge.staleDays} hari lalu.`
-                  : "Ketuk untuk melihat papan pantau pengadaan."}
+              <span className="flex-1 min-w-0">
+                <span className="block font-display font-bold text-sm">
+                  {needBuy > 0
+                    ? single
+                      ? `${first.name} perlu dibeli`
+                      : `${needBuy} bahan perlu dibeli`
+                    : `Opname bahan sudah ${staleDays} hari lalu`}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {needBuy > 0
+                    ? single
+                      ? `${first.businessUnit.replace("Haengbocake ", "")} · ${stockText(first)} · ketuk untuk catat belanja.`
+                      : `${names}${more > 0 ? ` +${more} lainnya` : ""} · ketuk untuk memilih bahan.`
+                    : "Ketuk untuk mulai opname."}
+                  {needBuy > 0 && (staleDays ?? 0) > 14 && ` Opname terakhir ${staleDays} hari lalu.`}
+                </span>
               </span>
-            </span>
-            <span className="text-sm font-bold shrink-0">→</span>
-          </Link>
-        )}
+              <span className="text-sm font-bold shrink-0">→</span>
+            </Link>
+          );
+        })()}
 
       {FEATURES.izin && pendingLeaveApprovals > 0 && (
         <Link

@@ -491,13 +491,26 @@ export async function listMaterialOpnames(
   };
 }
 
+const URGENCY = { habis: 0, kritis: 1, menipis: 2 } as const;
+
+export interface ProcurementBadgeItem {
+  id: string;
+  name: string;
+  businessUnit: string;
+  status: "habis" | "kritis" | "menipis";
+  /** Sisa stok perkiraan dalam satuan pakai; null bila tak diketahui. */
+  onHand: number | null;
+  usageUnit: string;
+}
+
 /** Ringkasan untuk banner dashboard karyawan. Sengaja ringan. */
 export async function getProcurementDashboardBadge(): Promise<
-  ActionResult<{ needBuy: number; staleDays: number | null }>
+  ActionResult<{ needBuy: number; staleDays: number | null; items: ProcurementBadgeItem[] }>
 > {
   const bus = await myProcurementBusinessUnits();
-  if (bus.length === 0) return { ok: true, data: { needBuy: 0, staleDays: null } };
+  if (bus.length === 0) return { ok: true, data: { needBuy: 0, staleDays: null, items: [] } };
   const supabase = adminClient();
+  const items: ProcurementBadgeItem[] = [];
   let needBuy = 0;
   let oldest: number | null = null;
   for (const bu of bus) {
@@ -507,14 +520,28 @@ export async function getProcurementDashboardBadge(): Promise<
         r.metrics.status === "habis" ||
         r.metrics.status === "kritis" ||
         r.metrics.status === "menipis"
-      )
+      ) {
         needBuy++;
+        items.push({
+          id: r.material.id,
+          name: r.material.name,
+          businessUnit: bu,
+          status: r.metrics.status,
+          onHand: r.metrics.onHand,
+          usageUnit: r.material.usage_unit,
+        });
+      }
       const d = r.metrics.elapsedDays;
       if (d != null && (oldest == null || d > oldest)) oldest = d;
     }
   }
   return {
     ok: true,
-    data: { needBuy, staleDays: oldest == null ? null : Math.floor(oldest) },
+    data: {
+      needBuy,
+      staleDays: oldest == null ? null : Math.floor(oldest),
+      // Paling mendesak dulu (habis → kritis → menipis); banner hanya menampilkan beberapa nama.
+      items: items.sort((a, b) => URGENCY[a.status] - URGENCY[b.status]).slice(0, 5),
+    },
   };
 }
