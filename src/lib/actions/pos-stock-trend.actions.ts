@@ -3,14 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
-import {
-  fetchAllPages,
-  jakartaHourIso,
-  listActiveSkus,
-  loadBaselineAt,
-  skuKey,
-  type SkuKey,
-} from "@/lib/pos/stock-engine";
+import { fetchAllPages, jakartaHourIso, listActiveSkus, skuKey, type SkuKey } from "@/lib/pos/stock-engine";
 import { buildTrend, type OpnameReset, type TrendRow, type TypedEvent } from "@/lib/pos/stock-trend";
 
 export interface StockTrendRow extends TrendRow {
@@ -20,14 +13,23 @@ export interface StockTrendRow extends TrendRow {
 export interface StockTrend {
   fromDate: string;
   toDate: string;
+  /** Hari ini (WIB) — `toDate` bisa bulan lampau, jadi UI tidak boleh menganggap `toDate` = hari ini. */
+  today: string;
   /** Naik. */
   dates: string[];
   rows: StockTrendRow[];
   /** True bila ada query yang kena jaring pengaman halaman (angka bisa kurang). */
   truncated: boolean;
+  /** Catatan gerak stok dengan jumlah tak masuk akal (salah ketik) yang diabaikan pada rentang ini. */
+  ignoredRows: number;
 }
 
 const MAX_DAYS = 31;
+/**
+ * Satu catatan gerak stok di atas ini dianggap salah ketik dan diabaikan (sama dengan WASTE_QTY_SANITY_CAP di
+ * lib/pos/waste). Kasus nyata: 27 Jul 2026 di Pare ada tiga catatan 10 juta–100 juta yang saling "mengoreksi".
+ */
+const QTY_CAP = 10_000;
 
 /** Rentang tren: N hari terakhir, atau satu bulan kalender (YYYY-MM). */
 export type StockTrendRange = { days: number } | { month: string };
@@ -47,8 +49,25 @@ const addDay = (ymd: string, n: number) => {
 };
 
 /**
- * Tren stok harian per produk (stok awal, produksi, terjual, ditarik, akhir) untuk `days` hari terakhir.
- * Hitungan murni ada di `lib/pos/stock-trend`; di sini hanya memuat event sejak opname jangkar.
+ * Cache singkat per instance: berpindah-pindah filter (atau beberapa orang membuka halaman yang sama) tidak mengulang
+ * belasan query. Bulan yang sudah lewat hampir tak berubah → lebih lama; rentang yang menyentuh hari ini → singkat.
+ * Dicek SETELAH gate, jadi tidak membuka data ke yang tak berhak.
+ */
+const CACHE = new Map<string, { at: number; data: unknown }>();
+const CACHE_MAX = 80;
+function cacheGet<T>(key: string, ttlMs: number): T | null {
+  const hit = CACHE.get(key);
+  return hit && Date.now() - hit.at < ttlMs ? (hit.data as T) : null;
+}
+function cacheSet(key: string, data: unknown) {
+  if (CACHE.size >= CACHE_MAX) CACHE.delete(CACHE.keys().next().value as string);
+  CACHE.set(key, { at: Date.now(), data });
+}
+
+/**
+ * Tren stok harian per produk (stok awal, produksi, terjual, ditarik, akhir) untuk satu rentang.
+ * Hitungan murni ada di `lib/pos/stock-trend`; di sini hanya memuat event sejak opname jangkar, dengan query yang
+ * dijalankan paralel (dulu berurutan).
  */
 export async function getStockTrend(bankAccountId: string, range: StockTrendRange): Promise<ActionResult<StockTrend>> {
   const gate = await requireAdminOrPosAssignee(bankAccountId);
@@ -71,34 +90,69 @@ export async function getStockTrend(bankAccountId: string, range: StockTrendRang
       fromDate = jakartaDateMinusDays(today, span - 1);
       toDate = today;
     }
+
+    const cacheKey = `trend|${bankAccountId}|${fromDate}|${toDate}`;
+    const ttl = toDate < today ? 10 * 60_000 : 30_000;
+    const cached = cacheGet<StockTrend>(cacheKey, ttl);
+    if (cached) return { ok: true, data: { ...cached, today } };
+
     const fromIso = jakartaHourIso(fromDate, 0);
     // Batas atas: akhir hari terakhir rentang (bulan lampau tidak perlu memuat event sesudahnya).
-    const nowIso = toDate < today ? jakartaHourIso(addDay(toDate, 1), 0) : new Date().toISOString();
+    const toIso = toDate < today ? jakartaHourIso(addDay(toDate, 1), 0) : new Date().toISOString();
 
-    const { skus, aggregateProductIds } = await listActiveSkus(supabase, bankAccountId);
-    const anchor = await loadBaselineAt(supabase, bankAccountId, fromIso, aggregateProductIds);
-    const cutoff = anchor.cutoffIso;
+    // Tahap 1: katalog SKU dan opname jangkar (terakhir sebelum rentang) berjalan bersamaan.
+    const [{ skus, aggregateProductIds }, anchorRes] = await Promise.all([
+      listActiveSkus(supabase, bankAccountId),
+      supabase
+        .from("pos_stock_opnames")
+        .select("id, created_at")
+        .eq("bank_account_id", bankAccountId)
+        .lte("created_at", fromIso)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const anchor = anchorRes.data;
+    const cutoff = anchor?.created_at ?? null;
+    const keyOf = (productId: string, variantId: string | null) =>
+      skuKey(productId, aggregateProductIds.has(productId) ? null : variantId);
     const skuKeys = skus.map((s) => skuKey(s.productId, s.variantId));
     const keySet = new Set(skuKeys);
 
-    const [moves, sales, opHeaders] = await Promise.all([
+    // Tahap 2: baseline, gerak stok, penjualan, header opname, dan hitungan baris salah-ketik — semuanya paralel.
+    const [baseItems, moves, sales, opHeaders, ignored] = await Promise.all([
+      anchor
+        ? fetchAllPages<{ product_id: string; variant_id: string | null; physical_count: number }>(() =>
+            supabase
+              .from("pos_stock_opname_items")
+              .select("id, product_id, variant_id, physical_count")
+              .eq("opname_id", anchor.id)
+          )
+        : Promise.resolve({ rows: [], truncated: false }),
       fetchAllPages<{ product_id: string; variant_id: string | null; type: string; qty: number; created_at: string }>(() => {
         let q = supabase
           .from("pos_stock_movements")
           .select("id, product_id, variant_id, type, qty, created_at")
           .eq("bank_account_id", bankAccountId)
-          .lte("created_at", nowIso);
+          .lte("qty", QTY_CAP)
+          .lte("created_at", toIso);
         if (cutoff) q = q.gt("created_at", cutoff);
         return q;
       }),
-      fetchAllPages<{ product_id: string | null; variant_id: string | null; qty: number; pos_sales: { created_at: string } }>(() => {
+      // Dari sisi penjualan dengan item tertanam (bukan item + join): baris jauh lebih sedikit, jadi lebih sedikit halaman
+      // dan ~2× lebih cepat, dengan total qty yang sama persis.
+      fetchAllPages<{
+        created_at: string;
+        pos_sale_items: { product_id: string | null; variant_id: string | null; qty: number }[] | null;
+      }>(() => {
         let q = supabase
-          .from("pos_sale_items")
-          .select("id, product_id, variant_id, qty, pos_sales!inner(bank_account_id, created_at, voided_at)")
-          .eq("pos_sales.bank_account_id", bankAccountId)
-          .is("pos_sales.voided_at", null)
-          .lte("pos_sales.created_at", nowIso);
-        if (cutoff) q = q.gt("pos_sales.created_at", cutoff);
+          .from("pos_sales")
+          .select("id, created_at, pos_sale_items(product_id, variant_id, qty)")
+          .eq("bank_account_id", bankAccountId)
+          .is("voided_at", null)
+          .lte("created_at", toIso);
+        if (cutoff) q = q.gt("created_at", cutoff);
         return q;
       }),
       fetchAllPages<{ id: string; created_at: string }>(() => {
@@ -106,39 +160,47 @@ export async function getStockTrend(bankAccountId: string, range: StockTrendRang
           .from("pos_stock_opnames")
           .select("id, created_at")
           .eq("bank_account_id", bankAccountId)
-          .lte("created_at", nowIso);
+          .lte("created_at", toIso);
         if (cutoff) q = q.gt("created_at", cutoff);
         return q;
       }),
+      supabase
+        .from("pos_stock_movements")
+        .select("id", { count: "exact", head: true })
+        .eq("bank_account_id", bankAccountId)
+        .gt("qty", QTY_CAP)
+        .gte("movement_date", fromDate)
+        .lte("movement_date", toDate),
     ]);
 
-    const events: TypedEvent[] = [];
-    for (const m of moves.rows) {
-      const key = skuKey(m.product_id, aggregateProductIds.has(m.product_id) ? null : m.variant_id);
-      if (!keySet.has(key)) continue;
-      events.push({ key, at: m.created_at, kind: m.type === "production" ? "production" : "withdrawal", qty: m.qty });
-    }
-    for (const it of sales.rows) {
-      if (!it.product_id) continue;
-      const key = skuKey(it.product_id, aggregateProductIds.has(it.product_id) ? null : it.variant_id);
-      if (!keySet.has(key)) continue;
-      events.push({ key, at: it.pos_sales.created_at, kind: "sale", qty: it.qty });
+    const baseline = new Map<SkuKey, number>();
+    for (const it of baseItems.rows) {
+      const k = keyOf(it.product_id, it.variant_id);
+      baseline.set(k, (baseline.get(k) ?? 0) + it.physical_count);
     }
 
+    // Item opname dalam rentang: potongan 200 id dimuat bersamaan.
     const itemsByOpname = new Map<string, Map<SkuKey, number>>();
     const ids = opHeaders.rows.map((o) => o.id);
-    for (let i = 0; i < ids.length; i += 200) {
-      const slice = ids.slice(i, i + 200);
-      const { rows } = await fetchAllPages<{ opname_id: string; product_id: string; variant_id: string | null; physical_count: number }>(() =>
-        supabase
-          .from("pos_stock_opname_items")
-          .select("id, opname_id, product_id, variant_id, physical_count")
-          .in("opname_id", slice)
-      );
-      for (const it of rows) {
-        const key = skuKey(it.product_id, aggregateProductIds.has(it.product_id) ? null : it.variant_id);
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+    const opItems = await Promise.all(
+      chunks.map((slice) =>
+        fetchAllPages<{ opname_id: string; product_id: string; variant_id: string | null; physical_count: number }>(() =>
+          supabase
+            .from("pos_stock_opname_items")
+            .select("id, opname_id, product_id, variant_id, physical_count")
+            .in("opname_id", slice)
+        )
+      )
+    );
+    let itemsTruncated = false;
+    for (const part of opItems) {
+      itemsTruncated ||= part.truncated;
+      for (const it of part.rows) {
         const m = itemsByOpname.get(it.opname_id) ?? new Map<SkuKey, number>();
-        m.set(key, (m.get(key) ?? 0) + it.physical_count);
+        const k = keyOf(it.product_id, it.variant_id);
+        m.set(k, (m.get(k) ?? 0) + it.physical_count);
         itemsByOpname.set(it.opname_id, m);
       }
     }
@@ -147,6 +209,22 @@ export async function getStockTrend(bankAccountId: string, range: StockTrendRang
       items: itemsByOpname.get(o.id) ?? new Map<SkuKey, number>(),
     }));
 
+    const events: TypedEvent[] = [];
+    for (const m of moves.rows) {
+      if (!(m.qty > 0)) continue;
+      const key = keyOf(m.product_id, m.variant_id);
+      if (!keySet.has(key)) continue;
+      events.push({ key, at: m.created_at, kind: m.type === "production" ? "production" : "withdrawal", qty: m.qty });
+    }
+    for (const sale of sales.rows) {
+      for (const it of sale.pos_sale_items ?? []) {
+        if (!it.product_id || !(it.qty > 0)) continue;
+        const key = keyOf(it.product_id, it.variant_id);
+        if (!keySet.has(key)) continue;
+        events.push({ key, at: sale.created_at, kind: "sale", qty: it.qty });
+      }
+    }
+
     const dates: string[] = [];
     for (let d = new Date(fromDate + "T00:00:00Z"); d.toISOString().slice(0, 10) <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
       dates.push(d.toISOString().slice(0, 10));
@@ -154,7 +232,7 @@ export async function getStockTrend(bankAccountId: string, range: StockTrendRang
 
     const trend = buildTrend({
       skuKeys,
-      baseline: anchor.baseline,
+      baseline,
       events,
       opnames,
       dates,
@@ -165,22 +243,25 @@ export async function getStockTrend(bankAccountId: string, range: StockTrendRang
       skus.map((s) => [skuKey(s.productId, s.variantId), s.variantName ? `${s.productName} — ${s.variantName}` : s.productName])
     );
     const rows: StockTrendRow[] = trend
-      .filter((r) => dates.some((d) => {
-        const c = r.days[d];
-        return c && (c.open > 0 || c.production > 0 || c.sold > 0 || c.withdrawn > 0);
-      }))
+      .filter((r) =>
+        dates.some((d) => {
+          const c = r.days[d];
+          return c && (c.open > 0 || c.production > 0 || c.sold > 0 || c.withdrawn > 0);
+        })
+      )
       .map((r) => ({ ...r, name: nameByKey.get(r.key) ?? "(produk)" }));
 
-    return {
-      ok: true,
-      data: {
-        fromDate,
-        toDate,
-        dates,
-        rows,
-        truncated: moves.truncated || sales.truncated || opHeaders.truncated,
-      },
+    const data: StockTrend = {
+      fromDate,
+      toDate,
+      today,
+      dates,
+      rows,
+      truncated: moves.truncated || sales.truncated || opHeaders.truncated || baseItems.truncated || itemsTruncated,
+      ignoredRows: ignored.count ?? 0,
     };
+    cacheSet(cacheKey, data);
+    return { ok: true, data };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Gagal memuat tren stok" };
   }
@@ -194,6 +275,11 @@ export async function getStockMonths(bankAccountId: string): Promise<ActionResul
   const gate = await requireAdminOrPosAssignee(bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
   try {
+    const thisMonth = jakartaDateString(new Date()).slice(0, 7);
+    const cacheKey = `months|${bankAccountId}|${thisMonth}`;
+    const cached = cacheGet<StockMonth[]>(cacheKey, 5 * 60_000);
+    if (cached) return { ok: true, data: cached };
+
     const supabase = await createClient();
     const { rows } = await fetchAllPages<{ movement_date: string; qty: number }>(() =>
       supabase
@@ -201,7 +287,7 @@ export async function getStockMonths(bankAccountId: string): Promise<ActionResul
         .select("id, movement_date, qty")
         .eq("bank_account_id", bankAccountId)
         .eq("type", "production")
-        .lte("qty", 10_000)
+        .lte("qty", QTY_CAP)
     );
     const by = new Map<string, { production: number; days: Set<string> }>();
     for (const r of rows) {
@@ -211,7 +297,6 @@ export async function getStockMonths(bankAccountId: string): Promise<ActionResul
       cur.days.add(r.movement_date);
       by.set(m, cur);
     }
-    const thisMonth = jakartaDateString(new Date()).slice(0, 7);
     const first = [...by.keys()].sort()[0] ?? thisMonth;
     const out: StockMonth[] = [];
     for (let [y, m] = first.split("-").map(Number); `${y}-${String(m).padStart(2, "0")}` <= thisMonth; m === 12 ? ((y += 1), (m = 1)) : (m += 1)) {
@@ -219,6 +304,7 @@ export async function getStockMonths(bankAccountId: string): Promise<ActionResul
       const v = by.get(key);
       out.push({ month: key, production: v?.production ?? 0, days: v?.days.size ?? 0 });
     }
+    cacheSet(cacheKey, out);
     return { ok: true, data: out };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Gagal memuat daftar bulan" };

@@ -216,6 +216,11 @@
     60%  { transform: scale(1.05); }
     to   { opacity: 1; transform: none; }
   }
+  /* Bilah kemajuan tak tentu (tren stok): geser kiri→kanan berulang. */
+  @keyframes trend-slide {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(250%); }
+  }
   @keyframes wiggle {
     0%, 100% { transform: rotate(0deg); }
     25%      { transform: rotate(-2deg); }

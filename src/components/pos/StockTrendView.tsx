@@ -40,33 +40,50 @@ const HATCH: React.CSSProperties = {
  * Hitungannya ada di `lib/pos/stock-trend`; penarikan dipecah "dari stok lama" vs "dari produksi hari itu" (FIFO) supaya
  * produk TANPA produksi yang stok lamanya ditarik tidak terbaca sebagai produksi hari itu yang gagal laku.
  */
+type Entry = { data: StockTrend; at: number };
+const rangeKey = (r: Range) => (r.kind === "days" ? `d${r.n}` : `m${r.ym}`);
+/** Hasil yang lebih muda dari ini dipakai langsung tanpa ambil ulang. */
+const FRESH_MS = 60_000;
+
 export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
   const [range, setRange] = useState<Range>({ kind: "days", n: 7 });
   const [months, setMonths] = useState<StockMonth[]>([]);
-  const [data, setData] = useState<StockTrend | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Cache di sisi klien: kembali ke rentang yang pernah dibuka tampil seketika (lalu disegarkan diam-diam bila sudah lama).
+  const [store, setStore] = useState<Record<string, Entry>>({});
+  const storeRef = useRef(store);
+  useEffect(() => {
+    storeRef.current = store;
+  }, [store]);
+  const [lastData, setLastData] = useState<StockTrend | null>(null);
+  const [err, setErr] = useState<{ key: string; msg: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
+  const key = rangeKey(range);
+
   useEffect(() => {
+    const hit = storeRef.current[key];
+    if (hit && Date.now() - hit.at < FRESH_MS) return;
     let cancelled = false;
     void (async () => {
       try {
         const res = await getStockTrend(bankAccountId, range.kind === "days" ? { days: range.n } : { month: range.ym });
         if (cancelled) return;
-        if (!res.ok) setError(res.error);
-        else {
-          setError(null);
-          setData(res.data!);
-          setSelected((cur) => (cur && res.data!.dates.includes(cur) ? cur : res.data!.toDate));
+        if (!res.ok) {
+          if (!storeRef.current[key]) setErr({ key, msg: res.error });
+        } else {
+          setErr(null);
+          setStore((st) => ({ ...st, [key]: { data: res.data!, at: Date.now() } }));
+          setLastData(res.data!);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Gagal memuat tren stok");
+        if (!cancelled && !storeRef.current[key]) setErr({ key, msg: e instanceof Error ? e.message : "Gagal memuat tren stok" });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [bankAccountId, range]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankAccountId, key]);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,13 +96,31 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
     };
   }, [bankAccountId]);
 
+  const error = err?.key === key ? err.msg : null;
+  const fresh = store[key]?.data ?? null;
+  // Selama rentang baru dimuat, tampilan sebelumnya tetap terlihat (redup) — tidak ada layar kosong.
+  const data = fresh ?? lastData;
+  const loading = !fresh && !error;
+  const sel = data ? (selected && data.dates.includes(selected) ? selected : data.toDate) : null;
+
   return (
-    <section className="space-y-4">
+    <section className="space-y-4" aria-busy={loading}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Tren stok harian{range.kind === "month" ? ` · ${monthLong(range.ym)}` : ""}
         </p>
-        <RangeFilter range={range} months={months} onChange={setRange} />
+        <RangeFilter range={range} months={months} onChange={setRange} loading={loading} />
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Memuat tren stok"
+        aria-hidden={!loading}
+        className={cn(
+          "-mt-2 h-0.5 overflow-hidden rounded-full bg-muted transition-opacity",
+          loading ? "opacity-100" : "opacity-0"
+        )}
+      >
+        <div className="h-full w-2/5 animate-[trend-slide_1.1s_ease-in-out_infinite] rounded-full bg-primary" />
       </div>
       {error && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>
@@ -96,26 +131,51 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
           <Loader2 size={14} className="animate-spin" /> Menghitung stok per hari…
         </div>
       ) : data && data.rows.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+        <p
+          className={cn(
+            "rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground transition-opacity",
+            loading && "opacity-50"
+          )}
+        >
           Belum ada aktivitas stok pada rentang ini.
         </p>
       ) : data ? (
-        <>
-          <DayColumns data={data} selected={selected} onSelect={setSelected} />
-          {selected && <Scoreboard data={data} date={selected} />}
-          <Heatmap data={data} selected={selected} onSelect={setSelected} />
-          {data.truncated && (
-            <p className="text-xs text-destructive">Data sangat banyak sehingga sebagian terpotong; angka bisa kurang.</p>
+        <div className="relative">
+          {loading && (
+            <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold shadow-md">
+                <Loader2 size={12} className="animate-spin" />
+                Memuat {range.kind === "days" ? `${range.n} hari terakhir` : monthLong(range.ym)}…
+              </span>
+            </div>
           )}
-          <p className="flex gap-1.5 text-[11px] leading-snug text-muted-foreground">
-            <Info size={12} className="mt-0.5 shrink-0" />
-            <span>
-              Stok awal dan stok akhir dihitung dari opname terakhir ditambah produksi, penjualan, dan penarikan (opname
-              adalah reset total; produk yang tak disebut di opname dihitung 0). Penarikan dianggap mengambil stok
-              lama lebih dulu (FIFO), jadi &ldquo;ditarik dari stok lama&rdquo; adalah perkiraan.
-            </span>
-          </p>
-        </>
+          <div
+            className={cn(
+              "space-y-4 transition-opacity duration-200",
+              loading && "pointer-events-none select-none opacity-40"
+            )}
+          >
+            <DayColumns data={data} selected={sel} onSelect={setSelected} />
+            {sel && <Scoreboard data={data} date={sel} />}
+            <Heatmap data={data} selected={sel} onSelect={setSelected} />
+            {data.truncated && (
+              <p className="text-xs text-destructive">Data sangat banyak sehingga sebagian terpotong; angka bisa kurang.</p>
+            )}
+            {data.ignoredRows > 0 && (
+              <p className="text-xs text-warning-foreground">
+                {data.ignoredRows} catatan gerak stok dengan jumlah tak masuk akal (salah ketik) diabaikan pada rentang ini.
+              </p>
+            )}
+            <p className="flex gap-1.5 text-[11px] leading-snug text-muted-foreground">
+              <Info size={12} className="mt-0.5 shrink-0" />
+              <span>
+                Stok awal dan stok akhir dihitung dari opname terakhir ditambah produksi, penjualan, dan penarikan (opname
+                adalah reset total; produk yang tak disebut di opname dihitung 0). Penarikan dianggap mengambil stok
+                lama lebih dulu (FIFO), jadi &ldquo;ditarik dari stok lama&rdquo; adalah perkiraan.
+              </span>
+            </p>
+          </div>
+        </div>
       ) : null}
     </section>
   );
@@ -123,7 +183,17 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
 
 /* ───────────── filter rentang ───────────── */
 
-function RangeFilter({ range, months, onChange }: { range: Range; months: StockMonth[]; onChange: (r: Range) => void }) {
+function RangeFilter({
+  range,
+  months,
+  onChange,
+  loading,
+}: {
+  range: Range;
+  months: StockMonth[];
+  onChange: (r: Range) => void;
+  loading: boolean;
+}) {
   const idx = range.kind === "month" ? months.findIndex((m) => m.month === range.ym) : -1;
   const go = (delta: number) => {
     const m = months[idx + delta];
@@ -146,6 +216,7 @@ function RangeFilter({ range, months, onChange }: { range: Range; months: StockM
             )}
           >
             {w} hari
+            {loading && range.kind === "days" && range.n === w && <Loader2 size={10} className="ml-1 inline animate-spin" />}
           </button>
         ))}
       </div>
@@ -162,7 +233,7 @@ function RangeFilter({ range, months, onChange }: { range: Range; months: StockM
               <ChevronLeft size={14} />
             </button>
           )}
-          <MonthPicker range={range} months={months} onChange={onChange} />
+          <MonthPicker range={range} months={months} onChange={onChange} loading={loading} />
           {range.kind === "month" && (
             <button
               type="button"
@@ -181,7 +252,17 @@ function RangeFilter({ range, months, onChange }: { range: Range; months: StockM
 }
 
 /** Pemilih bulan: kisi bulan per tahun dengan total produksi sebagai petunjuk (bukan <select> bawaan). */
-function MonthPicker({ range, months, onChange }: { range: Range; months: StockMonth[]; onChange: (r: Range) => void }) {
+function MonthPicker({
+  range,
+  months,
+  onChange,
+  loading,
+}: {
+  range: Range;
+  months: StockMonth[];
+  onChange: (r: Range) => void;
+  loading: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const active = range.kind === "month";
@@ -227,7 +308,7 @@ function MonthPicker({ range, months, onChange }: { range: Range; months: StockM
             : "border-border bg-muted/40 text-muted-foreground hover:text-foreground"
         )}
       >
-        <CalendarDays size={13} />
+        {loading && active ? <Loader2 size={13} className="animate-spin" /> : <CalendarDays size={13} />}
         {active ? monthLong(range.ym) : "Pilih bulan"}
         <ChevronDown size={12} className={cn("transition", open && "rotate-180")} />
       </button>
@@ -357,7 +438,7 @@ function DayColumns({
               </div>
               <span className={cn("text-[10px] leading-tight", active ? "font-semibold text-foreground" : "text-muted-foreground")}>
                 {dayLabel(date)}
-                {date === data.toDate ? <span className="block text-primary">hari ini</span> : null}
+                {date === data.today ? <span className="block text-primary">hari ini</span> : null}
               </span>
             </button>
           );
