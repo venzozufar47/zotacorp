@@ -282,7 +282,7 @@ export function isCompanyCentralized(category: string | null): boolean {
  * Kategori Haengbocake yang SELALU di-split rata 50/50 Semarang:Pare
  * secara otomatis — tanpa alokasi manual. Bank Administration (biaya
  * bank bersama), Wealth Transfer (perpindahan dana antar rekening
- * bersama), dan Subscription (langganan software dipakai bersama, mis.
+ * bersama), Pinjaman (pinjaman sementara, non-operasional), dan Subscription (langganan software dipakai bersama, mis.
  * iCloud/CapCut/website) tidak punya "porsi cabang" yang nyata, jadi
  * selalu dibagi dua. Transaksi Pusat pada kategori ini tidak muncul di
  * editor alokasi. Pengecualian: kalau transaksi Subscription-nya sudah
@@ -294,6 +294,8 @@ export const HAENGBOCAKE_AUTO_SPLIT_PUSAT_CATEGORIES = new Set([
   "Bank Administration",
   "Wealth Transfer",
   "Subscription",
+  // Pinjaman (modal pinjaman sementara dari/untuk pemilik): non-operasional dan tidak punya porsi cabang.
+  "Pinjaman",
 ]);
 
 export function isAutoSplitPusatCategory(
