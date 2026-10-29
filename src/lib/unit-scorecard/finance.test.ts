@@ -72,7 +72,7 @@ test("sewa tahunan dibagi rata per bulan pada masa sewa", () => {
 test("sewa tahunan tidak berlaku di luar masa sewa atau cabang lain", () => {
   const f = classifyCategories([op("Rent", 0, 5_000_000)]);
   assert.equal(applyRentAccrual(f, "Tembalang", "2027-01"), f);
-  assert.equal(applyRentAccrual(f, "Tlogosari", "2026-03"), f);
+  assert.equal(applyRentAccrual(f, "Jebres", "2026-03"), f);
 });
 
 test("sewa tambahan Pare: bayar 10 jt di Okt dikeluarkan, jatah 15 bulan ditambahkan di samping sewa bulanan", () => {
@@ -84,4 +84,17 @@ test("sewa tambahan Pare: bayar 10 jt di Okt dikeluarkan, jatah 15 bulan ditamba
   const sep = classifyCategories([op("Rent", 0, 1_300_000)]);
   assert.equal(applyRentAccrual(sep, "Pare", "2026-09"), sep);
   assert.equal(applyRentAccrual(sep, "Pare", "2028-01"), sep);
+});
+
+test("sewa studio besar Tlogosari: pembayaran dibagi ke bulan yang dicakup, pembayaran di luar masa cakupan tetap dikeluarkan", () => {
+  const op2 = (c: string, d: number) => ({ category: c, credit: 0, debit: d, kind: "operating" as const });
+  // Feb 2026: sewa biasa Rp5 jt + jatah Rp750 rb (Rp3 jt ÷ 4 bulan)
+  assert.equal(applyRentAccrual(classifyCategories([op2("Rent", 5_000_000)]), "Tlogosari", "2026-02").rent, 5_750_000);
+  // Mar 2026: kas Rp8 jt (5 jt + 3 jt studio besar) → 3 jt dikeluarkan, + jatah 4.895.900 ÷ 7 = 699.414
+  assert.equal(applyRentAccrual(classifyCategories([op2("Rent", 8_000_000)]), "Tlogosari", "2026-03").rent, 5_699_414);
+  // Sep 2026: kas Rp9.895.900 → 4.895.900 dikeluarkan, + 699.414
+  assert.equal(applyRentAccrual(classifyCategories([op2("Rent", 9_895_900)]), "Tlogosari", "2026-09").rent, 5_699_414);
+  // Okt 2026: di luar semua aturan → tidak berubah
+  const okt = classifyCategories([op2("Rent", 5_000_000)]);
+  assert.equal(applyRentAccrual(okt, "Tlogosari", "2026-10"), okt);
 });

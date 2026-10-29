@@ -133,6 +133,11 @@ export const RENT_ACCRUALS: RentAccrual[] = [
   { branch: "Tembalang", from: "2026-01", to: "2026-12", totalAmount: 25_000_000 },
   // Pare: sewa tambahan Okt 2026 – Des 2027 (15 bulan), Rp10 jt dibayar 12 Jul 2026 (periode efektif Okt 2026) ke Nanik Elif Mauzidah.
   { branch: "Pare", from: "2026-10", to: "2027-12", totalAmount: 10_000_000, cashMonth: "2026-10" },
+  // Yeosari (Tlogosari): sewa studio besar = 10% dari omzet studio besar tiap bulan, dibayar per beberapa bulan. Dibagi rata
+  // (bukan dihitung dari omzet studio besar): Rp3 jt (dibayar 9 Mar 2026, periode Mar) untuk Nov 2025–Feb 2026; Rp4.895.900
+  // (dibayar 3 Okt 2026, periode Sep) untuk Mar–Sep 2026. Pembayaran berikutnya = tambah baris di sini.
+  { branch: "Tlogosari", from: "2025-11", to: "2026-02", totalAmount: 3_000_000, cashMonth: "2026-03" },
+  { branch: "Tlogosari", from: "2026-03", to: "2026-09", totalAmount: 4_895_900, cashMonth: "2026-09" },
 ];
 
 function monthsInclusive(from: string, to: string): number {
@@ -141,12 +146,18 @@ function monthsInclusive(from: string, to: string): number {
 
 /** Terapkan semua aturan sewa-dibagi yang berlaku untuk cabang dan bulan ini (lihat RentAccrual). */
 export function applyRentAccrual(fin: FinanceBreakdown, branch: string, ym: string, rules: RentAccrual[] = RENT_ACCRUALS): FinanceBreakdown {
-  const active = rules.filter((r) => r.branch === branch && ym >= r.from && ym <= r.to);
+  // Aturan berlaku di bulan dalam masa sewa, dan (mode menambah) juga di bulan pembayarannya walau di luar masa sewa.
+  const active = rules.filter((r) => r.branch === branch && ((ym >= r.from && ym <= r.to) || ym === r.cashMonth));
   if (active.length === 0) return fin;
   let rent = fin.rent;
   for (const r of active) {
+    const inRange = ym >= r.from && ym <= r.to;
     const share = Math.round(r.totalAmount / monthsInclusive(r.from, r.to));
-    rent = r.cashMonth === undefined ? share : rent - (ym === r.cashMonth ? r.totalAmount : 0) + share;
+    if (r.cashMonth === undefined) rent = share;
+    else {
+      if (ym === r.cashMonth) rent -= r.totalAmount;
+      if (inRange) rent += share;
+    }
   }
   return { ...fin, rent, rentCash: fin.rent };
 }
