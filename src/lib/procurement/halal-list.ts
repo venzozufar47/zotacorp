@@ -4,7 +4,7 @@
  */
 
 import type { createAdminClient } from "@/lib/actions/_supabase-admin";
-import { defaultHalalKind } from "./brand-store";
+import { defaultHalalKind } from "./brand-store.ts";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
