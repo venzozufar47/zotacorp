@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
+import { NATIONAL_HOLIDAYS } from "@/lib/holidays/indonesia";
 
 export interface HolidayRow {
   id: string;
@@ -69,26 +70,8 @@ export async function deleteHoliday(input: {
   return { ok: true };
 }
 
-/** Indonesia 2026 national holidays (SKB 3 Menteri, excludes cuti bersama). */
-const HOLIDAYS_2026: { date: string; name: string }[] = [
-  { date: "2026-01-01", name: "Tahun Baru Masehi" },
-  { date: "2026-01-16", name: "Isra Mikraj Nabi Muhammad saw." },
-  { date: "2026-02-17", name: "Tahun Baru Imlek 2577 Kongzili" },
-  { date: "2026-03-19", name: "Hari Suci Nyepi (Tahun Baru Saka 1948)" },
-  { date: "2026-03-21", name: "Idulfitri 1447 H" },
-  { date: "2026-03-22", name: "Idulfitri 1447 H" },
-  { date: "2026-04-03", name: "Wafat Yesus Kristus" },
-  { date: "2026-04-05", name: "Kebangkitan Yesus Kristus (Paskah)" },
-  { date: "2026-05-01", name: "Hari Buruh Internasional" },
-  { date: "2026-05-14", name: "Kenaikan Yesus Kristus" },
-  { date: "2026-05-27", name: "Iduladha 1447 H" },
-  { date: "2026-05-31", name: "Hari Raya Waisak 2570 BE" },
-  { date: "2026-06-01", name: "Hari Lahir Pancasila" },
-  { date: "2026-06-16", name: "Tahun Baru Islam 1448 H" },
-  { date: "2026-08-17", name: "Proklamasi Kemerdekaan" },
-  { date: "2026-08-25", name: "Maulid Nabi Muhammad saw." },
-  { date: "2026-12-25", name: "Kelahiran Yesus Kristus" },
-];
+/** Indonesia 2026 national holidays (SKB 3 Menteri, excludes cuti bersama): sumber tunggal di `@/lib/holidays/indonesia`. */
+const HOLIDAYS_2026 = NATIONAL_HOLIDAYS.filter((h) => h.date.startsWith("2026-"));
 
 /** Idempotent: insert any 2026 national holidays not already present. */
 export async function seedHolidays2026(): Promise<
@@ -106,5 +89,26 @@ export async function seedHolidays2026(): Promise<
     .select("id");
   if (error) return { error: error.message };
   revalidatePath("/admin/settings");
+  return { ok: true, inserted: data?.length ?? 0 };
+}
+
+/**
+ * Samakan tabel `national_holidays` (dipakai absensi) dengan daftar resmi 2026–2027: tambahkan yang belum ada. Tanggal yang
+ * sudah ada tidak diubah dan tanggal tambahan manual tidak dihapus.
+ */
+export async function syncOfficialHolidays(): Promise<{ ok: true; inserted: number } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("national_holidays")
+    .upsert(
+      NATIONAL_HOLIDAYS.map((h) => ({ holiday_date: h.date, name: h.name })),
+      { onConflict: "holiday_date", ignoreDuplicates: true }
+    )
+    .select("id");
+  if (error) return { error: error.message };
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/kalender-libur");
   return { ok: true, inserted: data?.length ?? 0 };
 }

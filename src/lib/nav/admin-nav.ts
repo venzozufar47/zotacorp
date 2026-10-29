@@ -1,5 +1,6 @@
 import {
   Award,
+  CalendarDays,
   Cake,
   Calculator,
   Camera,
@@ -351,6 +352,12 @@ export function buildAdminNav({
           href: "/admin/locations",
           icon: MapPin,
           label: t.nav.locations,
+          color: "bg-quaternary",
+        },
+        {
+          href: "/admin/kalender-libur",
+          icon: CalendarDays,
+          label: "Kalender Libur",
           color: "bg-quaternary",
         },
         {
