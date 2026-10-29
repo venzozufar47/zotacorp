@@ -8,7 +8,6 @@ import { ScorecardRangesInfo } from "@/components/scorecard/ScorecardRangesInfo"
 import { METRIC_STATUS_LABEL } from "@/components/admin/scorecard/format";
 import { TILE_STYLE, type TileTone } from "@/components/scorecard/tile-styles";
 import type { BrandMetricView, SocialBrandCard, SocialScorecardData } from "@/lib/actions/social-scorecard.actions";
-import { formatDateID } from "@/lib/utils/date-formats";
 
 const nf0 = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
 const nf1 = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -54,7 +53,7 @@ export function SocialScorecardView({ data, monthOptions }: { data: SocialScorec
             ))}
           </select>
         </label>
-        <span className="text-[12px] text-muted-foreground">Reach, Followers growth, dan Engagement dari 4 minggu laporan yang berakhir di bulan itu (target per 4 minggu); Omset per bulan.</span>
+        <span className="text-[12px] text-muted-foreground">Semua metrik dari 4 minggu (28 hari) yang berakhir di bulan itu; target per 4 minggu.</span>
         <Link href="/admin/social" className="ml-auto text-[12.5px] font-semibold text-primary hover:underline">
           Isi laporan & atur target →
         </Link>
@@ -79,19 +78,8 @@ export function SocialScorecardView({ data, monthOptions }: { data: SocialScorec
   );
 }
 
-/** Isi panduan ⓘ kartu Omset: rincian per cabang (gabungan) dan penanda bulan yang belum selesai. */
-function omsetLines(m: BrandMetricView): string[] {
-  const rincian = m.inputs.rincian_cabang as { cabang: string; rp: number }[] | undefined;
-  const sampai = typeof m.inputs.data_sampai === "string" ? (m.inputs.data_sampai as string) : null;
-  const lines: string[] = [];
-  if (rincian && rincian.length > 0) lines.push(`Gabungan ${rincian.length} cabang: ${rincian.map((r) => `${r.cabang} ${fmtShort(r.rp, "rupiah")}`).join(" · ")}`);
-  if (m.inputs.bulan_berjalan === true) lines.push(`Bulan belum selesai${sampai ? `, data sampai ${formatDateID(sampai).replace(/ \d{4}$/, "")}` : ""}`);
-  return lines;
-}
-
 const TONE_OF: Record<BrandMetricView["status"], TileTone> = { green: "green", yellow: "yellow", red: "red", incomplete: "neutral", not_assessed: "neutral" };
 
-/** Kartu metrik: kepala berwarna status (gaya sama dengan scorecard cabang) + panel putih berisi tren enam bulan. */
 /** Ubin sosmed untuk beranda karyawan: hanya kepala berwarna (tanpa panel tren), ringkas seperti scorecard cabang. */
 export function SocialBrandTiles({ brand }: { brand: SocialBrandCard }) {
   const odd = brand.metrics.length % 2 === 1;
@@ -107,7 +95,7 @@ export function SocialBrandTiles({ brand }: { brand: SocialBrandCard }) {
 function MetricCard({ m, months, compact = false, className }: { m: BrandMetricView; months: string[]; compact?: boolean; className?: string }) {
   const style = TILE_STYLE[TONE_OF[m.status]];
   const Icon = style.Icon;
-  const lines = Array.isArray(m.inputs.info_lines) ? (m.inputs.info_lines as string[]) : omsetLines(m);
+  const lines = Array.isArray(m.inputs.info_lines) ? (m.inputs.info_lines as string[]) : [];
   const isNumber = m.actual != null;
   return (
     <div className={cn("relative rounded-3xl border border-border/60 bg-card has-[button[aria-expanded=true]]:z-30", className)}>
@@ -131,7 +119,7 @@ function MetricCard({ m, months, compact = false, className }: { m: BrandMetricV
             {METRIC_STATUS_LABEL[m.status]}
           </span>
           <span className="text-[11px] leading-snug">
-            {m.targetHidden ? "vs target sampai hari ini" : m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
+            {m.targetHidden ? "dari target 4 minggu" : m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
             {m.score != null && !m.valueAsScore ? ` · ${nf0.format(m.score)}% dari target` : ""}
           </span>
         </div>

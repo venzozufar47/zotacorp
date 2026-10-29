@@ -3,12 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "./_supabase-admin";
 import { requireSocialAdmin, type ActionResult } from "./_gates";
-import { fetchPnL, type PnLMonth } from "@/lib/cashflow/pnl";
-import { fetchYeoboPnL, type YeoboPnLMonth } from "@/lib/cashflow/pnl-yeobo";
-import { classifyCategories, usesPosRegime, type CategoryRow } from "@/lib/unit-scorecard/finance";
+import { REVENUE_CATEGORIES, usesPosRegime } from "@/lib/unit-scorecard/finance";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sumCakeRevenue } from "@/lib/scorecard/cake-revenue";
-import { workingDaysBetween, workingDaysInMonth } from "@/lib/scorecard/working-days";
 import { addDays, dm } from "@/lib/social/week-label";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { editorBrandIds } from "@/lib/social/access";
@@ -47,7 +44,6 @@ const isMonthIso = (s: string) => /^\d{4}-(0[1-9]|1[0-2])-01$/.test(s);
 
 const MONTHS_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const monthLabel = (monthIso: string) => `${MONTHS_ID[Number(monthIso.slice(5, 7)) - 1]} ${monthIso.slice(0, 4)}`;
-const ym = (monthIso: string) => ({ year: Number(monthIso.slice(0, 4)), month: Number(monthIso.slice(5, 7)) });
 const TREND_MONTHS = 6;
 
 /** Sumber omset tiap brand: haengbo.corner = omset POS, haengbocake.idn = omset Custom Cake (Pare + Semarang), yeobospace.id = laba-rugi Yeobo. */
@@ -110,37 +106,25 @@ export interface SocialScorecardData {
 
 type Db = ReturnType<typeof createAdminClient>;
 
-function categoryRows(rows: { category: string; credit: number; debit: number; kind: "operating" | "nonop" }[]): CategoryRow[] {
-  return rows.map((r) => ({ category: r.category, credit: r.credit, debit: r.debit, kind: r.kind }));
-}
-
 interface RevenueResult {
   total: number;
   parts: { cabang: string; rp: number }[];
 }
 
+/** Konversi target bulanan ke 28 hari (4 minggu): 28 ÷ (365/12). */
+const WINDOW_SCALE = 28 / (365 / 12);
+const jt = (n: number) => `Rp${(n / 1_000_000).toFixed(1).replace(".", ",")} jt`;
+
 /**
- * Omset POS atau Custom Cake brand Haengbocake = jumlah Pare + Semarang (angka yang sama dengan Scorecard Cabang).
- * Sebelum Mei 2026 laporan tidak memisahkan POS dan cake: POS = pendapatan laba-rugi, cake = tidak tersedia.
+ * Omset POS atau Custom Cake brand Haengbocake = jumlah Pare + Semarang pada [start, end] (inklusif), angka yang sama
+ * dengan Scorecard Cabang. Sebelum Mei 2026 POS dan cake tidak terpisah di laporan → null.
  */
-async function haengRevenue(db: Db, month: string, kind: "pos" | "cake", pnl: PnLMonth | undefined): Promise<RevenueResult | null> {
-  if (!pnl) return null;
-  if (!usesPosRegime(month)) {
-    if (kind === "cake") return null;
-    const parts = HAENG_BRANCHES.map((cabang) => {
-      const br = pnl.byBranch[cabang];
-      return { cabang: cabang as string, rp: Math.round(br ? classifyCategories(categoryRows(br.byCategory)).pnlRevenue : 0) };
-    });
-    return { total: parts.reduce((s, p) => s + p.rp, 0), parts };
-  }
-  const { from, toExcl } = monthRange(month);
-  const to = new Date(`${toExcl}T00:00:00Z`);
-  to.setUTCDate(to.getUTCDate() - 1);
-  const toIso = to.toISOString().slice(0, 10);
+async function haengRevenue(db: Db, start: string, end: string, kind: "pos" | "cake"): Promise<RevenueResult | null> {
+  if (!usesPosRegime(start)) return null;
   const parts = await Promise.all(
     HAENG_BRANCHES.map(async (cabang) => {
-      if (kind === "cake") return { cabang: cabang as string, rp: Math.round(await sumCakeRevenue(db, cabang, from, toIso)) };
-      const r = await db.rpc("scorecard_pos_total" as never, { p_pos_branch: cabang, p_from: from, p_to: toIso } as never);
+      if (kind === "cake") return { cabang: cabang as string, rp: Math.round(await sumCakeRevenue(db, cabang, start, end)) };
+      const r = await db.rpc("scorecard_pos_total" as never, { p_pos_branch: cabang, p_from: start, p_to: end } as never);
       if (r.error) throw new Error(r.error.message);
       return { cabang: cabang as string, rp: Math.round(num(r.data)) };
     })
@@ -148,19 +132,17 @@ async function haengRevenue(db: Db, month: string, kind: "pos" | "cake", pnl: Pn
   return { total: parts.reduce((s, p) => s + p.rp, 0), parts };
 }
 
-function yeoboRevenue(m: YeoboPnLMonth | undefined): RevenueResult | null {
-  if (!m) return null;
-  let total = 0;
-  for (const br of Object.values(m.byBranch)) total += classifyCategories(categoryRows(br.byCategory)).pnlRevenue;
-  return { total, parts: yeoboBranchRevenue(m) };
+interface RevenueRow {
+  date: string;
+  amount: number;
 }
 
-/** Rincian omset per cabang Yeobo (urut nama) untuk satu bulan. */
-function yeoboBranchRevenue(m: YeoboPnLMonth | undefined): { cabang: string; rp: number }[] {
-  if (!m) return [];
-  return Object.entries(m.byBranch)
-    .map(([cabang, br]) => ({ cabang, rp: Math.round(classifyCategories(categoryRows(br.byCategory)).pnlRevenue) }))
-    .sort((a, b) => a.cabang.localeCompare(b.cabang));
+/** Omset Yeobo (semua cabang) pada [start, end] dari buku kas, menurut TANGGAL transaksi. Sebelum 2026 tidak ada data kas → null. */
+function yeoboWindowRevenue(rows: RevenueRow[], start: string, end: string): RevenueResult | null {
+  if (start < "2026-01-01") return null;
+  let total = 0;
+  for (const r of rows) if (r.date >= start && r.date <= end) total += r.amount;
+  return { total, parts: [] };
 }
 
 // ───────────────────────────── Pembacaan ─────────────────────────────
@@ -234,17 +216,12 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       stories: r.stories,
     }));
 
-    // Laporan keuangan dimuat sekali per merek untuk seluruh rentang tren.
     const needsHaeng = brands.some((b) => BRAND_REVENUE[b.code]?.kind === "pos" || BRAND_REVENUE[b.code]?.kind === "cake");
     const needsYeobo = brands.some((b) => BRAND_REVENUE[b.code]?.kind === "yeobo");
-    const [haengPnl, yeoboPnl] = await Promise.all([
-      needsHaeng ? fetchPnL(db, "Haengbocake", ym(first), ym(month)) : Promise.resolve(null),
-      needsYeobo ? fetchYeoboPnL(db, ym(first), ym(month)) : Promise.resolve(null),
-    ]);
 
-    // Target omset brand Haengbocake = target omzet cabang di Scorecard Cabang, dijumlah Pare + Semarang (haengbo.corner =
-    // target POS, haengbocake.idn = target Custom Cake): SATU sumber, supaya angka target tidak bisa berbeda antara dua
-    // scorecard. Brand tanpa target cabang (Yeobo) memakai target sosmed sendiri.
+    // Target omset brand Haengbocake = target omzet cabang di Scorecard Cabang (bulanan), dijumlah Pare + Semarang (haengbo.corner =
+    // target POS, haengbocake.idn = target Custom Cake) lalu dikonversi ke 28 hari: SATU sumber, supaya angka target tidak bisa
+    // berbeda antara dua scorecard. Brand tanpa target cabang (Yeobo) memakai target sosmed sendiri (sudah per 4 minggu).
     const branchTarget = { pos: 0, cake: 0 };
     if (needsHaeng) {
       const tr = await db.from("scorecard_branch_targets" as never).select("branch, monthly_pos_target, monthly_cake_target");
@@ -252,26 +229,15 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         branchTarget.pos += Number(t.monthly_pos_target) || 0;
         branchTarget.cake += Number(t.monthly_cake_target) || 0;
       }
+      branchTarget.pos *= WINDOW_SCALE;
+      branchTarget.cake *= WINDOW_SCALE;
     }
 
-    // Bulan berjalan: omset baru lengkap sampai tanggal data pendapatan terakhir yang masuk ke buku kas.
     const monthInProgress = month === `${today.slice(0, 7)}-01`;
-    let yeoboDataUntil: string | null = null;
-    if (needsYeobo && monthInProgress) {
-      const last = await db
-        .from("cashflow_transactions" as never)
-        .select("transaction_date, cashflow_statements!inner(bank_accounts!inner(business_unit))")
-        .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
-        .in("category", ["Revenue", "Sales", "Other Revenue"])
-        .gt("credit", 0)
-        .order("transaction_date", { ascending: false })
-        .limit(1);
-      yeoboDataUntil = ((last.data ?? []) as unknown as { transaction_date: string }[])[0]?.transaction_date ?? null;
-    }
 
-    // Reach, Followers growth, dan Engagement dihitung dari 4 MINGGU laporan yang berakhir di bulan itu (Senin terakhir yang
-    // sudah selesai di dalam bulan itu), dan targetnya juga PER 4 MINGGU. Tiap bulan selalu 4 minggu (bukan 4 atau 5 menurut
-    // jumlah Senin), jadi satu target berlaku untuk semua bulan dan tampilan tidak kosong di awal bulan.
+    // Semua metrik dihitung dari 4 MINGGU (28 hari) yang berakhir di bulan itu (Senin terakhir yang sudah selesai di dalam bulan
+    // itu), dan targetnya PER 4 MINGGU. Tiap bulan selalu 4 minggu (bukan 4 atau 5 menurut jumlah Senin), jadi satu target
+    // berlaku untuk semua bulan dan tampilan tidak kosong di awal bulan.
     const latestWeek = addDays(mondayOf(today), -7);
     const windowFor = (m: string) => {
       let end = mondayOf(addDays(monthRange(m).toExcl, -1));
@@ -282,6 +248,40 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       const w = windowFor(m);
       return rs.filter((r) => r.weekStart >= w.start && r.weekStart <= w.end);
     };
+    /** Rentang tanggal omset: Senin pertama s.d. Minggu penutup jendela laporan. */
+    const omsetWindow = (m: string) => {
+      const w = windowFor(m);
+      return { start: w.start, end: addDays(w.end, 6) };
+    };
+
+    // Omset Yeobo dari buku kas (pendapatan menurut tanggal transaksi), dimuat sekali untuk seluruh rentang tren. Data Mayar
+    // tidak selalu sampai hari ini: jendela bulan berjalan berakhir di tanggal pendapatan terakhir yang masuk.
+    let yeoboDataUntil: string | null = null;
+    const yeoboRows: RevenueRow[] = [];
+    if (needsYeobo) {
+      const rangeStart = addDays(omsetWindow(months[0]).start, -7);
+      const rangeEnd = omsetWindow(month).end;
+      const PAGE = 1000;
+      for (let offset = 0; ; offset += PAGE) {
+        const r = await db
+          .from("cashflow_transactions" as never)
+          .select("id, transaction_date, credit, debit, category, cashflow_statements!inner(bank_accounts!inner(business_unit))")
+          .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
+          .in("category", [...REVENUE_CATEGORIES])
+          .gte("transaction_date", rangeStart)
+          .lte("transaction_date", rangeEnd)
+          .order("id", { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (r.error) return fail(r.error.message);
+        const rows = (r.data ?? []) as unknown as { transaction_date: string; credit: string | number; debit: string | number }[];
+        for (const t of rows) {
+          const amount = num(t.credit) - num(t.debit);
+          yeoboRows.push({ date: t.transaction_date, amount });
+          if (num(t.credit) > 0 && (!yeoboDataUntil || t.transaction_date > yeoboDataUntil)) yeoboDataUntil = t.transaction_date;
+        }
+        if (rows.length < PAGE) break;
+      }
+    }
 
     const out: SocialBrandCard[] = [];
     for (const b of brands) {
@@ -291,11 +291,19 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       const cfgFor = (code: SocialMetricCode, m: string) => pickConfig(versions.filter((v) => v.metricCode === code), m);
 
       const spec = BRAND_REVENUE[b.code];
+      // Jendela omset: Senin–Minggu. Untuk Yeobo bulan berjalan, geser agar berakhir di tanggal data kas terakhir bila lebih awal.
+      const omsetRange = (m: string) => {
+        const base = omsetWindow(m);
+        if (spec?.kind === "yeobo" && m === month && monthInProgress && yeoboDataUntil && yeoboDataUntil < base.end) {
+          return { start: addDays(yeoboDataUntil, -27), end: yeoboDataUntil };
+        }
+        return base;
+      };
       const revenueOf = async (m: string): Promise<RevenueResult | null> => {
         if (!spec) return null;
-        const { year, month: mm } = ym(m);
-        if (spec.kind === "yeobo") return yeoboRevenue(yeoboPnl?.months.find((x) => x.year === year && x.month === mm));
-        return haengRevenue(db, m, spec.kind, haengPnl?.months.find((x) => x.year === year && x.month === mm));
+        const r = omsetRange(m);
+        if (spec.kind === "yeobo") return yeoboWindowRevenue(yeoboRows, r.start, r.end);
+        return haengRevenue(db, r.start, r.end, spec.kind);
       };
       // Omset berasal dari laporan keuangan/POS; kegagalannya tidak boleh mematikan tiga metrik lain.
       const revFail: { msg: string | null } = { msg: null };
@@ -324,23 +332,6 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       const accountsReporting = new Set(curReports.map((r) => r.accountId)).size;
       const weeksReported = new Set(curReports.map((r) => r.weekStart)).size;
 
-      // Omset karyawan dinilai terhadap target SAMPAI TANGGAL INI (sebanding hari berjalan), bukan target bulan penuh, supaya awal
-      // bulan tidak otomatis merah. Haengbocake: hari kerja Senin–Sabtu; Yeobo: hari kalender sampai tanggal data kas terakhir.
-      let omsetPace: { fraction: number; until: string; elapsed: number; total: number; unit: string } | null = null;
-      if (opts.employeeView && monthInProgress && spec) {
-        const [yy, mm] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
-        const daysInMonth = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
-        if (spec.kind === "yeobo") {
-          const until = yeoboDataUntil ?? today;
-          const elapsed = until >= month ? Number(until.slice(8, 10)) : 0;
-          omsetPace = { fraction: elapsed / daysInMonth, until, elapsed, total: daysInMonth, unit: "hari" };
-        } else {
-          const elapsed = workingDaysBetween(month, today);
-          const total = workingDaysInMonth(month);
-          omsetPace = { fraction: total > 0 ? elapsed / total : 0, until: today, elapsed, total, unit: "hari kerja" };
-        }
-      }
-
       const metrics: BrandMetricView[] = SOCIAL_METRICS.map((def) => {
         let cfg = cfgFor(def.code, month);
         const hk = spec?.kind;
@@ -354,14 +345,13 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
             createdAt: cfg?.createdAt ?? "",
           };
         }
-        if (opts.employeeView && cfg?.targetValue != null) {
-          if (def.code === "omset" && omsetPace) cfg = { ...cfg, targetValue: cfg.targetValue * omsetPace.fraction };
-        }
         const scored = scoreMetric(cur[def.code], cfg, def.code);
         // Keterangan tambahan untuk ikon ⓘ: padat, satu baris per butir.
         const infoLines: string[] = [];
         if (def.code === "omset") {
-          if (opts.employeeView && omsetPace) infoLines.push(omsetPace.elapsed > 0 ? `Target sampai ${dm(omsetPace.until)} (${omsetPace.elapsed}/${omsetPace.total} ${omsetPace.unit})` : "Belum ada data bulan ini");
+          const r = omsetRange(month);
+          infoLines.push(`28 hari: ${dm(r.start)} – ${dm(r.end)}`);
+          if (!opts.employeeView && curRevenue && curRevenue.parts.length > 0) infoLines.push(curRevenue.parts.map((x) => `${x.cabang} ${jt(x.rp)}`).join(" · "));
         } else {
           infoLines.push(`4 minggu: ${dm(curWindow.start)} – ${dm(addDays(curWindow.end, 6))}`);
           if (weeksReported < 4) infoLines.push(`Baru ${weeksReported} dari 4 minggu terisi`);
@@ -373,14 +363,10 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
               : {
                   sumber:
                     spec?.kind === "yeobo"
-                      ? "Laporan laba-rugi Yeobo Space (semua cabang)"
+                      ? "Buku kas Yeobo Space (semua cabang)"
                       : spec?.kind === "cake"
                         ? "Omset Custom Cake (Pare + Semarang)"
-                        : usesPosRegime(month)
-                          ? "Omset POS (Pare + Semarang)"
-                          : "Laporan laba-rugi (Pare + Semarang)",
-                  ...(curRevenue && curRevenue.parts.length > 0 ? { rincian_cabang: curRevenue.parts } : {}),
-                  ...(monthInProgress ? { bulan_berjalan: true, ...(spec?.kind === "yeobo" && yeoboDataUntil ? { data_sampai: yeoboDataUntil } : {}) } : {}),
+                        : "Omset POS (Pare + Semarang)",
                 }
             : { minggu_terisi: weeksReported, akun_terisi: `${accountsReporting}/${brandAccounts.length}` };
         // Karyawan hanya melihat omset sebagai % terhadap target: angka rupiah aktual, tren, dan rincian per cabang tidak dikirim.
@@ -396,10 +382,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
           greenBound: cfg?.greenBound ?? null,
           redBound: cfg?.redBound ?? null,
           spark: hideRupiah ? [] : valuesByMonth.map((v) => v[def.code]),
-          inputs: {
-            ...(hideRupiah ? Object.fromEntries(Object.entries(inputs).filter(([k]) => k !== "rincian_cabang")) : inputs),
-            ...(infoLines.length > 0 ? { info_lines: infoLines } : {}),
-          },
+          inputs: { ...inputs, ...(infoLines.length > 0 ? { info_lines: infoLines } : {}) },
         };
       });
 
@@ -477,6 +460,8 @@ export async function getSocialTargets(): Promise<ActionResult<{ month: string; 
         branchTarget.cake += Number(t.monthly_cake_target) || 0;
       }
     }
+    branchTarget.pos *= WINDOW_SCALE;
+    branchTarget.cake *= WINDOW_SCALE;
     const brands: SocialBrandCard[] = ((brandsRes.data ?? []) as any[]).map((b) => {
       const versions = cfgRows.filter((c) => c.brand_id === b.id).map(toVersion);
       const spec = BRAND_REVENUE[b.code];

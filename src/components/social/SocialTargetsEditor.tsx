@@ -11,7 +11,7 @@ import { saveSocialScorecardConfig, type BrandMetricView, type SocialBrandCard }
 const nf = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 const UNIT: Record<BrandMetricView["kind"], string> = { rupiah: "Rp", count: "", pct: "%" };
 /** Periode yang dinilai tiap target: laporan mingguan per 4 minggu; omset per bulan. */
-const PERIOD: Record<string, string> = { reach: "per 4 minggu", followers_growth: "per 4 minggu", engagement: "dari 4 minggu", omset: "per bulan" };
+const PERIOD: Record<string, string> = { reach: "per 4 minggu", followers_growth: "per 4 minggu", engagement: "dari 4 minggu", omset: "per 4 minggu" };
 
 /** Target bulanan + ambang hijau/kuning/merah per brand per metrik. Setiap perubahan = versi baru (wajib alasan). */
 export function SocialTargetsEditor({ brands, month }: { brands: SocialBrandCard[]; month: string }) {
@@ -19,7 +19,7 @@ export function SocialTargetsEditor({ brands, month }: { brands: SocialBrandCard
     <div className="space-y-5">
       <p className="text-[12.5px] text-muted-foreground">
         Status dinilai dari pencapaian terhadap target: hijau bila ≥ batas hijau, merah bila &lt; batas merah, di antaranya kuning. Target Reach dan Followers growth berlaku
-        PER 4 MINGGU (isi langsung angka 4 minggu); Omset per bulan. Target kosong = metrik tampil tanpa warna. Perubahan berlaku mulai bulan yang dipilih dan riwayat lama tetap tersimpan.
+        PER 4 MINGGU (isi langsung angka 4 minggu), termasuk Omset. Target kosong = metrik tampil tanpa warna. Perubahan berlaku mulai bulan yang dipilih dan riwayat lama tetap tersimpan.
       </p>
       {brands.map((b) => (
         <section key={b.brandId} className="rounded-2xl border-2 border-foreground bg-card p-3.5">
