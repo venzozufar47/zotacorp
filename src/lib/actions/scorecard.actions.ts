@@ -124,6 +124,8 @@ async function sumPaidPosTotal(
 const sumCakeRevenue = (branch: ScorecardBranch, from: string, to: string) => sumCakeRevenueShared(createAdminClient(), branch, from, to);
 
 const rupiah = (n: number) => `Rp${Math.round(n).toLocaleString("id-ID")}`;
+/** Rupiah ringkas untuk catatan: jutaan ditulis "Rp29,5 jt", di bawah sejuta tetap penuh. */
+const rupiahJt = (n: number) => (n >= 1_000_000 ? `Rp${(n / 1_000_000).toFixed(1).replace(".", ",")} jt` : rupiah(n));
 
 /**
  * Persen susut pada jendela [start, end]. `null` = tidak ada produksi tercatat di jendela itu —
@@ -270,8 +272,6 @@ export async function computeMetricsAsOf(
   const omzetPct = basis && basis > 0 ? (omzetActual / basis) * 100 : null;
   // Target ada tapi belum ada hari kerja berjalan (laju): belum bisa dinilai, bukan 0%.
   const omzetTooEarly = !progressMode && !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
-  const part = (actual: number, target: number | null | undefined) =>
-    target ? ` (${Math.round((actual / target) * 100)}% dari target bulan)` : "";
   const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
   const daysSinceEpoch =
     (new Date(asOf).getTime() - new Date(COMPLAINT_TRACKING_EPOCH).getTime()) / 86_400_000;
@@ -301,8 +301,9 @@ export async function computeMetricsAsOf(
       displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : omzetTooEarly ? "Belum ada hari kerja" : "Target belum diatur",
       band: omzetTooEarly ? "measuring" : omzetBand(omzetPct),
       note: opts
-        ? `POS ${rupiah(mtd.total)}${part(mtd.total, opts.posTarget)} + Custom Cake ${rupiah(cakeMtd)}${part(cakeMtd, opts.cakeTarget)}` +
-          (fullTarget ? `. Target bulan ${rupiah(fullTarget)}; acuan sampai hari ini ${rupiah(targetPace ?? 0)} (${workedDays} dari ${monthWorkDays} hari kerja)` : "")
+        ? fullTarget
+          ? `Terkumpul ${rupiahJt(omzetActual)} dari target ${rupiahJt(fullTarget)}. Hari ini idealnya sudah ${rupiahJt(targetPace ?? 0)}.`
+          : `POS ${rupiahJt(mtd.total)} + Custom Cake ${rupiahJt(cakeMtd)}`
         : undefined,
       ranges: omzetRanges(),
     },
@@ -313,7 +314,7 @@ export async function computeMetricsAsOf(
       displayValue: complaintsPer1000.toFixed(1),
       band: complaintsBand,
       rangesNote:
-        "Ambang belum ditentukan Owner (SOP: diisi setelah 30 hari pengukuran). Selama 30 hari pertama sejak 18 Okt 2026 angkanya otomatis dihitung hijau.",
+        "Ambang belum ditentukan owner",
     },
   ];
 }

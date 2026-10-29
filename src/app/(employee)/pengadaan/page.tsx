@@ -100,7 +100,7 @@ export default async function PengadaanPage({
         <>
           {!limited && <OpnameReminder brand={activeBrand} />}
           <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} />
-          {!limited && tab !== "bahan" && <PositionBar brand={activeBrand} />}
+          {!limited && tab === "catat" && <PositionBar brand={activeBrand} />}
           {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
           {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}

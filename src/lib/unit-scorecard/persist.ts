@@ -3,6 +3,7 @@ import type { Database } from "@/lib/supabase/types";
 import type { MetricStatus, UnitStatus, TrendTone, Direction } from "./engine";
 import { trendTone, prevMonthIso } from "./engine";
 import type { MetricChange, SnapRow } from "./changes";
+import { T12_CODES, t12For, type T12Result, type T12Snap } from "./t12m";
 import { loadConfig, type ComputeDeps, type PriorStatus, type ScConfig, type UnitMonthResult, type ScThreshold } from "./compute";
 
 type Sb = SupabaseClient<Database>;
@@ -189,6 +190,8 @@ export interface HomeMetricCell {
   delta: number | null;
   tone: TrendTone;
   spark: (number | null)[];
+  /** Angka 12 bulan terakhir (hanya margin four-wall, sewa, payback). undefined = metrik ini tak punya T12M; null = belum cukup periode. */
+  t12?: T12Result;
 }
 
 export interface HomeUnitCard {
@@ -241,7 +244,7 @@ function thresholdFor(thresholds: ScThreshold[], code: string, monthIso: string)
   return list.find((t) => t.effective_from <= monthIso) ?? list[list.length - 1] ?? null;
 }
 
-export function buildHome(cfg: ScConfig, rpc: HomeRpc): HomeData {
+export function buildHome(cfg: ScConfig, rpc: HomeRpc, t12Snaps: T12Snap[] = []): HomeData {
   const selectedMonth = rpc.selected?.month ?? null;
   const sparkMonths = [...new Set(rpc.snapshots.map((s) => s.month))].sort();
   const units: HomeUnitCard[] = [];
@@ -269,6 +272,7 @@ export function buildHome(cfg: ScConfig, rpc: HomeRpc): HomeData {
           delta,
           tone: trendTone(delta, d.direction),
           spark: spark.map((v) => (v == null ? null : Number(v))),
+          ...(T12_CODES.includes(d.code) ? { t12: t12For(t12Snaps, u.id, d.code, selectedMonth) } : {}),
         };
       });
       units.push({
@@ -304,10 +308,33 @@ export function buildHome(cfg: ScConfig, rpc: HomeRpc): HomeData {
   };
 }
 
+/** Snapshot versi terbaru per (bulan, unit, metrik) untuk 12 bulan yang berakhir di bulan terpilih, lengkap dengan rincian input. */
+async function loadT12Snaps(sb: Sb, monthIso: string): Promise<T12Snap[]> {
+  let start = monthIso;
+  for (let k = 0; k < 11; k++) start = prevMonthIso(start);
+  const { data, error } = await sb
+    .from("scorecard_snapshots" as never)
+    .select("unit_id, metric_code, status, inputs, version, accounting_periods!inner(month)")
+    .in("metric_code", T12_CODES)
+    .gte("accounting_periods.month", start)
+    .lte("accounting_periods.month", monthIso);
+  if (error) throw new Error(error.message);
+  const best = new Map<string, T12Snap & { version: number }>();
+  for (const r of (data ?? []) as unknown as { unit_id: string; metric_code: string; status: string; inputs: Record<string, unknown> | null; version: number; accounting_periods: { month: string } }[]) {
+    const month = r.accounting_periods.month;
+    const key = `${month}|${r.unit_id}|${r.metric_code}`;
+    const prev = best.get(key);
+    if (!prev || r.version > prev.version) best.set(key, { month, unit_id: r.unit_id, code: r.metric_code, status: r.status, inputs: r.inputs, version: r.version });
+  }
+  return [...best.values()];
+}
+
 export async function readHome(sb: Sb, cfg: ScConfig, monthIso: string | null): Promise<HomeData> {
   const { data, error } = await sb.rpc("scorecard_home_data" as never, { p_month: monthIso } as never);
   if (error) throw new Error(error.message);
-  return buildHome(cfg, data as unknown as HomeRpc);
+  const rpc = data as unknown as HomeRpc;
+  const selected = rpc.selected?.month ?? null;
+  return buildHome(cfg, rpc, selected ? await loadT12Snaps(sb, selected) : []);
 }
 
 export { loadConfig };

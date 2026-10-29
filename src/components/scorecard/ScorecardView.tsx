@@ -1,14 +1,33 @@
-import { AlertTriangle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, CheckCircle2, CircleDashed, XCircle, type LucideIcon } from "lucide-react";
 import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
 import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
 
-const BAND_META: Record<ScorecardBand, { label: string; dot: string; text: string }> = {
-  green: { label: "Hijau", dot: "bg-success", text: "text-success" },
-  yellow: { label: "Kuning", dot: "bg-warning", text: "text-warning" },
-  red: { label: "Merah", dot: "bg-destructive", text: "text-destructive" },
-  measuring: { label: "Diukur", dot: "bg-muted-foreground", text: "text-muted-foreground" },
-  unset: { label: "Belum diatur", dot: "bg-muted-foreground", text: "text-muted-foreground" },
+/**
+ * Ubin lampu lalu lintas dengan kedalaman: gradasi searah (gelap → terang) seperti banner sapaan, cincin tipis di tepi
+ * dalam, ikon status besar yang samar sebagai watermark, dan label status berikon (warna bukan satu-satunya penanda).
+ * Ukuran angka dibatasi supaya scorecard terlihat jelas tetapi tidak mengalahkan banner di atasnya.
+ */
+const BAND_META: Record<ScorecardBand, { label: string; Icon: LucideIcon; tile: string; chip: string }> = {
+  green: {
+    label: "Hijau",
+    Icon: CheckCircle2,
+    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--success)_58%,black)] to-[color-mix(in_srgb,var(--success)_80%,black)] text-white shadow-[0_8px_18px_-10px_color-mix(in_srgb,var(--success)_80%,black)]",
+    chip: "bg-white/20 text-white",
+  },
+  yellow: {
+    label: "Kuning",
+    Icon: AlertTriangle,
+    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--warning)_92%,white)] to-warning text-foreground shadow-[0_8px_18px_-10px_var(--warning)]",
+    chip: "bg-black/10 text-foreground",
+  },
+  red: {
+    label: "Merah",
+    Icon: XCircle,
+    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--destructive)_66%,black)] to-[color-mix(in_srgb,var(--destructive)_90%,black)] text-white shadow-[0_8px_18px_-10px_color-mix(in_srgb,var(--destructive)_85%,black)]",
+    chip: "bg-white/20 text-white",
+  },
+  measuring: { label: "Diukur", Icon: CircleDashed, tile: "bg-muted text-muted-foreground", chip: "bg-black/5 text-muted-foreground" },
+  unset: { label: "Belum diatur", Icon: CircleDashed, tile: "bg-muted text-muted-foreground", chip: "bg-black/5 text-muted-foreground" },
 };
 
 export function ScorecardView({
@@ -20,52 +39,63 @@ export function ScorecardView({
   settingsLinks?: Partial<Record<ScorecardMetric["key"], { href: string; label: string }>>;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
       {scorecard.twoWeeksRedLabels.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border-2 border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-destructive" />
-          <div>
-            <p className="font-semibold text-destructive">
-              Merah 2 minggu berturut-turut: {scorecard.twoWeeksRedLabels.join(", ")}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Bawa rencana perbaikan satu halaman ke rapat mingguan.
+        <div className="flex items-start gap-2 px-1">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-destructive">Merah 2 minggu berturut-turut</p>
+            <p className="text-[11.5px] leading-snug text-muted-foreground">
+              Bawa rencana perbaikan ke rapat harian/mingguan.
             </p>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {scorecard.metrics.map((m) => {
+      <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
+        {scorecard.metrics.map((m, i) => {
           const meta = BAND_META[m.band];
+          const Icon = meta.Icon;
+          // "Belum ada data" dan sejenisnya bukan angka: tampil lebih kecil supaya tidak meluap.
+          const isText = m.displayValue.length > 7;
           return (
-            <Card key={m.key} className="relative overflow-visible">
-              <CardHeader>
-                <CardTitle className="flex items-start justify-between gap-1 text-xs font-semibold text-muted-foreground">
-                  <span>{m.label}</span>
-                  <span className="-mr-1.5 -mt-1">
-                    <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} settings={settingsLinks?.[m.key]} />
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1">
-                <p className={`font-display text-2xl font-extrabold tabular-nums ${meta.text}`}>
-                  {m.displayValue}
-                </p>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold">
-                  <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
+            <div
+              key={m.key}
+              className={`animate-fade-up relative rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 has-[button[aria-expanded=true]]:z-30 ${meta.tile}`}
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              {/* Watermark dipotong di pembungkusnya sendiri; ubin tidak boleh overflow-hidden karena panduan ⓘ muncul di dalamnya. */}
+              <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+                <Icon size={64} strokeWidth={1.5} className="absolute -bottom-3 -right-3 opacity-[0.14]" />
+              </span>
+              <div className="relative flex items-start justify-between gap-1">
+                <span className="text-[11.5px] font-medium leading-snug">{m.label}</span>
+                <span className="-mr-2 -mt-1.5">
+                  <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} settings={settingsLinks?.[m.key]} onSolid />
                 </span>
-                {m.note && <p className="text-[10.5px] text-muted-foreground">{m.note}</p>}
-              </CardContent>
-            </Card>
+              </div>
+              <p className={`relative mt-1 font-display font-extrabold leading-tight tabular-nums ${isText ? "text-lg" : "text-[28px]"}`}>{m.displayValue}</p>
+              <span className={`relative mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}>
+                <Icon aria-hidden size={12} strokeWidth={2.5} />
+                {meta.label}
+              </span>
+            </div>
           );
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
-        Abu-abu (&quot;Diukur&quot; / &quot;Belum diatur&quot;) berarti datanya belum cukup — bukan nilai buruk.
-      </p>
-
+      {/* Rincian panjang per metrik ditaruh di luar ubin supaya semua ubin tetap sama tinggi dan ringkas. */}
+      {scorecard.metrics.some((m) => m.note) && (
+        <div className="space-y-0.5 px-1">
+          {scorecard.metrics
+            .filter((m) => m.note)
+            .map((m) => (
+              <p key={m.key} className="text-[11px] leading-snug text-muted-foreground">
+                <span className="font-semibold">{m.label}:</span> {m.note}
+              </p>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

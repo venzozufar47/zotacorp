@@ -51,8 +51,6 @@ import { SocialReportReminderCard } from "@/components/social/SocialReportRemind
 import { VerificationInbox } from "@/components/verification/VerificationInbox";
 import { TaskAssignmentCard } from "@/components/dashboard/TaskAssignmentCard";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
-import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
-import { listMyServiceLevelOutlets } from "@/lib/pos/service-level-access";
 import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
 import { getRevenueSummaryForHome } from "@/lib/actions/admin-home.actions";
 import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
@@ -70,14 +68,16 @@ import { BranchQueueCard } from "@/components/tickets/BranchQueueCard";
 import Link from "next/link";
 import { Brain, FileSignature, Ticket as TicketIcon, PackageSearch } from "lucide-react";
 import { isProcurementStaff } from "@/lib/procurement/access";
-import { getProcurementDashboardBadge } from "@/lib/actions/procurement.actions";
+import { getProcurementDashboardBadge,
+  type ProcurementBadgeItem, } from "@/lib/actions/procurement.actions";
 import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
 import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
 import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, FlaskConical } from "lucide-react";
+import { NoticeCard } from "@/components/dashboard/NoticeCard";
 import { ScorecardSection, ScorecardSectionSkeleton } from "@/components/scorecard/ScorecardSection";
-import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon } from "lucide-react";
+import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon, Lock } from "lucide-react";
 import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
 import { Wallet as BonusIcon } from "lucide-react";
 import { countPendingSopAcknowledgments } from "@/lib/actions/sop-documents.actions";
@@ -150,7 +150,6 @@ export default async function DashboardPage() {
     branchQueue,
     studioQueueCount,
     isHeadOfStudio,
-    serviceLevelOutlets,
     coachingNotes,
     cleaningRedoPhotos,
     ticketResolutionKpi,
@@ -198,7 +197,6 @@ export default async function DashboardPage() {
     getBranchQueue(),
     getStudioQueueCount(),
     isStudioHead(),
-    listMyServiceLevelOutlets(),
     listMyCoachingNotes(),
     getMyPendingRedoPhotos(),
     getStudioHeadRecentResolutionKpi(),
@@ -237,8 +235,11 @@ export default async function DashboardPage() {
   // Banner pengadaan — sengaja dihitung TERPISAH dan hanya untuk staf
   // pengadaan, supaya dashboard karyawan lain tidak ikut menanggung
   // biayanya (perhitungan ini menyapu seluruh bahan tiap unit bisnis).
-  let procurementBadge: { needBuy: number; staleDays: number | null } | null =
-    null;
+  let procurementBadge: {
+    needBuy: number;
+    staleDays: number | null;
+    items: ProcurementBadgeItem[];
+  } | null = null;
   if (await isProcurementStaff()) {
     const res = await getProcurementDashboardBadge();
     if (res.ok) procurementBadge = res.data ?? null;
@@ -288,6 +289,12 @@ export default async function DashboardPage() {
         />
       )}
 
+      {/* Scorecard cabang — hal yang paling penting dilihat tiap hari, jadi tepat di bawah sapaan (di atas semua kartu lain).
+          Dihitung di luar jalur kritis lewat Suspense; skeleton menjaga tinggi supaya halaman tidak melompat. */}
+      <Suspense fallback={<ScorecardSectionSkeleton />}>
+        <ScorecardSection />
+      </Suspense>
+
       <ProfileCompletionCard missingSections={missingSections} />
 
       {/* Pengingat opname harian — hanya muncul untuk petugas pengadaan cabang yang memakai ritme harian. */}
@@ -330,156 +337,113 @@ export default async function DashboardPage() {
       <CoachingNotesCard notes={coachingNotes} />
 
       {pendingContract && (
-        <Link
+        <NoticeCard
           href="/kontrak"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <FileSignature size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {pendingContract.isUpdate
-                ? "Kontrak kerja diperbarui — perlu tanda tangan ulang"
-                : "Kontrak kerja menunggu tanda tangan"}
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              {pendingContract.isUpdate
-                ? pendingContract.updateNote
-                  ? `Perubahan: ${pendingContract.updateNote} Ketuk untuk baca & tanda tangani ulang.`
-                  : "Ada perubahan pada kontrakmu. Ketuk untuk baca & tanda tangani ulang."
-                : "Tandatangani kontrakmu. Ketuk untuk membuka."}
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<FileSignature size={20} />}
+          title={pendingContract.isUpdate ? "Kontrak kerja diperbarui — perlu tanda tangan ulang" : "Kontrak kerja menunggu tanda tangan"}
+          body={
+            pendingContract.isUpdate
+              ? pendingContract.updateNote
+                ? `Perubahan: ${pendingContract.updateNote} Ketuk untuk baca & tanda tangani ulang.`
+                : "Ada perubahan pada kontrakmu. Ketuk untuk baca & tanda tangani ulang."
+              : "Tandatangani kontrakmu. Ketuk untuk membuka."
+          }
+        />
       )}
 
       {profile?.disc_test_required && (
-        <Link
+        <NoticeCard
           href="/disc"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <Brain size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              Kamu diminta mengambil Tes Kepribadian DISC
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              ±10 menit. Slip gaji terkunci sampai tes selesai — ketuk untuk mulai.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<Brain size={20} />}
+          title="Kamu diminta mengambil Tes Kepribadian DISC"
+          body="±10 menit. Slip gaji terkunci sampai tes selesai — ketuk untuk mulai."
+        />
       )}
 
       {isHeadOfStudio && studioQueueCount > 0 && (
-        <Link
+        <NoticeCard
           href="/tickets"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <TicketIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {studioQueueCount} tiket menunggu ditangani
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Tiket ditujukan kepadamu — ketuk untuk menindaklanjuti.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<TicketIcon size={20} />}
+          title={`${studioQueueCount} tiket menunggu ditangani`}
+          body="Tiket ditujukan kepadamu — ketuk untuk menindaklanjuti."
+        />
       )}
 
       {procurementBadge &&
         (procurementBadge.needBuy > 0 ||
-          (procurementBadge.staleDays ?? 0) > 14) && (
-          <Link
-            href="/pengadaan"
-            className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-          >
-            <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-              <PackageSearch size={18} />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block font-display font-bold text-sm">
-                {procurementBadge.needBuy > 0
-                  ? `${procurementBadge.needBuy} bahan perlu dibeli`
-                  : `Opname bahan sudah ${procurementBadge.staleDays} hari lalu`}
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                {procurementBadge.needBuy > 0 &&
-                (procurementBadge.staleDays ?? 0) > 14
-                  ? `Stok di bawah titik pesan — dan opname terakhir ${procurementBadge.staleDays} hari lalu.`
-                  : "Ketuk untuk melihat papan pantau pengadaan."}
-              </span>
-            </span>
-            <span className="text-sm font-bold shrink-0">→</span>
-          </Link>
-        )}
+          (procurementBadge.staleDays ?? 0) > 14) &&
+        (() => {
+          const { needBuy, staleDays, items } = procurementBadge;
+          const first = items[0];
+          const single = needBuy === 1 && first;
+          // Selalu ke papan Stok cabang bahan itu: di sana terlihat sisa stok, titik pesan, dan saran jumlah, lalu
+          // tombol "Catat belanja" per bahan membuka form dengan bahan terpilih. (Langsung ke form membuat petugas
+          // mendarat di halaman yang tampak generik: form baru muncul setelah memilih sumber uang.)
+          const href =
+            needBuy > 0 && first
+              ? `/pengadaan?tab=stok&bu=${encodeURIComponent(first.businessUnit)}`
+              : "/pengadaan/opname";
+          const stockText = (i: ProcurementBadgeItem) =>
+            i.status === "habis"
+              ? "stok habis"
+              : `sisa ±${(i.onHand ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })} ${i.usageUnit}`;
+          const names = items.slice(0, 3).map((i) => i.name).join(", ");
+          const more = needBuy - Math.min(items.length, 3);
+          return (
+            <NoticeCard
+              href={href}
+              tone="warn"
+              icon={<PackageSearch size={20} />}
+              title={
+                needBuy > 0
+                  ? single
+                    ? `${first.name} perlu dibeli`
+                    : `${needBuy} bahan perlu dibeli`
+                  : `Opname bahan sudah ${staleDays} hari lalu`
+              }
+              body={
+                (needBuy > 0
+                  ? single
+                    ? `${first.businessUnit.replace("Haengbocake ", "")} · ${stockText(first)} · ketuk untuk melihat stok & catat belanja.`
+                    : `${names}${more > 0 ? ` +${more} lainnya` : ""} · ketuk untuk melihat stok & catat belanja.`
+                  : "Ketuk untuk mulai opname.") +
+                (needBuy > 0 && (staleDays ?? 0) > 14 ? ` Opname terakhir ${staleDays} hari lalu.` : "")
+              }
+            />
+          );
+        })()}
 
       {FEATURES.izin && pendingLeaveApprovals > 0 && (
-        <Link
+        <NoticeCard
           href="/tim"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <CalendarClock size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {pendingLeaveApprovals} pengajuan izin menunggu persetujuanmu
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Kamu atasan langsung pemohon — ketuk untuk tinjau.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<CalendarClock size={20} />}
+          title={`${pendingLeaveApprovals} pengajuan izin menunggu persetujuanmu`}
+          body="Kamu atasan langsung pemohon — ketuk untuk tinjau."
+        />
       )}
 
       {myTicketsSummary.awaitingConfirmation > 0 && (
-        <Link
+        <NoticeCard
           href="/tickets"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-success/20 px-4 py-3 shadow-hard-sm hover:bg-success/30 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <TicketIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {myTicketsSummary.awaitingConfirmation} tiket menunggu konfirmasimu
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Sudah ditandai selesai — cek & konfirmasi, atau tandai belum beres.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="success"
+          icon={<TicketIcon size={20} />}
+          title={`${myTicketsSummary.awaitingConfirmation} tiket menunggu konfirmasimu`}
+          body="Sudah ditandai selesai — cek & konfirmasi, atau tandai belum beres."
+        />
       )}
 
       {myTicketsSummary.openCount > 0 && (
-        <Link
+        <NoticeCard
           href="/tickets"
-          className="flex items-center gap-3 rounded-2xl border-2 border-border bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-            <TicketIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {myTicketsSummary.openCount} tiket kamu sedang diproses
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Ketuk untuk lihat status & lampiran.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="neutral"
+          icon={<TicketIcon size={20} />}
+          title={`${myTicketsSummary.openCount} tiket kamu sedang diproses`}
+          body="Ketuk untuk lihat status & lampiran."
+        />
       )}
 
       {branchQueue.length > 0 && (
@@ -512,137 +476,74 @@ export default async function DashboardPage() {
       <CleaningChecklistCard initial={cleaningTasks} />
 
       {FEATURES.survei && !answeredMonthlyPulse && (
-        <Link
+        <NoticeCard
           href="/survei"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-primary/10 px-4 py-3 shadow-hard-sm hover:bg-primary/20 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <SurveyIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">Survei bulanan (anonim)</span>
-            <span className="block text-xs text-muted-foreground">
-              3 pertanyaan, ±30 detik. Jawabanmu tidak tersimpan dengan nama.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="info"
+          icon={<SurveyIcon size={20} />}
+          title="Survei bulanan (anonim)"
+          body="3 pertanyaan, ±30 detik. Jawabanmu tidak tersimpan dengan nama."
+        />
       )}
 
       {FEATURES.pengakuanSop && pendingSopCount > 0 && (
-        <Link
+        <NoticeCard
           href="/pengakuan-sop"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <SopIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {pendingSopCount} SOP belum kamu akui
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Baca dan konfirmasi sudah memahami.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<SopIcon size={20} />}
+          title={`${pendingSopCount} SOP belum kamu akui`}
+          body="Baca dan konfirmasi sudah memahami."
+        />
       )}
 
       {FEATURES.pengaduan && (
-      <Link
+      <NoticeCard
         href="/tim?bagian=pengaduan"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-      >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <ShieldQuestion size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Pengaduan</span>
-          <span className="block text-xs text-muted-foreground">
-            Lapor masalah — boleh tanpa nama, dijaga kerahasiaannya.
+        icon={<ShieldQuestion size={20} />}
+        title="Pengaduan"
+        badge={
+          <span className="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-semibold">
+            <Lock size={10} aria-hidden /> Boleh anonim
           </span>
-        </span>
-        <span className="text-sm font-bold shrink-0">→</span>
-      </Link>
+        }
+        body="Lapor masalah — dijaga kerahasiaannya."
+      />
       )}
 
       {FEATURES.persetujuan && (
-      <Link
+      <NoticeCard
         href="/persetujuan"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-      >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <Inbox size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Persetujuan ke Owner</span>
-          <span className="block text-xs text-muted-foreground">
-            Ajukan usulan atau lihat status permintaanmu.
-          </span>
-        </span>
-        <span className="text-sm font-bold shrink-0">→</span>
-      </Link>
+        icon={<Inbox size={20} />}
+        title="Persetujuan ke Owner"
+        body="Ajukan usulan atau lihat status permintaanmu."
+      />
       )}
 
       {FEATURES.bonus && (
-      <Link
+      <NoticeCard
         href="/bonus"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-      >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <BonusIcon size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Bonus tim</span>
-          <span className="block text-xs text-muted-foreground">
-            Lihat rincian bonusmu dan cara hitungnya.
-          </span>
-        </span>
-        <span className="text-sm font-bold shrink-0">→</span>
-      </Link>
+        icon={<BonusIcon size={20} />}
+        title="Bonus tim"
+        body="Lihat rincian bonusmu dan cara hitungnya."
+      />
       )}
 
       {FEATURES.risetProduk && canFileComplaintFlag && (
-        <Link
+        <NoticeCard
           href="/riset-produk"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-            <FlaskConical size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">Riset produk</span>
-            <span className="block text-xs text-muted-foreground">
-              Usulkan ide, catat percobaan, kelola tester dan kartu produk.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          icon={<FlaskConical size={20} />}
+          title="Riset produk"
+          body="Usulkan ide, catat percobaan, kelola tester dan kartu produk."
+        />
       )}
 
       {FEATURES.keluhan && canFileComplaintFlag && (
-        <Link
+        <NoticeCard
           href="/keluhan"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-            <MessageSquareWarning size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">Keluhan & insiden pelanggan</span>
-            <span className="block text-xs text-muted-foreground">
-              Catat keluhan baru atau tutup yang masih terbuka.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          icon={<MessageSquareWarning size={20} />}
+          title="Keluhan & insiden pelanggan"
+          body="Catat keluhan baru atau tutup yang masih terbuka."
+        />
       )}
-
-      {/* Tanggung jawab berjalan, bukan aksi hari ini — jadi masuk
-          kelompok panel substantif, bukan tumpukan banner di atas.
-          Render sendiri nol kalau user bukan penanggung jawab. */}
-      <ServiceLevelPanel outlets={serviceLevelOutlets} />
 
       {/* Kartu Omzet admin, ditunjukkan ke karyawan yang di-assign admin
           (revenue_dashboard_viewers) — data sama, reuse komponen admin
@@ -699,11 +600,6 @@ export default async function DashboardPage() {
           {FEATURES.izin && <LeaveRequestDialog />}
         </div>
       </section>
-
-      {/* Scorecard cabang — selalu tampil, sesuai cabang masing-masing; dihitung di luar jalur kritis. */}
-      <Suspense fallback={<ScorecardSectionSkeleton />}>
-        <ScorecardSection />
-      </Suspense>
 
       <FloorTodayCard people={floorToday} />
     </div>

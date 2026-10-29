@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyCategories, usesPosRegime, rentLooksMissing } from "./finance.ts";
+import { applyRentAccrual, classifyCategories, usesPosRegime, rentLooksMissing } from "./finance.ts";
 
 const op = (category: string, credit: number, debit: number) => ({ category, credit, debit, kind: "operating" as const });
 
@@ -57,4 +57,31 @@ test("rezim pencatatan: Mei 2026 ke atas = POS + Custom Cake", () => {
 test("sewa nol dianggap belum tercatat", () => {
   assert.equal(rentLooksMissing(0), true);
   assert.equal(rentLooksMissing(1300000), false);
+});
+
+test("sewa tahunan dibagi rata per bulan pada masa sewa", () => {
+  const jan = classifyCategories([op("Rent", 0, 10_000_000)]);
+  const a = applyRentAccrual(jan, "Tembalang", "2026-01");
+  assert.equal(a.rent, 2_083_333);
+  assert.equal(a.rentCash, 10_000_000);
+  const feb = applyRentAccrual(classifyCategories([]), "Tembalang", "2026-02");
+  assert.equal(feb.rent, 2_083_333);
+  assert.equal(rentLooksMissing(feb.rent), false);
+});
+
+test("sewa tahunan tidak berlaku di luar masa sewa atau cabang lain", () => {
+  const f = classifyCategories([op("Rent", 0, 5_000_000)]);
+  assert.equal(applyRentAccrual(f, "Tembalang", "2027-01"), f);
+  assert.equal(applyRentAccrual(f, "Tlogosari", "2026-03"), f);
+});
+
+test("sewa tambahan Pare: bayar 10 jt di Okt dikeluarkan, jatah 15 bulan ditambahkan di samping sewa bulanan", () => {
+  const okt = applyRentAccrual(classifyCategories([op("Rent", 0, 11_300_000)]), "Pare", "2026-10");
+  assert.equal(okt.rent, 1_300_000 + 666_667);
+  assert.equal(okt.rentCash, 11_300_000);
+  const nov = applyRentAccrual(classifyCategories([op("Rent", 0, 1_300_000)]), "Pare", "2026-11");
+  assert.equal(nov.rent, 1_300_000 + 666_667);
+  const sep = classifyCategories([op("Rent", 0, 1_300_000)]);
+  assert.equal(applyRentAccrual(sep, "Pare", "2026-09"), sep);
+  assert.equal(applyRentAccrual(sep, "Pare", "2028-01"), sep);
 });

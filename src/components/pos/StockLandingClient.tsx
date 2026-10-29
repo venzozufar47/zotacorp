@@ -20,10 +20,11 @@ import {
 } from "@/lib/actions/pos-stock.actions";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { StockMovementDialog } from "./StockMovementDialog";
-import { StockReadinessView } from "./StockReadinessView";
+import { StockTrendView } from "./StockTrendView";
+import { KitchenCapacityView } from "./KitchenCapacityView";
 import { WITHDRAWAL_REASON_META } from "@/lib/pos/withdrawal-reasons";
 
-type Tab = "on-hand" | "produksi" | "penarikan" | "opname" | "pantauan";
+type Tab = "on-hand" | "produksi" | "penarikan" | "opname" | "dapur" | "pantauan";
 
 interface Props {
   bankAccountId: string;
@@ -47,6 +48,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "produksi", label: "Produksi" },
   { id: "penarikan", label: "Penarikan" },
   { id: "opname", label: "Opname" },
+  { id: "dapur", label: "Dapur" },
   { id: "pantauan", label: "Pantauan" },
 ];
 
@@ -118,13 +120,14 @@ export function StockLandingClient({
         />
       </div>
 
-      <div className="flex gap-1 rounded-2xl border-2 border-foreground bg-card p-1 shadow-[2px_2px_0_0_var(--foreground)]">
+      {/* Enam tab tak muat di layar HP: bisa digeser menyamping, tiap tab tak menciut. */}
+      <div className="flex gap-1 overflow-x-auto rounded-2xl border-2 border-foreground bg-card p-1 shadow-[2px_2px_0_0_var(--foreground)]">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`flex-1 rounded-xl px-2 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
+            className={`flex-1 shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
               tab === t.id
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -159,8 +162,10 @@ export function StockLandingClient({
         <OpnamePanel rows={opnames} basePath={basePath} allowNew={!shiftMode} />
       )}
 
+      {tab === "dapur" && <KitchenCapacityView bankAccountId={bankAccountId} />}
+
       {tab === "pantauan" && (
-        <StockReadinessView bankAccountId={bankAccountId} />
+        <StockTrendView bankAccountId={bankAccountId} />
       )}
 
       {dialog !== null && (

@@ -46,7 +46,7 @@ export function CoachingNotesCard({ notes }: { notes: MyCoachingNote[] }) {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+    <section className="rounded-2xl border-2 border-foreground bg-card p-4 space-y-3 shadow-hard-sm">
       <div className="flex items-center gap-2">
         <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
           <MessageSquareText size={15} />
@@ -77,9 +77,9 @@ function NoteItem({
   return (
     <li
       className={
-        "rounded-xl border px-3 py-2.5 space-y-2 " +
+        "rounded-xl border px-3.5 py-3 space-y-2 " +
         (isSanction
-          ? "border-destructive/50 bg-destructive/5"
+          ? "border-destructive/50 border-l-4 border-l-destructive bg-destructive/5"
           : seen
             ? "border-border bg-muted/30"
             : "border-primary/40 bg-primary/5")
@@ -96,35 +96,37 @@ function NoteItem({
           {SP_LEVEL_LABEL[n.spLevel]}
         </span>
       )}
-      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">{n.body}</p>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{n.body}</p>
       {n.sopReference && <p className="text-[11px] text-muted-foreground">Rujukan: {n.sopReference}</p>}
       {n.validUntil && (
         <p className="text-[11px] text-muted-foreground">Berlaku sampai {formatDateID(n.validUntil)}</p>
       )}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted-foreground">
-        <span>{formatDateID(n.createdAt)}</span>
-        {n.authorName && <span>· {n.authorName}</span>}
+      <div className="space-y-0.5 text-[11px] text-muted-foreground">
+        <p>
+          {formatDateID(n.createdAt)}
+          {n.authorName && <> · {n.authorName}</>}
+        </p>
         {n.periodFrom && n.periodTo && (
-          <span>
-            · periode {formatDateID(n.periodFrom)}–{formatDateID(n.periodTo)}
-          </span>
-        )}
-        {!seen ? (
-          <button
-            type="button"
-            onClick={() => onAck(n.id)}
-            disabled={pending}
-            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold text-foreground hover:bg-muted disabled:opacity-50"
-          >
-            {pending ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-            Sudah saya baca
-          </button>
-        ) : (
-          <span className="ml-auto inline-flex items-center gap-1">
-            <Check size={11} /> sudah dibaca
-          </span>
+          <p>
+            Periode {formatDateID(n.periodFrom)} – {formatDateID(n.periodTo)}
+          </p>
         )}
       </div>
+      {!seen ? (
+        <button
+          type="button"
+          onClick={() => onAck(n.id)}
+          disabled={pending}
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 text-xs font-bold text-foreground transition hover:bg-muted active:scale-[0.99] disabled:opacity-50 sm:w-auto"
+        >
+          {pending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+          Sudah saya baca
+        </button>
+      ) : (
+        <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+          <Check size={12} /> Sudah dibaca
+        </p>
+      )}
 
       {isSanction && <SanctionResponse note={n} />}
     </li>
@@ -176,25 +178,23 @@ function SanctionResponse({ note }: { note: CoachingNoteRow }) {
         value={response}
         onChange={(e) => setResponse(e.target.value)}
         placeholder="Tulis pembelaan atau klarifikasi di sini"
-        className="min-h-16 text-[12px]"
+        className="min-h-20 text-[13px]"
       />
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <Button
-          size="xs"
-          className="flex-1"
+          className="h-10 w-full sm:flex-1"
           loading={busy === "menerima"}
           onClick={() => submit("menerima")}
         >
           Menerima
         </Button>
         <Button
-          size="xs"
           variant="outline"
-          className="flex-1"
+          className="h-10 w-full sm:flex-1"
           loading={busy === "menerima_keberatan"}
           onClick={() => submit("menerima_keberatan")}
         >
-          Menerima dengan Keberatan
+          Menerima dengan keberatan
         </Button>
       </div>
     </div>

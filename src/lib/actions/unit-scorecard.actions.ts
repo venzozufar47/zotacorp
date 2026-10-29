@@ -8,6 +8,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { loadConfig, type ScConfig } from "@/lib/unit-scorecard/compute";
 import { getPeriod, latestRunVersion, monthLabel, readHome, type HomeData } from "@/lib/unit-scorecard/persist";
 import { recentEndedMonths, refreshScorecard } from "@/lib/unit-scorecard/refresh";
+import { syncGoogleRatings, type GoogleRatingSyncResult } from "@/lib/unit-scorecard/google-rating";
 
 const CONFIG_TAG = "unit-scorecard-config";
 const expireNow = { expire: 0 } as const;
@@ -179,6 +180,30 @@ export async function refreshScorecardNow(monthIso: string): Promise<ActionResul
     const [r] = await refreshScorecard(createAdminClient(), yeoboAdminClient(), [monthIso], gate.userId, "Manual (hitung ulang sekarang)");
     revalidateTag(CONFIG_TAG, expireNow);
     return { ok: true, data: { created: r.created, version: r.version, changes: r.changes, warnings: r.warnings } };
+  } catch (e) {
+    return fail(errMsg(e));
+  }
+}
+
+/**
+ * Ambil rating Google (Places API) sekarang untuk cabang Yeobo dan simpan sebagai rating bulan itu, lalu hitung ulang
+ * bulan tersebut. Nilai yang sudah ada tidak ditimpa. Butuh GOOGLE_PLACES_API_KEY di environment.
+ */
+export async function fetchGoogleRatingsNow(monthIso: string): Promise<ActionResult<GoogleRatingSyncResult[]>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return fail(gate.error);
+  if (!isMonthIso(monthIso)) return fail("Bulan tidak valid");
+  if (monthIso >= `${jakartaDateString(new Date()).slice(0, 7)}-01`) return fail("Pilih bulan yang sudah berakhir.");
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key) return fail("GOOGLE_PLACES_API_KEY belum terpasang di environment proyek ini.");
+  try {
+    const sb = createAdminClient();
+    const results = await syncGoogleRatings(sb, monthIso, key);
+    if (results.some((r) => r.status === "saved")) {
+      await refreshScorecard(sb, yeoboAdminClient(), [monthIso], gate.userId, "Manual (rating Google)");
+      revalidateTag(CONFIG_TAG, expireNow);
+    }
+    return { ok: true, data: results };
   } catch (e) {
     return fail(errMsg(e));
   }

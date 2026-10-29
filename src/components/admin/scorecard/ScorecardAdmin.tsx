@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  fetchGoogleRatingsNow,
   refreshScorecardNow,
   saveManualRating,
   saveThreshold,
@@ -32,6 +33,7 @@ const btnPrimary = "h-9 rounded-lg border-2 border-foreground bg-primary px-3 te
 function StatusPanel({ items, onChanged }: { items: DataStatusItem[]; onChanged: () => void }) {
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
 
   function refresh(month: string, label: string) {
     setBusy(month);
@@ -44,8 +46,34 @@ function StatusPanel({ items, onChanged }: { items: DataStatusItem[]; onChanged:
     });
   }
 
+  // Satu bulan per panggilan, berurutan: tiap panggilan tetap pendek dan satu bulan gagal tak menghentikan yang lain.
+  function refreshAll() {
+    start(async () => {
+      let created = 0;
+      const failed: string[] = [];
+      for (let i = 0; i < items.length; i++) {
+        setBusy(items[i].month);
+        setProgress(`${i + 1}/${items.length}`);
+        const r = await refreshScorecardNow(items[i].month);
+        if (!r.ok) failed.push(`${items[i].label} (${r.error})`);
+        else if (r.data?.created) created += 1;
+      }
+      setBusy(null);
+      setProgress(null);
+      const msg = `Semua bulan dihitung ulang: ${created} bulan berubah${failed.length ? `. Gagal: ${failed.join("; ")}` : ""}`;
+      if (failed.length) toast.error(msg);
+      else toast.success(msg);
+      onChanged();
+    });
+  }
+
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <button type="button" onClick={refreshAll} disabled={pending || items.length === 0} className={btnPrimary}>
+          {progress ? `Menghitung ${progress}…` : "Hitung ulang semuanya"}
+        </button>
+      </div>
       <p className="text-[12.5px] text-muted-foreground">
         Scorecard dihitung ulang otomatis tiap malam (sekitar 02.30 WIB) untuk 3 bulan terakhir yang sudah berakhir, jadi transaksi yang terlambat dicatat ikut terhitung. Versi baru hanya dibuat bila ada angka yang berubah, dan versi lama tetap tersimpan. Tidak perlu menutup atau membuka buku.
       </p>
@@ -287,8 +315,25 @@ function RatingPanel({ data, months }: { data: ThresholdAdminData; months: DataS
     });
   }
 
+  function fetchFromGoogle() {
+    start(async () => {
+      const r = await fetchGoogleRatingsNow(month);
+      if (!r.ok) return void toast.error(r.error);
+      const res = r.data ?? [];
+      const name = (code: string) => studios.find((u) => u.code === code)?.name ?? code;
+      const line = res.map((x) => `${name(x.unit)}: ${x.status === "saved" ? x.value : x.status === "kept" ? "sudah ada (tidak ditimpa)" : `gagal (${x.error})`}`).join(" · ");
+      if (res.some((x) => x.status === "failed")) toast.error(line);
+      else toast.success(line);
+    });
+  }
+
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <button type="button" onClick={fetchFromGoogle} disabled={pending || !month} className={btnPrimary}>
+          {pending ? "Mengambil…" : "Ambil rating Google sekarang"}
+        </button>
+      </div>
       <p className="text-[12.5px] text-muted-foreground">Rata-rata rating Google bulan itu, diisi manual (skala 1,0–5,0). Masuk ke scorecard pada hitung ulang malam berikutnya, atau langsung lewat tombol Hitung ulang sekarang.</p>
       <label className="flex items-center gap-2 text-[12.5px] font-semibold">
         Bulan
