@@ -26,7 +26,7 @@ export interface SocialMetricDef {
 export const SOCIAL_METRICS: SocialMetricDef[] = [
   { code: "reach", label: "Reach (viewers)", kind: "count", note: "Jumlah viewers dari laporan mingguan, semua akun Instagram & TikTok brand ini." },
   { code: "omset", label: "Omset", kind: "rupiah", note: "Total penjualan brand pada bulan itu (cabang yang sesuai)." },
-  { code: "followers_growth", label: "Pertumbuhan followers", kind: "pct", note: "Followers akhir bulan dibanding awal bulan, semua akun brand (dari laporan mingguan)." },
+  { code: "followers_growth", label: "Followers growth", kind: "pct", note: "Followers akhir bulan dibanding awal bulan, semua akun brand (dari laporan mingguan)." },
   { code: "engagement", label: "Engagement rate", kind: "pct", note: "Interaksi (like + komentar + share + simpan) ÷ views dari laporan mingguan." },
 ];
 
