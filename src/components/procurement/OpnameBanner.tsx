@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, ClipboardCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCheck, ListChecks } from "lucide-react";
 import type { CountPlan } from "@/lib/procurement/count-plan";
 import { cn } from "@/lib/utils";
 
@@ -23,23 +23,36 @@ export function OpnameBanner({ plan, brand }: { plan: CountPlan; brand: string }
     );
   }
   const started = plan.doneCount > 0;
+  // Dua cabang bisa tampil berdampingan: label cabang membedakan keduanya.
+  const shortBrand = brand.replace(/^Haengbocake\s+/i, "");
+  const pct = Math.round((plan.doneCount / plan.total) * 100);
   return (
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-3 rounded-2xl border-2 px-3.5 py-3 shadow-hard-sm transition hover:-translate-y-0.5",
-        "border-foreground bg-warning/25"
+        "group flex items-center gap-3 rounded-2xl border-2 border-foreground px-3.5 py-3 shadow-hard-sm transition duration-200",
+        "bg-gradient-to-br from-warning/40 via-warning/20 to-warning/10 hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
       )}
     >
-      <ClipboardCheck size={22} className="shrink-0" />
+      <span className="grid size-11 shrink-0 place-items-center rounded-xl border-2 border-foreground bg-warning">
+        <ClipboardCheck size={22} aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
+        <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Opname · {shortBrand}</p>
         <p className="text-sm font-bold leading-tight">{started ? "Lanjutkan opname hari ini" : "Opname hari ini belum dilakukan"}</p>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          {started ? `${plan.doneCount}/${plan.total} bahan sudah dihitung · ` : `${plan.total} bahan · `}±{plan.minutesLeft} menit lagi
+        {started && (
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-valuemin={0} aria-valuemax={plan.total} aria-valuenow={plan.doneCount}>
+            <div className="h-full rounded-full bg-foreground transition-[width] duration-300" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        <p className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground">
+          <ListChecks size={12} aria-hidden />
+          {started ? `${plan.doneCount}/${plan.total} bahan` : `${plan.total} bahan`}
         </p>
       </div>
-      <span className="shrink-0 rounded-full border-2 border-foreground bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border-2 border-foreground bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition group-hover:gap-1.5">
         {started ? "Lanjutkan" : "Mulai"}
+        <ArrowRight size={13} aria-hidden />
       </span>
     </Link>
   );

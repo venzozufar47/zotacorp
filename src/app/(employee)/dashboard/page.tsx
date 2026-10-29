@@ -76,7 +76,7 @@ import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, FlaskConical } from "lucide-react";
 import { ScorecardSection, ScorecardSectionSkeleton } from "@/components/scorecard/ScorecardSection";
-import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon } from "lucide-react";
+import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon, Lock, ArrowRight } from "lucide-react";
 import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
 import { Wallet as BonusIcon } from "lucide-react";
 import { countPendingSopAcknowledgments } from "@/lib/actions/sop-documents.actions";
@@ -581,18 +581,25 @@ export default async function DashboardPage() {
       {FEATURES.pengaduan && (
       <Link
         href="/tim?bagian=pengaduan"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
+        className="group flex items-center gap-3 rounded-2xl border-2 border-foreground bg-gradient-to-br from-accent/70 to-card px-4 py-3 shadow-hard-sm transition duration-200 hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
       >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <ShieldQuestion size={18} />
+        <span className="grid place-items-center size-11 rounded-xl border-2 border-foreground bg-card shrink-0">
+          <ShieldQuestion size={20} aria-hidden />
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Pengaduan</span>
+          <span className="flex items-center gap-2">
+            <span className="font-display font-bold text-sm">Pengaduan</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-semibold">
+              <Lock size={10} aria-hidden /> Boleh anonim
+            </span>
+          </span>
           <span className="block text-xs text-muted-foreground">
-            Lapor masalah — boleh tanpa nama, dijaga kerahasiaannya.
+            Lapor masalah — dijaga kerahasiaannya.
           </span>
         </span>
-        <span className="text-sm font-bold shrink-0">→</span>
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-background transition group-hover:translate-x-0.5">
+          <ArrowRight size={16} aria-hidden />
+        </span>
       </Link>
       )}
 
