@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
-import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import {
   getEmployerSignatureStatus,
   listContractTemplates,
@@ -25,12 +24,11 @@ export default async function AdminEmploymentContractsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [templates, contracts, employerSignatures, businessUnits, { data: empRaw }] =
+  const [templates, contracts, employerSignatures, { data: empRaw }] =
     await Promise.all([
       listContractTemplates(),
       listEmploymentContracts(),
       getEmployerSignatureStatus(),
-      listBusinessUnits(),
       supabase
         .from("profiles")
         .select("id, full_name, business_unit, role, is_active")
@@ -51,11 +49,16 @@ export default async function AdminEmploymentContractsPage() {
     business_unit: e.business_unit,
   }));
 
+  // Hanya unit yang relevan untuk kontrak: punya karyawan aktif, sudah punya
+  // template, atau sudah pernah menerbitkan kontrak. Tabel business_units juga
+  // memuat entri modul lain (mis. "Haengbocake Pare/Semarang" untuk costing
+  // dan pengadaan) yang tidak punya karyawan; memilihnya hanya membingungkan.
   const buNames = Array.from(
     new Set([
-      ...businessUnits.map((b) => b.name),
-      ...employees.map((e) => e.business_unit).filter((v): v is string => !!v),
-    ])
+      ...employees.map((e) => e.business_unit),
+      ...templates.map((t) => t.business_unit),
+      ...contracts.map((c) => c.business_unit),
+    ].filter((v): v is string => !!v))
   ).sort();
 
   return (
