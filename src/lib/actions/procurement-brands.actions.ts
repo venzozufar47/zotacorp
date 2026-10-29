@@ -347,6 +347,39 @@ export async function setMaterialHalal(input: { materialId: string; halalKind?: 
   return { ok: true };
 }
 
+export interface BrandSummary {
+  currentBrand: string | null;
+  brandCount: number;
+  halalKind: HalalKind | null;
+  inHalalList: boolean;
+}
+
+/** Ringkasan merek per bahan satu cabang (untuk tab Stok): merek yang sedang dipakai dan jumlah merek aktif. */
+export async function getBrandSummaries(businessUnit: string): Promise<ActionResult<Record<string, BrandSummary>>> {
+  const gate = await requireProcurementForBu(businessUnit);
+  if (!gate.ok) return fail(gate.error);
+  const admin = createAdminClient();
+  const [{ data: mats }, { data: brands }, { data: usage }] = await Promise.all([
+    admin.from("costing_materials" as never).select("id, halal_kind, in_halal_list").eq("business_unit", businessUnit),
+    admin.from("costing_material_brands" as never).select("id, material_id, name").eq("business_unit", businessUnit).eq("is_active", true),
+    admin.from("costing_material_brand_usage" as never).select("material_id, brand_id").eq("business_unit", businessUnit).is("ended_on", null),
+  ]);
+  const nameById = new Map(((brands ?? []) as { id: string; name: string }[]).map((b) => [b.id, b.name]));
+  const count = new Map<string, number>();
+  for (const b of (brands ?? []) as { material_id: string }[]) count.set(b.material_id, (count.get(b.material_id) ?? 0) + 1);
+  const cur = new Map(((usage ?? []) as { material_id: string; brand_id: string }[]).map((u) => [u.material_id, u.brand_id]));
+  const out: Record<string, BrandSummary> = {};
+  for (const m of (mats ?? []) as { id: string; halal_kind: HalalKind | null; in_halal_list: boolean }[]) {
+    out[m.id] = {
+      currentBrand: nameById.get(cur.get(m.id) ?? "") ?? null,
+      brandCount: count.get(m.id) ?? 0,
+      halalKind: m.halal_kind ?? null,
+      inHalalList: m.in_halal_list !== false,
+    };
+  }
+  return { ok: true, data: out };
+}
+
 export interface BrandQueueItem {
   materialId: string;
   materialName: string;

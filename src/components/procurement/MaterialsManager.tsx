@@ -16,6 +16,7 @@ import {
 } from "@/lib/actions/procurement-materials.actions";
 import type { BrandQueueItem } from "@/lib/actions/procurement-brands.actions";
 import { BrandPanel, type BrandPanelMaterial } from "./BrandPanel";
+import { HalalExport } from "./HalalExport";
 
 const USAGE_UNITS = ["gram", "ml", "pcs", "meter"] as const;
 
@@ -167,6 +168,8 @@ export function MaterialsManager({
           <Plus size={16} /> Baru
         </button>
       </div>
+
+      <HalalExport businessUnit={businessUnit} />
 
       {queueTotal > 0 && (
         <section className="space-y-1.5 rounded-2xl border border-warning/50 bg-warning/10 p-3">

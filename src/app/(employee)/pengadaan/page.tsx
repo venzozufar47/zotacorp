@@ -18,7 +18,7 @@ import {
   listPurchases,
 } from "@/lib/actions/procurement-purchases.actions";
 import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions";
-import { listBrandsNeedingInfo } from "@/lib/actions/procurement-brands.actions";
+import { getBrandSummaries, listBrandsNeedingInfo } from "@/lib/actions/procurement-brands.actions";
 import { getCashPosition } from "@/lib/actions/procurement-wallet.actions";
 import { CashPositionCard } from "@/components/procurement/CashPositionCard";
 import { getShopeeWallet } from "@/lib/actions/procurement-shopee.actions";
@@ -171,7 +171,7 @@ async function BahanTab({ brand }: { brand: string }) {
 }
 
 async function StokTab({ brand, brands }: { brand: string; brands: string[] }) {
-  const [boardRes, goodsRes] = await Promise.all([listProcurementBoard(brand), listGoodsIn(brand, 20)]);
+  const [boardRes, goodsRes, brandRes] = await Promise.all([listProcurementBoard(brand), listGoodsIn(brand, 20), getBrandSummaries(brand)]);
   return (
     <ProcurementBoard
       brands={brands}
@@ -179,6 +179,7 @@ async function StokTab({ brand, brands }: { brand: string; brands: string[] }) {
       basePath="/pengadaan?tab=stok"
       rows={boardRes.ok ? (boardRes.data ?? []) : []}
       goodsIn={goodsRes.ok ? (goodsRes.data ?? []) : []}
+      brandInfo={brandRes.ok ? brandRes.data : undefined}
     />
   );
 }

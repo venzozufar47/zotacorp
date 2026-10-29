@@ -43,6 +43,8 @@ import {
   eoqErrorNote,
 } from "./status";
 import { GoodsInDialog } from "./GoodsInDialog";
+import { BrandPanel, type BrandPanelMaterial } from "./BrandPanel";
+import type { BrandSummary } from "@/lib/actions/procurement-brands.actions";
 
 /** Angka kuantitas — satuan pakai bisa pecahan (gram/ml). */
 function fmtQty(n: number | null | undefined, digits = 1): string {
@@ -56,11 +58,14 @@ export function ProcurementBoard({
   rows,
   goodsIn,
   basePath = "/pengadaan",
+  brandInfo,
 }: {
   brands: string[];
   activeBrand: string | null;
   rows: ProcurementRow[];
   goodsIn: GoodsInRow[];
+  /** Merek per bahan (hanya halaman staf); tanpa ini bagian merek tidak ditampilkan. */
+  brandInfo?: Record<string, BrandSummary>;
   /** Rute papan ini — beda untuk staf (/pengadaan) vs admin
    *  (/admin/costing/pengadaan) supaya ganti brand tidak melempar admin
    *  keluar dari shell-nya. */
@@ -72,6 +77,7 @@ export function ProcurementBoard({
   const [statusFilter, setStatusFilter] = useState<ProcurementStatus | "">("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [goodsInFor, setGoodsInFor] = useState<ProcurementRow | null>(null);
+  const [brandFor, setBrandFor] = useState<BrandPanelMaterial | null>(null);
 
   function selectBrand(bu: string) {
     rememberBrand(bu);
@@ -272,6 +278,7 @@ export function ProcurementBoard({
                     <div className="text-[11px] text-muted-foreground">
                       {r.material.category ?? "tanpa kategori"} ·{" "}
                       {fmtRpPrecise(m.unitCost)}/{r.material.usage_unit}
+                      {brandInfo?.[r.material.id]?.currentBrand ? ` · Dipakai: ${brandInfo[r.material.id].currentBrand}` : ""}
                     </div>
                   </button>
 
@@ -348,6 +355,24 @@ export function ProcurementBoard({
                     >
                       tanpa nota
                     </button>
+                    {brandInfo?.[r.material.id] && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBrandFor({
+                            id: r.material.id,
+                            name: r.material.name,
+                            category: r.material.category,
+                            halalKind: brandInfo[r.material.id].halalKind,
+                            inHalalList: brandInfo[r.material.id].inHalalList,
+                          })
+                        }
+                        title="Merek yang dibeli & sedang dipakai untuk bahan ini"
+                        className="inline-flex items-center h-8 rounded-lg px-1.5 text-[10.5px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        {brandInfo[r.material.id].brandCount > 0 ? "ganti merek" : "merek"}
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -511,6 +536,8 @@ export function ProcurementBoard({
           </ul>
         </div>
       )}
+
+      {brandFor && <BrandPanel material={brandFor} onClose={() => setBrandFor(null)} />}
 
       {goodsInFor && (
         <GoodsInDialog
