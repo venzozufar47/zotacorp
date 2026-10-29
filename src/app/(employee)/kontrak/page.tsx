@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import {
   getMyContract,
@@ -20,6 +22,14 @@ export default async function EmployeeContractPage() {
 
   return (
     <div className="space-y-5 animate-fade-up">
+      {/* Halaman ini tidak ada di navigasi bawah (dibuka dari kartu dashboard),
+          jadi sediakan jalan kembali yang jelas. */}
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-foreground bg-card px-3 py-1.5 text-sm font-semibold hover:bg-muted"
+      >
+        <ArrowLeft size={15} /> Kembali ke Beranda
+      </Link>
       <PageHeader
         title="Kontrak Kerja"
         subtitle="Perjanjian Kerja kamu. Slip gaji terbuka setelah kontrak ditandatangani."

@@ -288,7 +288,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 ## Pasal 4: Waktu Kerja dan Izin
 
-(1) Karyawan bekerja sesuai jadwal kerja yang ditetapkan Pemberi Kerja dan diinformasikan kepada Karyawan sebelumnya. Waktu kerja tidak melebihi batas yang ditetapkan peraturan perundang-undangan.
+(1) Karyawan bekerja sesuai jadwal kerja yang ditetapkan Pemberi Kerja dan diinformasikan kepada Karyawan sebelumnya.
 
 (2) Karyawan berhak atas waktu istirahat, kesempatan beribadah, dan hari libur sesuai peraturan perundang-undangan dan SOP.
 
@@ -306,7 +306,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (3) Karena Pemberi Kerja tergolong usaha mikro atau kecil, besaran upah ditetapkan berdasarkan kesepakatan Para Pihak dengan tetap memenuhi batas minimal yang diatur peraturan perundang-undangan bagi usaha mikro dan kecil. Bila Pemberi Kerja tidak lagi tergolong usaha mikro atau kecil, ketentuan upah minimum yang berlaku wajib diikuti.
 
-(4) Upah dibayarkan secara {periode_bayar} paling lambat tanggal {tgl_bayar} bulan berikutnya, melalui {cara_bayar}.
+(4) Upah dibayarkan secara {periode_bayar} paling lambat tanggal {tgl_bayar} bulan berikutnya, melalui transfer ke rekening Karyawan atau secara tunai.
 
 (5) Rincian upah setiap bulan disampaikan kepada Karyawan melalui Zota Apps. Karyawan memeriksa rincian tersebut dan dapat menyampaikan keberatan melalui Zota Apps; Pemberi Kerja menanggapi keberatan tersebut secara terbuka.
 
@@ -387,7 +387,15 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (3) Kewajiban menjaga kerahasiaan sebagaimana dimaksud dalam pasal ini tetap berlaku setelah hubungan kerja berakhir.
 
-## Pasal 12: Pemrosesan Data Pribadi
+## Pasal 12: Larangan Usaha Sejenis
+
+(1) Selama masih bekerja pada Pemberi Kerja dan sampai dengan 12 (dua belas) bulan setelah hubungan kerja berakhir, karena alasan apa pun termasuk pengunduran diri, Karyawan dilarang membuka atau menjalankan usaha yang sama atau serupa dengan usaha Pemberi Kerja, yaitu usaha toko kue dan produk bakeri, baik atas nama sendiri maupun bersama atau untuk pihak lain, secara langsung maupun tidak langsung.
+
+(2) Larangan ini berlaku tanpa mengurangi kewajiban menjaga kerahasiaan dalam Pasal 11.
+
+(3) Dalam hal Karyawan melanggar larangan ini, Pemberi Kerja berhak menuntut penghentian kegiatan usaha tersebut dan menempuh upaya hukum lain sesuai peraturan perundang-undangan.
+
+## Pasal 13: Pemrosesan Data Pribadi
 
 (1) Untuk keperluan hubungan kerja, Karyawan menyerahkan data pribadi berupa nama, NIK, foto Kartu Tanda Penduduk (KTP), tempat dan tanggal lahir, alamat, nomor kontak, data rekening untuk pembayaran upah, serta data yang timbul selama bekerja seperti foto dan lokasi absensi. Penyerahan foto KTP melalui Zota Apps adalah syarat penandatanganan Perjanjian ini.
 
@@ -399,7 +407,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (5) Dengan menandatangani Perjanjian ini, Karyawan menyatakan setuju atas pemrosesan data pribadinya sebagaimana diatur dalam pasal ini.
 
-## Pasal 13: Akun, PIN, dan Aset Perusahaan
+## Pasal 14: Akun, PIN, dan Aset Perusahaan
 
 (1) Karyawan wajib menjaga kerahasiaan akun Zota Apps dan PIN kasir (POS) miliknya, tidak membagikannya kepada siapa pun, tidak menggunakan akun atau PIN orang lain, dan segera melapor bila akun atau PIN diketahui orang lain. Seluruh tindakan yang tercatat melalui akun atau PIN Karyawan menjadi tanggung jawab Karyawan yang bersangkutan.
 
@@ -407,25 +415,27 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (3) Seluruh peralatan dan aset yang disediakan Pemberi Kerja wajib digunakan sesuai peruntukannya dan dikembalikan dalam keadaan baik ketika hubungan kerja berakhir.
 
-## Pasal 14: Berakhirnya Hubungan Kerja
+## Pasal 15: Berakhirnya Hubungan Kerja
 
-(1) Pengunduran diri: Karyawan yang mengundurkan diri atas kemauan sendiri menyampaikan pemberitahuan tertulis paling lambat 30 (tiga puluh) hari sebelum tanggal pengunduran diri dan tetap melaksanakan tugas sampai tanggal tersebut. Karyawan yang memenuhi ketentuan ini berhak atas uang penggantian hak dan uang pisah sesuai peraturan perundang-undangan. Besaran uang pisah ditetapkan berdasarkan kesepakatan Para Pihak.
+(1) Pengunduran diri: Karyawan yang mengundurkan diri atas kemauan sendiri menyampaikan pemberitahuan tertulis paling lambat 30 (tiga puluh) hari sebelum tanggal pengunduran diri dan tetap melaksanakan tugas sampai tanggal tersebut. Karyawan yang mengundurkan diri tidak berhak atas uang pesangon, uang penghargaan masa kerja, uang penggantian hak, maupun uang pisah, kecuali bila peraturan perundang-undangan menentukan lain. Upah yang sudah menjadi hak Karyawan atas pekerjaan yang telah dilakukan tetap dibayarkan.
 
-(2) Pemutusan hubungan kerja oleh Pemberi Kerja: Pemberi Kerja dapat mengakhiri hubungan kerja sesuai alasan dan prosedur yang diatur peraturan perundang-undangan, dengan pemberitahuan tertulis kepada Karyawan.
+(2) Karyawan yang mengundurkan diri dengan pemberitahuan kurang dari 30 (tiga puluh) hari dikenai denda sebesar 1 (satu) kali upah bulanan.
 
-(3) Dalam hal pemutusan hubungan kerja, Karyawan berhak atas uang pesangon, uang penghargaan masa kerja, dan uang penggantian hak sesuai alasan pemutusan dan peraturan perundang-undangan. Karena Pemberi Kerja tergolong usaha mikro atau kecil, nominalnya ditentukan berdasarkan kesepakatan Para Pihak sepanjang diizinkan peraturan perundang-undangan, dengan tetap menghargai hak Karyawan.
+(3) Pemutusan hubungan kerja oleh Pemberi Kerja: Pemberi Kerja dapat mengakhiri hubungan kerja sesuai alasan dan prosedur yang diatur peraturan perundang-undangan, dengan pemberitahuan tertulis kepada Karyawan.
 
-(4) Karyawan yang hubungan kerjanya berakhir karena pelanggaran tetap menerima hak sesuai alasan pemutusan dan peraturan perundang-undangan.
+(4) Dalam hal pemutusan hubungan kerja, Karyawan berhak atas uang pesangon, uang penghargaan masa kerja, dan uang penggantian hak sesuai alasan pemutusan dan peraturan perundang-undangan. Karena Pemberi Kerja tergolong usaha mikro atau kecil, nominalnya ditentukan berdasarkan kesepakatan Para Pihak sepanjang diizinkan peraturan perundang-undangan, dengan tetap menghargai hak Karyawan.
 
-(5) Pada saat hubungan kerja berakhir, Karyawan menyelesaikan seluruh kewajibannya dan mengembalikan seluruh aset, kunci, dan akses milik Pemberi Kerja.
+(5) Karyawan yang hubungan kerjanya berakhir karena pelanggaran tetap menerima hak sesuai alasan pemutusan dan peraturan perundang-undangan.
 
-## Pasal 15: Penyelesaian Perselisihan
+(6) Pada saat hubungan kerja berakhir, Karyawan menyelesaikan seluruh kewajibannya dan mengembalikan seluruh aset, kunci, dan akses milik Pemberi Kerja.
+
+## Pasal 16: Penyelesaian Perselisihan
 
 (1) Apabila terjadi perselisihan sehubungan dengan pelaksanaan Perjanjian ini, Para Pihak sepakat menyelesaikannya terlebih dahulu secara musyawarah untuk mencapai mufakat dengan dilandasi itikad baik.
 
-(2) Apabila musyawarah tidak mencapai mufakat, Para Pihak menempuh mekanisme penyelesaian perselisihan hubungan industrial sesuai peraturan perundang-undangan.
+(2) Apabila musyawarah tidak mencapai mufakat, perselisihan diselesaikan melalui pengadilan yang berwenang di kota atau daerah tempat Karyawan bekerja, setelah melalui tahapan penyelesaian yang diwajibkan peraturan perundang-undangan.
 
-## Pasal 16: Ketentuan Penutup
+## Pasal 17: Ketentuan Penutup
 
 (1) Hal-hal yang belum diatur atau belum cukup diatur dalam Perjanjian ini diatur kemudian berdasarkan kesepakatan Para Pihak dan SOP.
 
