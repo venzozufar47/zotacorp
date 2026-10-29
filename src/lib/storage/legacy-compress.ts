@@ -70,6 +70,14 @@ export async function sweepLegacyCompress(opts?: {
 
     for (const c of candidates) {
       const size = Number(c.size);
+      // Satu berkas lebih besar dari seluruh jatah unduhan tidak boleh memblokir sapuan selamanya.
+      if (size > maxBytes) {
+        if (!opts?.dryRun) {
+          await db.from("storage_compress_skips" as never).upsert({ bucket, path: c.name, reason: `terlalu besar (${size})` } as never);
+          res.skipped += 1;
+        }
+        continue;
+      }
       if (downloaded + size > maxBytes) {
         stoppedBy = "bytes";
         results.push(res);
@@ -106,7 +114,12 @@ export async function sweepLegacyCompress(opts?: {
         continue;
       }
       const up = await db.storage.from(bucket).upload(c.name, out.buffer, { contentType: "image/jpeg", upsert: true });
-      if (up.error) continue; // sementara; asli tetap utuh
+      if (up.error) {
+        // Asli tetap utuh. Dicatat agar tidak diunduh ulang tiap malam; dicoba lagi setelah 7 hari (fungsi legacy_big_images).
+        await db.from("storage_compress_skips" as never).upsert({ bucket, path: c.name, reason: `upload: ${up.error.message}`.slice(0, 200) } as never);
+        res.skipped += 1;
+        continue;
+      }
       res.compressed += 1;
       res.bytesBefore += original.length;
       res.bytesAfter += out.buffer.length;
