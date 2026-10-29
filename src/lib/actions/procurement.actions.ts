@@ -29,6 +29,7 @@ import {
 import { myProcurementBusinessUnits } from "@/lib/procurement/access";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { isVarianceReason, varianceCheck } from "@/lib/procurement/cycle-count";
+import { brandBelongsToMaterial, rebuildBrandUsage } from "@/lib/procurement/brand-store";
 import { sendPushToAdmins } from "@/lib/push/web-push";
 
 function revalidateProcurement() {
@@ -176,6 +177,8 @@ export async function recordGoodsIn(input: {
   supplier?: string | null;
   receiptDate?: string;
   notes?: string | null;
+  /** Merek (opsional): harus milik bahan ini. */
+  brandId?: string | null;
 }): Promise<ActionResult<{ id: string; qtyUsageUnits: number }>> {
   const gate = await requireProcurementForMaterial(input.materialId);
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -199,6 +202,8 @@ export async function recordGoodsIn(input: {
   if (!(content > 0))
     return { ok: false, error: "Isi per satuan beli belum valid" };
 
+  if (input.brandId && !(await brandBelongsToMaterial(supabase, input.brandId, input.materialId)))
+    return { ok: false, error: "Merek tidak cocok dengan bahan" };
   const qtyUsage = input.qtyPurchaseUnits * content;
   const unitPrice = input.unitPricePaid ?? num(mat.purchase_price);
   const now = new Date();
@@ -219,10 +224,12 @@ export async function recordGoodsIn(input: {
       receipt_time: jakartaHHMM(now),
       notes: input.notes?.trim() || null,
       created_by: gate.userId,
+      brand_id: input.brandId || null,
     } as never)
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Gagal" };
+  if (input.brandId) await rebuildBrandUsage(supabase, input.materialId).catch(() => undefined);
   revalidateProcurement();
   return {
     ok: true,
@@ -281,7 +288,7 @@ export async function deleteGoodsIn(id: string): Promise<ActionResult> {
   const supabase = adminClient();
   const { data: row } = await supabase
     .from("costing_material_receipts" as never)
-    .select("business_unit, created_by, created_at")
+    .select("business_unit, created_by, created_at, material_id, brand_id")
     .eq("id", id)
     .maybeSingle();
   const rec = row as Record<string, unknown> | null;
@@ -302,6 +309,7 @@ export async function deleteGoodsIn(id: string): Promise<ActionResult> {
     .delete()
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+  if (rec.brand_id) await rebuildBrandUsage(supabase, rec.material_id as string).catch(() => undefined);
   revalidateProcurement();
   return { ok: true };
 }

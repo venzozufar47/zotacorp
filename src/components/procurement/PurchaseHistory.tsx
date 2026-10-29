@@ -170,7 +170,10 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
               <li key={l.id} className="text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{l.materialName ?? l.description}</p>
+                    <p className="truncate font-medium">
+                      {l.materialName ?? l.description}
+                      {l.brandName && <span className="font-normal text-muted-foreground"> · {l.brandName}</span>}
+                    </p>
                     <p className="text-[11.5px] text-muted-foreground">
                       {categoryLabelFull(l.category)}
                       {l.qtyLabel ? ` · ${l.qtyLabel}` : ""}

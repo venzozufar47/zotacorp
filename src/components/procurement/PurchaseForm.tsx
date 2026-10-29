@@ -90,6 +90,10 @@ type DraftLine =
       /** Rp per satuan pakai & selisih vs acuan, untuk ditampilkan. */
       perUsage: number;
       deviation: number | null;
+      /** Merek terdaftar yang dipilih, atau nama merek baru (dibuat server saat nota disimpan); keduanya null = tanpa merek. */
+      brandId: string | null;
+      brandName: string | null;
+      newBrandName: string | null;
     }
   | { key: string; kind: "lain"; category: string; description: string; total: number };
 
@@ -113,6 +117,9 @@ function draftFromView(v: PurchaseView, materials: PurchaseMaterialOption[]): { 
         total: l.total,
         perUsage: l.unitPriceUsage ?? 0,
         deviation: l.deviation,
+        brandId: l.brandId,
+        brandName: l.brandName,
+        newBrandName: null,
       });
     } else {
       lines.push({ key: crypto.randomUUID(), kind: "lain", category: l.category, description: l.description, total: l.total });
@@ -247,7 +254,7 @@ export function PurchaseForm({
       return;
     const payload: PurchaseLineInput[] = lines.map((l) =>
       l.kind === "bahan"
-        ? { kind: "bahan", materialId: l.material.id, qty: l.qty, unit: l.unit, total: l.total }
+        ? { kind: "bahan", materialId: l.material.id, qty: l.qty, unit: l.unit, total: l.total, brandId: l.brandId, newBrandName: l.newBrandName }
         : { kind: "lain", category: l.category, description: l.description, total: l.total }
     );
     startSaving(async () => {
@@ -555,7 +562,10 @@ export function PurchaseForm({
                 <div className="min-w-0 flex-1">
                   {l.kind === "bahan" ? (
                     <>
-                      <p className="truncate text-sm font-semibold">{l.material.name}</p>
+                      <p className="truncate text-sm font-semibold">
+                        {l.material.name}
+                        {(l.brandName || l.newBrandName) && <span className="font-normal text-muted-foreground"> · {l.brandName ?? l.newBrandName}</span>}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {nf(l.qty)} {l.unit} · Rp {nf(l.perUsage, 2)}/{l.material.usageUnit}
                         {l.deviation != null && Math.abs(l.deviation) >= 0.05 && (
@@ -818,6 +828,10 @@ function BahanComposer({
   const [unit, setUnit] = useState(initialPicked?.unitChoices[0] ?? initialPicked?.purchaseUnit ?? "");
   const [total, setTotal] = useState("");
   const [proposing, setProposing] = useState(false);
+  // Merek (opsional): bawaan = yang sedang dipakai/terakhir dibeli, jadi membeli merek yang sama tidak perlu mengetik apa pun.
+  const [brandId, setBrandId] = useState<string | null>(initialPicked?.defaultBrandId ?? null);
+  const [addingBrand, setAddingBrand] = useState(false);
+  const [newBrand, setNewBrand] = useState("");
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -830,6 +844,9 @@ function BahanComposer({
     setUnit(m.unitChoices[0] ?? m.purchaseUnit);
     setQty("");
     setTotal("");
+    setBrandId(m.defaultBrandId);
+    setAddingBrand(false);
+    setNewBrand("");
   }
 
   // Pratinjau langsung: konversi, harga per satuan pakai, selisih vs acuan.
@@ -929,6 +946,66 @@ function BahanComposer({
       ) : (
         <>
           <MaterialRefCard m={picked} onChange={() => setPicked(null)} />
+
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Merek (opsional)</span>
+            <div className="flex flex-wrap gap-1.5">
+              {picked.brands.map((b) => {
+                const on = !addingBrand && brandId === b.id;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => {
+                      setAddingBrand(false);
+                      setBrandId(b.id);
+                    }}
+                    aria-pressed={on}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                      on ? "border-foreground bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    {b.name}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingBrand(false);
+                  setBrandId(null);
+                }}
+                aria-pressed={!addingBrand && brandId === null}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                  !addingBrand && brandId === null ? "border-foreground bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"
+                )}
+              >
+                Tanpa merek
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddingBrand(true)}
+                aria-pressed={addingBrand}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5 text-xs font-semibold transition",
+                  addingBrand ? "border-foreground bg-primary text-primary-foreground" : "border-border text-primary hover:bg-muted"
+                )}
+              >
+                <Plus size={12} /> Merek baru
+              </button>
+            </div>
+            {addingBrand && (
+              <Input
+                autoFocus
+                value={newBrand}
+                onChange={(e) => setNewBrand(e.target.value)}
+                placeholder="Nama merek (mis. Segitiga Biru)"
+                maxLength={80}
+              />
+            )}
+          </div>
 
           <div className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">
@@ -1039,6 +1116,9 @@ function BahanComposer({
                   total: calc.t,
                   perUsage: calc.perUsage,
                   deviation: calc.dev,
+                  ...(addingBrand && newBrand.trim()
+                    ? { brandId: null, brandName: null, newBrandName: newBrand.trim().replace(/\s+/g, " ") }
+                    : { brandId, brandName: picked.brands.find((b) => b.id === brandId)?.name ?? null, newBrandName: null }),
                 })
               }
             >
@@ -1114,6 +1194,8 @@ function ProposeMaterial({
         usageUnit,
         pending: true,
         unitChoices: [purchaseUnit.trim(), usageUnit],
+        brands: [],
+        defaultBrandId: null,
       });
     });
   }

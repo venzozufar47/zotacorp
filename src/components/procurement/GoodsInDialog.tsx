@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import { parseDecimalId } from "@/components/admin/costing/fields";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { recordGoodsIn } from "@/lib/actions/procurement.actions";
+import { listMaterialBrands, type BrandView } from "@/lib/actions/procurement-brands.actions";
 import type { ProcurementRow } from "@/lib/procurement/rows";
 
 /**
@@ -33,6 +34,21 @@ export function GoodsInDialog({
   const [date, setDate] = useState(jakartaDateString(new Date()));
   const [notes, setNotes] = useState("");
   const [saving, startTransition] = useTransition();
+  // Merek (opsional): daftar merek bahan ini dimuat saat dialog dibuka; bawaan = merek yang sedang dipakai.
+  const [brands, setBrands] = useState<BrandView[]>([]);
+  const [brandId, setBrandId] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    listMaterialBrands(row.material.id).then((r) => {
+      if (cancelled || !r.ok || !r.data) return;
+      const active = r.data.filter((b) => b.isActive);
+      setBrands(active);
+      setBrandId(active.find((b) => b.isCurrent)?.id ?? "");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [row.material.id]);
 
   const qtyNum = parseDecimalId(qty) ?? 0;
   const priceNum = Number(price.replace(/[^\d]/g, ""));
@@ -51,6 +67,7 @@ export function GoodsInDialog({
         supplier: supplier.trim() || null,
         receiptDate: date,
         notes: notes.trim() || null,
+        brandId: brandId || null,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -125,6 +142,26 @@ export function GoodsInDialog({
             />
           </label>
         </div>
+
+        {brands.length > 0 && (
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              Merek (opsional)
+            </span>
+            <select
+              value={brandId}
+              onChange={(e) => setBrandId(e.target.value)}
+              className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+            >
+              <option value="">Tanpa merek</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="block">
           <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">

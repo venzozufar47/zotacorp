@@ -487,6 +487,8 @@ export async function revertMaterialChange(id: string): Promise<ActionResult> {
   if (c.reverted_at) return { ok: false, error: "Perubahan ini sudah diurungkan" };
   if (!c.material_id) return { ok: false, error: "Bahannya sudah dihapus" };
   const ch = (c.changes ?? {}) as Record<string, { from: unknown; to: unknown }>;
+  // Catatan merek (kunci diawali "merek ") bukan kolom bahan: dikoreksi lewat tab Bahan, bukan diurungkan di sini.
+  if (Object.keys(ch).some((k) => k.startsWith("merek "))) return { ok: false, error: "Perubahan merek tidak bisa diurungkan dari sini — ubah di tab Bahan." };
   const { data: matRow } = await admin
     .from("costing_materials" as never)
     .select("*")

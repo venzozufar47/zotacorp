@@ -40,6 +40,7 @@ import { sendPushToAdmins } from "@/lib/push/web-push";
 import { getCashPosition } from "./procurement-wallet.actions";
 import { shopeeBalance } from "@/lib/procurement/shopee-wallet";
 import { isPurchaseUnit } from "@/lib/costing/unit-options";
+import { brandBelongsToMaterial, brandNameError, cleanBrandName, findOrCreateBrand, rebuildBrandUsage } from "@/lib/procurement/brand-store";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -179,6 +180,10 @@ export interface PurchaseMaterialOption {
   pending: boolean;
   /** Satuan yang boleh diketik untuk bahan ini. */
   unitChoices: string[];
+  /** Merek aktif terdaftar untuk bahan ini (opsional dipilih di nota). */
+  brands: { id: string; name: string }[];
+  /** Merek yang terpilih otomatis: yang sedang dipakai, atau yang terakhir dibeli; null = tanpa merek. */
+  defaultBrandId: string | null;
 }
 
 /** Pengeluaran cabang dalam 36 jam terakhir — dasar peringatan "nominal ini sudah tercatat". */
@@ -293,7 +298,7 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
       },
     };
   }
-  const [{ data: mats }, units, { data: vend }] = await Promise.all([
+  const [{ data: mats }, units, { data: vend }, { data: brandRows }, { data: usageRows }, { data: lastRecs }] = await Promise.all([
     admin
       .from("costing_materials" as never)
       .select("id, name, category, purchase_unit, purchase_price, content_per_purchase, usage_unit, review_status")
@@ -308,7 +313,26 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
       .not("vendor", "is", null)
       .order("created_at", { ascending: false })
       .limit(60),
+    admin.from("costing_material_brands" as never).select("id, material_id, name").eq("business_unit", businessUnit).eq("is_active", true).order("name"),
+    admin.from("costing_material_brand_usage" as never).select("material_id, brand_id").eq("business_unit", businessUnit).is("ended_on", null),
+    admin
+      .from("costing_material_receipts" as never)
+      .select("material_id, brand_id")
+      .eq("business_unit", businessUnit)
+      .not("brand_id", "is", null)
+      .order("receipt_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(600),
   ]);
+  const brandsByMaterial = new Map<string, { id: string; name: string }[]>();
+  for (const b of (brandRows ?? []) as { id: string; material_id: string; name: string }[]) {
+    const arr = brandsByMaterial.get(b.material_id) ?? [];
+    arr.push({ id: b.id, name: b.name });
+    brandsByMaterial.set(b.material_id, arr);
+  }
+  const activeBrand = new Map(((usageRows ?? []) as { material_id: string; brand_id: string }[]).map((u) => [u.material_id, u.brand_id]));
+  const lastBrand = new Map<string, string>();
+  for (const r of (lastRecs ?? []) as { material_id: string; brand_id: string }[]) if (!lastBrand.has(r.material_id)) lastBrand.set(r.material_id, r.brand_id);
   const materials = ((mats ?? []) as Record<string, unknown>[]).map((r) => {
     const m = {
       purchaseUnit: r.purchase_unit as string,
@@ -325,6 +349,12 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
       usageUnit: m.usageUnit,
       pending: r.review_status === "pending",
       unitChoices: unitChoices(m, units),
+      ...(() => {
+        const brands = brandsByMaterial.get(r.id as string) ?? [];
+        const ids = new Set(brands.map((b) => b.id));
+        const pick = [activeBrand.get(r.id as string), lastBrand.get(r.id as string)].find((id) => id && ids.has(id)) ?? null;
+        return { brands, defaultBrandId: pick };
+      })(),
     } satisfies PurchaseMaterialOption;
   });
   const vendors = [
@@ -458,7 +488,17 @@ export async function proposeMaterial(input: {
 // ─────────────────────────────────────────────────────────────────────
 
 export type PurchaseLineInput =
-  | { kind: "bahan"; materialId: string; qty: number; unit: string; total: number }
+  | {
+      kind: "bahan";
+      materialId: string;
+      qty: number;
+      unit: string;
+      total: number;
+      /** Merek terdaftar (opsional). */
+      brandId?: string | null;
+      /** Merek baru: dibuat di server dalam satu paket dengan nota (opsional; diabaikan bila brandId ada). */
+      newBrandName?: string | null;
+    }
   | { kind: "lain"; category: string; description: string; total: number };
 
 export interface CreatePurchaseInput {
@@ -511,6 +551,7 @@ async function loadOldSnapshot(admin: Admin, id: string): Promise<OldSnapshot | 
 }
 
 interface Created {
+  brandIds: string[];
   txIds: string[];
   txFiles: string[];
   receiptIds: string[];
@@ -645,6 +686,8 @@ async function createPurchaseImpl(
     unitPriceUsage: number | null;
     mat: Record<string, unknown> | null;
     qtyLabel: string | null;
+    brandId: string | null;
+    newBrandName: string | null;
   }
   const calcs: Calc[] = [];
   let sort = 0;
@@ -670,6 +713,8 @@ async function createPurchaseImpl(
         unitPriceUsage: null,
         mat: null,
         qtyLabel: null,
+        brandId: null,
+        newBrandName: null,
       });
     } else {
       const mat = matById.get(l.materialId);
@@ -683,6 +728,18 @@ async function createPurchaseImpl(
       };
       const conv = convertQty(Number(l.qty), l.unit, mu, units);
       if (!conv) return { ok: false, error: `Jumlah/satuan "${mat.name}" tidak bisa dikonversi` };
+      // Merek opsional: yang terdaftar harus milik bahan ini; merek baru cukup nama (dibuat saat menulis).
+      let brandId: string | null = null;
+      let newBrandName: string | null = null;
+      if (l.brandId) {
+        if (!(await brandBelongsToMaterial(admin, l.brandId, l.materialId))) return { ok: false, error: "Merek tidak cocok dengan bahan" };
+        brandId = l.brandId;
+      } else if (l.newBrandName?.trim()) {
+        const nm = cleanBrandName(l.newBrandName);
+        const bad = brandNameError(nm);
+        if (bad) return { ok: false, error: bad };
+        newBrandName = nm;
+      }
       calcs.push({
         sort: sort++,
         kind: "bahan",
@@ -697,13 +754,15 @@ async function createPurchaseImpl(
         unitPriceUsage: unitPriceUsage(total, conv.qtyUsageUnits),
         mat,
         qtyLabel: `${Number(l.qty).toLocaleString("id-ID")} ${l.unit}`,
+        brandId,
+        newBrandName,
       });
     }
   }
   const grandTotal = round2(calcs.reduce((s, c) => s + c.total, 0));
 
   // ── Tulis ──
-  const created: Created = { txIds: [], txFiles: [], receiptIds: [], filePaths: [] };
+  const created: Created = { brandIds: [], txIds: [], txFiles: [], receiptIds: [], filePaths: [] };
   const priceUndo: { materialId: string; before: number; after: number; priceUpdatedAt: string }[] = [];
   const clientId = !old && input.clientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.clientId) ? input.clientId : null;
   if (clientId) {
@@ -764,6 +823,7 @@ async function createPurchaseImpl(
         .eq("id", u.materialId);
     }
     if (created.receiptIds.length) await admin.from("costing_material_receipts" as never).delete().in("id", created.receiptIds);
+    if (created.brandIds.length) await admin.from("costing_material_brands" as never).delete().in("id", created.brandIds);
     if (created.txIds.length) await admin.from("cashflow_transactions").delete().in("id", created.txIds);
     // Mode edit: sebelum nota lama dibalik, baris dengan id ini ADALAH nota lama — jangan dihapus.
     if (!old || reverted) await admin.from("procurement_purchases" as never).delete().eq("id", purchaseId);
@@ -932,6 +992,25 @@ async function createPurchaseImpl(
   const runningStock = new Map<string, number | null>();
   let flagged = 0;
 
+  // Merek baru dari baris nota dibuat sekarang (di dalam paket penulisan, ikut dibatalkan bila nota gagal).
+  const newBrandIds = new Map<string, string>();
+  for (const c of calcs) {
+    if (c.kind !== "bahan" || !c.materialId || c.brandId || !c.newBrandName) continue;
+    const key = c.materialId + "|" + c.newBrandName.toLowerCase();
+    let id = newBrandIds.get(key);
+    if (!id) {
+      const r = await findOrCreateBrand(admin, { materialId: c.materialId, businessUnit: input.businessUnit, name: c.newBrandName, userId: gate.userId });
+      if (!r.ok) {
+        await rollback();
+        return { ok: false, error: r.error };
+      }
+      id = r.id;
+      if (r.created) created.brandIds.push(id);
+      newBrandIds.set(key, id);
+    }
+    c.brandId = id;
+  }
+
   for (const c of calcs) {
     let txId: string | null = null;
     if (writeLedger && statementId) {
@@ -1032,6 +1111,7 @@ async function createPurchaseImpl(
           receipt_time: purchaseTime,
           notes: "Dari nota belanja pengadaan",
           created_by: ownerId,
+          brand_id: c.brandId,
         } as never)
         .select("id")
         .single();
@@ -1060,6 +1140,7 @@ async function createPurchaseImpl(
         description: c.description,
         cashflow_transaction_id: txId,
         receipt_id: receiptId,
+        brand_id: c.kind === "bahan" ? c.brandId : null,
         ref_price_before: refBefore,
         ref_price_after: refAfter,
         price_flag: flag,
@@ -1107,6 +1188,11 @@ async function createPurchaseImpl(
 
   // Semua penulisan sudah berhasil: kegagalan setelah titik ini (bersih-bersih, notifikasi) tak boleh membatalkan nota.
   ctx.rollback = undefined;
+  // Riwayat merek yang dipakai mengikuti barang masuk bermerek yang tersisa (termasuk bahan yang baru saja dilepas dari nota ini).
+  if (calcs.some((c) => c.brandId) || old?.lines.some((l) => l.brand_id)) {
+    const touched = new Set<string>([...matIds, ...(old?.lines.map((l) => l.material_id as string | null).filter((v): v is string => !!v) ?? [])]);
+    await Promise.all([...touched].map((id) => rebuildBrandUsage(admin, id).catch(() => undefined)));
+  }
   if (!keepReceipt) await admin.storage.from(TMP_BUCKET).remove([input.receiptPath]);
   if (old) {
     // Foto lama baru dibuang setelah semuanya berhasil (foto baru sudah disalin ke jalurnya sendiri).
@@ -1151,6 +1237,9 @@ export interface PurchaseLineView {
   priceFlag: "ok" | "tinjau";
   /** Selisih relatif vs harga acuan saat dibeli (+0,2 = 20% lebih mahal). */
   deviation: number | null;
+  /** Merek yang dicatat pada baris ini (null = tanpa merek). */
+  brandId: string | null;
+  brandName: string | null;
   /** Data mentah untuk mengedit nota (bahan: id + jumlah + satuan yang diketik). */
   materialId: string | null;
   qtyInput: number | null;
@@ -1227,6 +1316,12 @@ export async function listPurchases(
     for (const m of (mats ?? []) as Record<string, unknown>[])
       matInfo.set(m.id as string, { name: m.name as string, usageUnit: m.usage_unit as string, content: num(m.content_per_purchase) });
   }
+  const brandIds = [...new Set(lines.map((l) => l.brand_id as string | null).filter((v): v is string => !!v))];
+  const brandNames = new Map<string, string>();
+  if (brandIds.length) {
+    const { data: bs } = await admin.from("costing_material_brands" as never).select("id, name").in("id", brandIds);
+    for (const b of (bs ?? []) as { id: string; name: string }[]) brandNames.set(b.id, b.name);
+  }
   const userIds = [...new Set(heads.map((h) => h.created_by as string | null).filter((v): v is string => !!v))];
   const names = new Map<string, string>();
   if (userIds.length) {
@@ -1262,6 +1357,8 @@ export async function listPurchases(
       usageUnit: info?.usageUnit ?? null,
       priceFlag: (l.price_flag as "ok" | "tinjau") ?? "ok",
       deviation: dev,
+      brandId: (l.brand_id as string | null) ?? null,
+      brandName: l.brand_id ? brandNames.get(l.brand_id as string) ?? null : null,
       materialId: (l.material_id as string | null) ?? null,
       qtyInput: l.qty_input == null ? null : num(l.qty_input),
       unitInput: (l.unit_input as string | null) ?? null,
@@ -1433,6 +1530,9 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
     }
   }
 
+  // Riwayat merek yang dipakai disusun ulang dari barang masuk yang tersisa.
+  const brandMats = [...new Set(lines.filter((l) => l.brand_id && l.material_id).map((l) => l.material_id as string))];
+  await Promise.all(brandMats.map((m) => rebuildBrandUsage(admin, m).catch(() => undefined)));
   await admin.storage.from(RECEIPT_BUCKET).remove(files);
   revalidateAll();
   return { ok: true };
