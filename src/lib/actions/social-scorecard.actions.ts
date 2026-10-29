@@ -7,6 +7,7 @@ import { fetchPnL, type PnLMonth } from "@/lib/cashflow/pnl";
 import { fetchYeoboPnL, type YeoboPnLMonth } from "@/lib/cashflow/pnl-yeobo";
 import { classifyCategories, usesPosRegime, type CategoryRow } from "@/lib/unit-scorecard/finance";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { sumCakeRevenue } from "@/lib/scorecard/cake-revenue";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { editorBrandIds } from "@/lib/social/access";
 import {
@@ -27,7 +28,8 @@ import {
 } from "@/lib/social/scorecard";
 
 /**
- * Scorecard Sosmed per brand (Haengbocake.idn → Semarang, haengbo.corner → Pare, yeobospace.id → Yeobo Space).
+ * Scorecard Sosmed per brand (haengbo.corner → omset POS, haengbocake.idn → omset Custom Cake, keduanya Pare + Semarang;
+ * yeobospace.id → Yeobo Space).
  * Hanya superadmin. Empat metrik: reach, omset, pertumbuhan followers, engagement rate — tiga di antaranya dihitung
  * dari laporan mingguan, omset dari laporan keuangan/POS (sama dengan Scorecard Unit).
  *
@@ -46,12 +48,13 @@ const monthLabel = (monthIso: string) => `${MONTHS_ID[Number(monthIso.slice(5, 7
 const ym = (monthIso: string) => ({ year: Number(monthIso.slice(0, 4)), month: Number(monthIso.slice(5, 7)) });
 const TREND_MONTHS = 6;
 
-/** Cabang keuangan tiap brand. */
-const BRAND_REVENUE: Record<string, { kind: "haeng"; branch: "Semarang" | "Pare" } | { kind: "yeobo" }> = {
-  haengbocake_idn: { kind: "haeng", branch: "Semarang" },
-  haengbo_corner: { kind: "haeng", branch: "Pare" },
+/** Sumber omset tiap brand: haengbo.corner = omset POS, haengbocake.idn = omset Custom Cake (Pare + Semarang), yeobospace.id = laba-rugi Yeobo. */
+const BRAND_REVENUE: Record<string, { kind: "pos" | "cake" | "yeobo" }> = {
+  haengbocake_idn: { kind: "cake" },
+  haengbo_corner: { kind: "pos" },
   yeobospace_id: { kind: "yeobo" },
 };
+const HAENG_BRANCHES = ["Pare", "Semarang"] as const;
 
 // ───────────────────────────── Tipe keluaran ─────────────────────────────
 
@@ -105,26 +108,45 @@ function categoryRows(rows: { category: string; credit: number; debit: number; k
   return rows.map((r) => ({ category: r.category, credit: r.credit, debit: r.debit, kind: r.kind }));
 }
 
-/** Omset satu cabang Haengbocake: POS + custom cake + other revenue sejak Mei 2026; sebelumnya laporan laba-rugi. */
-async function haengBranchRevenue(db: Db, month: string, pnl: PnLMonth | undefined, branch: "Semarang" | "Pare"): Promise<number | null> {
+interface RevenueResult {
+  total: number;
+  parts: { cabang: string; rp: number }[];
+}
+
+/**
+ * Omset POS atau Custom Cake brand Haengbocake = jumlah Pare + Semarang (angka yang sama dengan Scorecard Cabang).
+ * Sebelum Mei 2026 laporan tidak memisahkan POS dan cake: POS = pendapatan laba-rugi, cake = tidak tersedia.
+ */
+async function haengRevenue(db: Db, month: string, kind: "pos" | "cake", pnl: PnLMonth | undefined): Promise<RevenueResult | null> {
   if (!pnl) return null;
-  const br = pnl.byBranch[branch];
-  const fin = br ? classifyCategories(categoryRows(br.byCategory)) : null;
-  if (!usesPosRegime(month)) return fin?.pnlRevenue ?? 0;
+  if (!usesPosRegime(month)) {
+    if (kind === "cake") return null;
+    const parts = HAENG_BRANCHES.map((cabang) => {
+      const br = pnl.byBranch[cabang];
+      return { cabang: cabang as string, rp: Math.round(br ? classifyCategories(categoryRows(br.byCategory)).pnlRevenue : 0) };
+    });
+    return { total: parts.reduce((s, p) => s + p.rp, 0), parts };
+  }
   const { from, toExcl } = monthRange(month);
   const to = new Date(`${toExcl}T00:00:00Z`);
   to.setUTCDate(to.getUTCDate() - 1);
-  const r = await db.rpc("scorecard_pos_total" as never, { p_pos_branch: branch, p_from: from, p_to: to.toISOString().slice(0, 10) } as never);
-  if (r.error) throw new Error(r.error.message);
-  const cake = num(branch === "Pare" ? pnl.salesHint?.cakePare : pnl.salesHint?.cakeSemarang);
-  return num(r.data) + cake + (fin?.otherRevenue ?? 0);
+  const toIso = to.toISOString().slice(0, 10);
+  const parts = await Promise.all(
+    HAENG_BRANCHES.map(async (cabang) => {
+      if (kind === "cake") return { cabang: cabang as string, rp: Math.round(await sumCakeRevenue(db, cabang, from, toIso)) };
+      const r = await db.rpc("scorecard_pos_total" as never, { p_pos_branch: cabang, p_from: from, p_to: toIso } as never);
+      if (r.error) throw new Error(r.error.message);
+      return { cabang: cabang as string, rp: Math.round(num(r.data)) };
+    })
+  );
+  return { total: parts.reduce((s, p) => s + p.rp, 0), parts };
 }
 
-function yeoboMonthRevenue(m: YeoboPnLMonth | undefined): number | null {
+function yeoboRevenue(m: YeoboPnLMonth | undefined): RevenueResult | null {
   if (!m) return null;
   let total = 0;
   for (const br of Object.values(m.byBranch)) total += classifyCategories(categoryRows(br.byCategory)).pnlRevenue;
-  return total;
+  return { total, parts: yeoboBranchRevenue(m) };
 }
 
 /** Rincian omset per cabang Yeobo (urut nama) untuk satu bulan. */
@@ -207,21 +229,22 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
     }));
 
     // Laporan keuangan dimuat sekali per merek untuk seluruh rentang tren.
-    const needsHaeng = !opts.employeeView && brands.some((b) => BRAND_REVENUE[b.code]?.kind === "haeng");
+    const needsHaeng = !opts.employeeView && brands.some((b) => BRAND_REVENUE[b.code]?.kind === "pos" || BRAND_REVENUE[b.code]?.kind === "cake");
     const needsYeobo = !opts.employeeView && brands.some((b) => BRAND_REVENUE[b.code]?.kind === "yeobo");
     const [haengPnl, yeoboPnl] = await Promise.all([
       needsHaeng ? fetchPnL(db, "Haengbocake", ym(first), ym(month)) : Promise.resolve(null),
       needsYeobo ? fetchYeoboPnL(db, ym(first), ym(month)) : Promise.resolve(null),
     ]);
 
-    // Target omset brand Haengbocake = target omzet cabangnya di Scorecard Cabang (POS + Custom Cake): SATU sumber, supaya
-    // angka target tidak bisa berbeda antara dua scorecard. Brand tanpa target cabang (Yeobo) memakai target sosmed sendiri.
-    const branchOmzetTarget = new Map<string, number>();
+    // Target omset brand Haengbocake = target omzet cabang di Scorecard Cabang, dijumlah Pare + Semarang (haengbo.corner =
+    // target POS, haengbocake.idn = target Custom Cake): SATU sumber, supaya angka target tidak bisa berbeda antara dua
+    // scorecard. Brand tanpa target cabang (Yeobo) memakai target sosmed sendiri.
+    const branchTarget = { pos: 0, cake: 0 };
     if (!opts.employeeView && needsHaeng) {
       const tr = await db.from("scorecard_branch_targets" as never).select("branch, monthly_pos_target, monthly_cake_target");
-      for (const t of (tr.data ?? []) as unknown as { branch: string; monthly_pos_target: string | number | null; monthly_cake_target: string | number | null }[]) {
-        const sum = (Number(t.monthly_pos_target) || 0) + (Number(t.monthly_cake_target) || 0);
-        if (sum > 0) branchOmzetTarget.set(t.branch, sum);
+      for (const t of (tr.data ?? []) as unknown as { monthly_pos_target: string | number | null; monthly_cake_target: string | number | null }[]) {
+        branchTarget.pos += Number(t.monthly_pos_target) || 0;
+        branchTarget.cake += Number(t.monthly_cake_target) || 0;
       }
     }
 
@@ -248,14 +271,11 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       const cfgFor = (code: SocialMetricCode, m: string) => pickConfig(versions.filter((v) => v.metricCode === code), m);
 
       const spec = opts.employeeView ? undefined : BRAND_REVENUE[b.code];
-      const revenueOf = async (m: string): Promise<number | null> => {
+      const revenueOf = async (m: string): Promise<RevenueResult | null> => {
         if (!spec) return null;
         const { year, month: mm } = ym(m);
-        if (spec.kind === "haeng") {
-          const pnl = haengPnl?.months.find((x) => x.year === year && x.month === mm);
-          return haengBranchRevenue(db, m, pnl, spec.branch);
-        }
-        return yeoboMonthRevenue(yeoboPnl?.months.find((x) => x.year === year && x.month === mm));
+        if (spec.kind === "yeobo") return yeoboRevenue(yeoboPnl?.months.find((x) => x.year === year && x.month === mm));
+        return haengRevenue(db, m, spec.kind, haengPnl?.months.find((x) => x.year === year && x.month === mm));
       };
       // Omset berasal dari laporan keuangan/POS; kegagalannya tidak boleh mematikan tiga metrik lain.
       const revFail: { msg: string | null } = { msg: null };
@@ -272,22 +292,24 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         const rs = reportsInMonth(brandReports, m);
         return {
           reach: reachOf(rs),
-          omset: revenues[i],
+          omset: revenues[i]?.total ?? null,
           followers_growth: followersGrowthOf(rs),
           engagement: engagementOf(rs),
         } satisfies Record<SocialMetricCode, number | null>;
       });
       const cur = valuesByMonth[valuesByMonth.length - 1];
+      const curRevenue = revenues[revenues.length - 1];
       const curReports = reportsInMonth(brandReports, month);
       const accountsReporting = new Set(curReports.map((r) => r.accountId)).size;
       const weeksReported = new Set(curReports.map((r) => r.weekStart)).size;
 
       const metrics: BrandMetricView[] = SOCIAL_METRICS.filter((def) => !(opts.employeeView && def.code === "omset")).map((def) => {
         let cfg = cfgFor(def.code, month);
-        if (def.code === "omset" && spec?.kind === "haeng" && branchOmzetTarget.has(spec.branch)) {
+        const hk = spec?.kind;
+        if (def.code === "omset" && (hk === "pos" || hk === "cake") && branchTarget[hk] > 0) {
           cfg = {
             metricCode: "omset",
-            targetValue: branchOmzetTarget.get(spec.branch)!,
+            targetValue: branchTarget[hk],
             greenBound: cfg?.greenBound ?? 100,
             redBound: cfg?.redBound ?? 70,
             effectiveFrom: cfg?.effectiveFrom ?? month,
@@ -300,8 +322,15 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
             ? revFail.msg
               ? { catatan: `Omset belum bisa dihitung: ${revFail.msg}` }
               : {
-                  sumber: spec?.kind === "yeobo" ? "Laporan laba-rugi Yeobo Space (semua cabang)" : usesPosRegime(month) ? `POS + custom cake (${spec && spec.kind === "haeng" ? spec.branch : "-"})` : "Laporan laba-rugi",
-                  ...(spec?.kind === "yeobo" ? { rincian_cabang: yeoboBranchRevenue(yeoboPnl?.months.find((x) => x.year === ym(month).year && x.month === ym(month).month)) } : {}),
+                  sumber:
+                    spec?.kind === "yeobo"
+                      ? "Laporan laba-rugi Yeobo Space (semua cabang)"
+                      : spec?.kind === "cake"
+                        ? "Omset Custom Cake (Pare + Semarang)"
+                        : usesPosRegime(month)
+                          ? "Omset POS (Pare + Semarang)"
+                          : "Laporan laba-rugi (Pare + Semarang)",
+                  ...(curRevenue && curRevenue.parts.length > 0 ? { rincian_cabang: curRevenue.parts } : {}),
                   ...(monthInProgress ? { bulan_berjalan: true, ...(spec?.kind === "yeobo" && yeoboDataUntil ? { data_sampai: yeoboDataUntil } : {}) } : {}),
                 }
             : { minggu_terisi: weeksReported, akun_terisi: `${accountsReporting}/${brandAccounts.length}` };
@@ -382,13 +411,13 @@ export async function getSocialTargets(): Promise<ActionResult<{ month: string; 
     for (const r of [brandsRes, accountsRes, cfgRes]) if (r.error) return fail(r.error.message);
     const accounts = (accountsRes.data ?? []) as any[];
     const cfgRows = (cfgRes.data ?? []) as unknown as ConfigRow[];
-    // Target omset brand Haengbocake mengikuti target omzet cabang (lihat computeSocialScorecard).
-    const branchOmzet = new Map<string, number>();
+    // Target omset brand Haengbocake mengikuti target omzet cabang, dijumlah Pare + Semarang (lihat computeSocialScorecard).
+    const branchTarget = { pos: 0, cake: 0 };
     {
       const tr = await db.from("scorecard_branch_targets" as never).select("branch, monthly_pos_target, monthly_cake_target");
-      for (const t of (tr.data ?? []) as unknown as { branch: string; monthly_pos_target: string | number | null; monthly_cake_target: string | number | null }[]) {
-        const sum = (Number(t.monthly_pos_target) || 0) + (Number(t.monthly_cake_target) || 0);
-        if (sum > 0) branchOmzet.set(t.branch, sum);
+      for (const t of (tr.data ?? []) as unknown as { monthly_pos_target: string | number | null; monthly_cake_target: string | number | null }[]) {
+        branchTarget.pos += Number(t.monthly_pos_target) || 0;
+        branchTarget.cake += Number(t.monthly_cake_target) || 0;
       }
     }
     const brands: SocialBrandCard[] = ((brandsRes.data ?? []) as any[]).map((b) => {
@@ -403,11 +432,12 @@ export async function getSocialTargets(): Promise<ActionResult<{ month: string; 
         weeksReported: 0,
         metrics: SOCIAL_METRICS.map((def) => {
           const cfg = pickConfig(versions.filter((v) => v.metricCode === def.code), month);
-          const fromBranch = def.code === "omset" && spec?.kind === "haeng" && branchOmzet.has(spec.branch);
+          const hk = spec?.kind;
+          const fromBranch = def.code === "omset" && (hk === "pos" || hk === "cake") && branchTarget[hk] > 0;
           return {
             code: def.code,
             actual: null,
-            target: fromBranch ? branchOmzet.get((spec as { branch: string }).branch)! : (cfg?.targetValue ?? null),
+            target: fromBranch ? branchTarget[hk as "pos" | "cake"] : (cfg?.targetValue ?? null),
             score: null,
             status: "not_assessed" as const,
             label: def.label,
