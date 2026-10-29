@@ -587,7 +587,7 @@ async function computeStudio(deps: ComputeDeps, unit: ScUnit, month: string, onl
         pembilang_sewa_rp: rd(fin.rent),
         penyebut_revenue_rp: rd(revenue),
         peringatan: rentMissing ? "Tidak ada biaya sewa tercatat bulan ini (dibayar di muka / belum dicatat?): tidak dinilai." : undefined,
-        catatan: fin.rentCash !== undefined ? `Sewa dibagi rata per bulan dari pembayaran tahunan (kas bulan ini: Rp${Math.round(fin.rentCash).toLocaleString("id-ID")}).` : undefined,
+        catatan: fin.rentCash !== undefined ? `Sewa disesuaikan untuk scorecard (pembayaran sekaligus dibagi rata ke bulan yang dicakup, atau estimasi bila pembayaran belum terjadi); laba-rugi tidak berubah (kas bulan ini: Rp${Math.round(fin.rentCash).toLocaleString("id-ID")}).` : undefined,
       })
     );
 

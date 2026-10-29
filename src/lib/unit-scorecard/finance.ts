@@ -108,6 +108,9 @@ export function usesPosRegime(monthIso: string): boolean {
 }
 
 /**
+ * KHUSUS SCORECARD. Penyesuaian sewa ini TIDAK BOLEH dipakai di laporan laba-rugi (PnL): PnL berbasis kas per bulan dan
+ * menjadi dasar bagi hasil serta cashflow. Dipanggil hanya dari compute.ts (hitungan scorecard).
+ *
  * Sewa yang dibayar sekaligus untuk beberapa bulan tetapi menjadi beban tiap bulan masa sewa. Tanpa ini, bulan bayar
  * tampak sewa >100% omzet dan bulan lain Rp0. `from`/`to` = bulan pertama/terakhir masa sewa ("YYYY-MM", inklusif);
  * jatah bulanan = totalAmount ÷ jumlah bulan masa sewa. Perpanjangan sewa = tambah baris baru di sini; di luar masa
@@ -119,14 +122,14 @@ export function usesPosRegime(monthIso: string): boolean {
  *  - dengan `cashMonth` (menambah): sewa kas bulan itu tetap, hanya pembayaran `totalAmount` yang jatuh di bulan
  *    `cashMonth` (periode efektifnya) dikeluarkan dan jatah bulanan ditambahkan. Untuk sewa tambahan di samping
  *    sewa bulanan yang masih berjalan.
+ *  - dengan `monthlyAmount` (estimasi): jatah bulanan tetap DITAMBAHKAN di atas sewa kas, tanpa mengeluarkan pembayaran
+ *    apa pun. Untuk bulan yang pembayarannya belum terjadi; saat pembayaran sebenarnya tercatat, ganti baris estimasi
+ *    dengan aturan `cashMonth` di atas supaya tidak terhitung dua kali.
  */
-export interface RentAccrual {
-  branch: string;
-  from: string;
-  to: string;
-  totalAmount: number;
-  cashMonth?: string;
-}
+export type RentAccrual = { branch: string; from: string; to: string } & (
+  | { totalAmount: number; cashMonth?: string; monthlyAmount?: undefined }
+  | { monthlyAmount: number; totalAmount?: undefined; cashMonth?: undefined }
+);
 
 export const RENT_ACCRUALS: RentAccrual[] = [
   // Yeotem (Tembalang): Rp25 jt/tahun dibayar tiap Januari; Rp10 jt tercatat di bank 2 Jan 2026, sisanya tak lewat rekening.
@@ -138,6 +141,9 @@ export const RENT_ACCRUALS: RentAccrual[] = [
   // (dibayar 3 Okt 2026, periode Sep) untuk Mar–Sep 2026. Pembayaran berikutnya = tambah baris di sini.
   { branch: "Tlogosari", from: "2025-11", to: "2026-02", totalAmount: 3_000_000, cashMonth: "2026-03" },
   { branch: "Tlogosari", from: "2026-03", to: "2026-09", totalAmount: 4_895_900, cashMonth: "2026-09" },
+  // ESTIMASI sampai pembayaran berikutnya tercatat: Okt 2026 dst ≈ rata-rata jatah Mar–Sep (Rp4.895.900 ÷ 7). Saat pembayaran
+  // sebenarnya ada, HAPUS baris ini dan tambah aturan dengan totalAmount + cashMonth untuk bulan yang dicakupnya.
+  { branch: "Tlogosari", from: "2026-10", to: "2027-12", monthlyAmount: 699_414 },
 ];
 
 function monthsInclusive(from: string, to: string): number {
@@ -152,6 +158,10 @@ export function applyRentAccrual(fin: FinanceBreakdown, branch: string, ym: stri
   let rent = fin.rent;
   for (const r of active) {
     const inRange = ym >= r.from && ym <= r.to;
+    if (r.monthlyAmount !== undefined) {
+      if (inRange) rent += r.monthlyAmount;
+      continue;
+    }
     const share = Math.round(r.totalAmount / monthsInclusive(r.from, r.to));
     if (r.cashMonth === undefined) rent = share;
     else {

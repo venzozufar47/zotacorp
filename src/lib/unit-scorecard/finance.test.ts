@@ -94,7 +94,14 @@ test("sewa studio besar Tlogosari: pembayaran dibagi ke bulan yang dicakup, pemb
   assert.equal(applyRentAccrual(classifyCategories([op2("Rent", 8_000_000)]), "Tlogosari", "2026-03").rent, 5_699_414);
   // Sep 2026: kas Rp9.895.900 → 4.895.900 dikeluarkan, + 699.414
   assert.equal(applyRentAccrual(classifyCategories([op2("Rent", 9_895_900)]), "Tlogosari", "2026-09").rent, 5_699_414);
-  // Okt 2026: di luar semua aturan → tidak berubah
-  const okt = classifyCategories([op2("Rent", 5_000_000)]);
-  assert.equal(applyRentAccrual(okt, "Tlogosari", "2026-10"), okt);
+  // Okt 2026 dst: tidak ada pembayaran yang dikeluarkan; yang berlaku hanya estimasi (lihat test estimasi di bawah)
+  assert.equal(applyRentAccrual(classifyCategories([op2("Rent", 5_000_000)]), "Tlogosari", "2026-10").rent, 5_699_414);
+});
+
+test("estimasi sewa studio besar Tlogosari (monthlyAmount) ditambahkan di atas sewa kas tanpa mengeluarkan pembayaran", () => {
+  const op3 = (c: string, d: number) => ({ category: c, credit: 0, debit: d, kind: "operating" as const });
+  assert.equal(applyRentAccrual(classifyCategories([op3("Rent", 5_000_000)]), "Tlogosari", "2026-10").rent, 5_699_414);
+  assert.equal(applyRentAccrual(classifyCategories([op3("Rent", 5_000_000)]), "Tlogosari", "2027-12").rent, 5_699_414);
+  const jan28 = classifyCategories([op3("Rent", 5_000_000)]);
+  assert.equal(applyRentAccrual(jan28, "Tlogosari", "2028-01"), jan28);
 });
