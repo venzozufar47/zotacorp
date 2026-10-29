@@ -54,7 +54,7 @@ export function SocialScorecardView({ data, monthOptions }: { data: SocialScorec
             ))}
           </select>
         </label>
-        <span className="text-[12px] text-muted-foreground">Angka dihitung dari laporan mingguan (minggu masuk bulan menurut tanggal Senin-nya).</span>
+        <span className="text-[12px] text-muted-foreground">Reach, Followers growth, dan Engagement dari 4 minggu laporan yang berakhir di bulan itu (target per 4 minggu); Omset per bulan.</span>
         <Link href="/admin/social" className="ml-auto text-[12.5px] font-semibold text-primary hover:underline">
           Isi laporan & atur target →
         </Link>

@@ -10,14 +10,16 @@ import { saveSocialScorecardConfig, type BrandMetricView, type SocialBrandCard }
 
 const nf = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 const UNIT: Record<BrandMetricView["kind"], string> = { rupiah: "Rp", count: "", pct: "%" };
+/** Periode yang dinilai tiap target: laporan mingguan per 4 minggu; omset per bulan. */
+const PERIOD: Record<string, string> = { reach: "per 4 minggu", followers_growth: "per 4 minggu", engagement: "dari 4 minggu", omset: "per bulan" };
 
 /** Target bulanan + ambang hijau/kuning/merah per brand per metrik. Setiap perubahan = versi baru (wajib alasan). */
 export function SocialTargetsEditor({ brands, month }: { brands: SocialBrandCard[]; month: string }) {
   return (
     <div className="space-y-5">
       <p className="text-[12.5px] text-muted-foreground">
-        Status dinilai dari pencapaian terhadap target: hijau bila ≥ batas hijau, merah bila &lt; batas merah, di antaranya kuning. Target kosong = metrik
-        tampil tanpa warna. Perubahan berlaku mulai bulan yang dipilih dan riwayat lama tetap tersimpan.
+        Status dinilai dari pencapaian terhadap target: hijau bila ≥ batas hijau, merah bila &lt; batas merah, di antaranya kuning. Target Reach dan Followers growth berlaku
+        PER 4 MINGGU (isi langsung angka 4 minggu); Omset per bulan. Target kosong = metrik tampil tanpa warna. Perubahan berlaku mulai bulan yang dipilih dan riwayat lama tetap tersimpan.
       </p>
       {brands.map((b) => (
         <section key={b.brandId} className="rounded-2xl border-2 border-foreground bg-card p-3.5">
@@ -83,7 +85,9 @@ function MetricRow({ brand, m, month }: { brand: SocialBrandCard; m: BrandMetric
   return (
     <li className="rounded-xl bg-muted/40 px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="min-w-[150px] text-[12.5px] font-semibold">{m.label}</span>
+        <span className="min-w-[150px] text-[12.5px] font-semibold">
+          {m.label} <span className="font-normal text-muted-foreground">· {PERIOD[m.code] ?? ""}</span>
+        </span>
         <span className="text-[12px] text-muted-foreground">
           target {m.target == null ? "belum diisi" : `${UNIT[m.kind]}${nf.format(m.target)}`} · hijau ≥ {m.greenBound ?? "—"}% · merah &lt; {m.redBound ?? "—"}%
         </span>

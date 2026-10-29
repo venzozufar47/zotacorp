@@ -22,7 +22,6 @@ import {
   monthRange,
   pickConfig,
   reachOf,
-  reportsInMonth,
   scoreMetric,
   type ConfigVersion,
   type ReportRow,
@@ -214,7 +213,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       db.from("social_brands" as never).select("id, code, label, sort_order").order("sort_order"),
       db.from("social_accounts" as never).select("id, brand_id").eq("is_active", true),
       db.from("social_scorecard_config" as never).select("*").order("effective_from", { ascending: false }).order("created_at", { ascending: false }),
-      db.from("social_weekly_reports" as never).select("*").gte("week_start", first).lt("week_start", monthRange(month).toExcl),
+      db.from("social_weekly_reports" as never).select("*").gte("week_start", addDays(first, -28)).lt("week_start", monthRange(month).toExcl),
     ]);
     for (const r of [brandsRes, accountsRes, cfgRes, reportsRes]) if (r.error) return fail(r.error.message);
     const brands = ((brandsRes.data ?? []) as any[]).filter((b) => !opts.brandIds || opts.brandIds.includes(b.id));
@@ -270,12 +269,19 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       yeoboDataUntil = ((last.data ?? []) as unknown as { transaction_date: string }[])[0]?.transaction_date ?? null;
     }
 
-    // Tampilan karyawan: Reach, Followers growth, dan Engagement memakai 28 HARI TERAKHIR (4 minggu selesai terakhir), bukan
-    // bulan kalender, supaya tidak kosong tiap awal bulan. Target bulanan disetarakan ke 4 minggu (4 ÷ 52/12 ≈ 0,92).
+    // Reach, Followers growth, dan Engagement dihitung dari 4 MINGGU laporan yang berakhir di bulan itu (Senin terakhir yang
+    // sudah selesai di dalam bulan itu), dan targetnya juga PER 4 MINGGU. Tiap bulan selalu 4 minggu (bukan 4 atau 5 menurut
+    // jumlah Senin), jadi satu target berlaku untuk semua bulan dan tampilan tidak kosong di awal bulan.
     const latestWeek = addDays(mondayOf(today), -7);
-    const rollFrom = addDays(latestWeek, -21);
-    const rollTo = addDays(latestWeek, 6);
-    const FOUR_WEEK_SCALE = 4 / (52 / 12);
+    const windowFor = (m: string) => {
+      let end = mondayOf(addDays(monthRange(m).toExcl, -1));
+      if (end > latestWeek) end = latestWeek;
+      return { start: addDays(end, -21), end };
+    };
+    const inWindow = (rs: (ReportRow & { brandId: string })[], m: string) => {
+      const w = windowFor(m);
+      return rs.filter((r) => r.weekStart >= w.start && r.weekStart <= w.end);
+    };
 
     const out: SocialBrandCard[] = [];
     for (const b of brands) {
@@ -303,7 +309,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       );
 
       const valuesByMonth = months.map((m, i) => {
-        const rs = reportsInMonth(brandReports, m);
+        const rs = inWindow(brandReports, m);
         return {
           reach: reachOf(rs),
           omset: revenues[i]?.total ?? null,
@@ -312,13 +318,9 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         } satisfies Record<SocialMetricCode, number | null>;
       });
       const curRevenue = revenues[revenues.length - 1];
-      const curReports = opts.employeeView
-        ? brandReports.filter((r) => r.weekStart >= rollFrom && r.weekStart <= latestWeek)
-        : reportsInMonth(brandReports, month);
-      const lastMonthValues = valuesByMonth[valuesByMonth.length - 1];
-      const cur: Record<SocialMetricCode, number | null> = opts.employeeView
-        ? { ...lastMonthValues, reach: reachOf(curReports), followers_growth: followersGrowthOf(curReports), engagement: engagementOf(curReports) }
-        : lastMonthValues;
+      const curReports = inWindow(brandReports, month);
+      const curWindow = windowFor(month);
+      const cur = valuesByMonth[valuesByMonth.length - 1];
       const accountsReporting = new Set(curReports.map((r) => r.accountId)).size;
       const weeksReported = new Set(curReports.map((r) => r.weekStart)).size;
 
@@ -354,19 +356,15 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         }
         if (opts.employeeView && cfg?.targetValue != null) {
           if (def.code === "omset" && omsetPace) cfg = { ...cfg, targetValue: cfg.targetValue * omsetPace.fraction };
-          else if (def.code === "reach" || def.code === "followers_growth") cfg = { ...cfg, targetValue: cfg.targetValue * FOUR_WEEK_SCALE };
         }
         const scored = scoreMetric(cur[def.code], cfg, def.code);
-        // Keterangan tambahan untuk ikon ⓘ (karyawan): padat, satu baris per butir.
+        // Keterangan tambahan untuk ikon ⓘ: padat, satu baris per butir.
         const infoLines: string[] = [];
-        if (opts.employeeView) {
-          if (def.code === "omset") {
-            if (omsetPace) infoLines.push(omsetPace.elapsed > 0 ? `Target sampai ${dm(omsetPace.until)} (${omsetPace.elapsed}/${omsetPace.total} ${omsetPace.unit})` : "Belum ada data bulan ini");
-          } else {
-            infoLines.push(`28 hari terakhir: ${dm(rollFrom)} – ${dm(rollTo)}`);
-            if (weeksReported < 4) infoLines.push(`Baru ${weeksReported} dari 4 minggu terisi`);
-            if (def.code !== "engagement") infoLines.push("Target bulanan disetarakan ke 4 minggu");
-          }
+        if (def.code === "omset") {
+          if (opts.employeeView && omsetPace) infoLines.push(omsetPace.elapsed > 0 ? `Target sampai ${dm(omsetPace.until)} (${omsetPace.elapsed}/${omsetPace.total} ${omsetPace.unit})` : "Belum ada data bulan ini");
+        } else {
+          infoLines.push(`4 minggu: ${dm(curWindow.start)} – ${dm(addDays(curWindow.end, 6))}`);
+          if (weeksReported < 4) infoLines.push(`Baru ${weeksReported} dari 4 minggu terisi`);
         }
         const inputs: Record<string, unknown> =
           def.code === "omset"
