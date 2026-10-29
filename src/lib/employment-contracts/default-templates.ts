@@ -425,7 +425,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (3) Pemutusan hubungan kerja oleh Pemberi Kerja: Pemberi Kerja dapat mengakhiri hubungan kerja sesuai alasan dan prosedur yang diatur peraturan perundang-undangan, dengan pemberitahuan tertulis kepada Karyawan.
 
-(4) Dalam hal pemutusan hubungan kerja, Karyawan berhak atas uang pesangon, uang penghargaan masa kerja, dan uang penggantian hak sesuai alasan pemutusan dan peraturan perundang-undangan. Karena Pemberi Kerja tergolong usaha mikro atau kecil, nominalnya ditentukan berdasarkan kesepakatan Para Pihak sepanjang diizinkan peraturan perundang-undangan, dengan tetap menghargai hak Karyawan.
+(4) Dalam hal pemutusan hubungan kerja, Karyawan berhak atas uang penghargaan masa kerja. Karena Pemberi Kerja tergolong usaha mikro atau kecil, nominalnya ditentukan berdasarkan kesepakatan Para Pihak sepanjang diizinkan peraturan perundang-undangan, dengan tetap menghargai hak Karyawan.
 
 (5) Karyawan yang hubungan kerjanya berakhir karena pelanggaran tetap menerima hak sesuai alasan pemutusan dan peraturan perundang-undangan.
 
