@@ -38,6 +38,8 @@ export interface ReportRow {
   weekStart: string;
   views: number;
   viewers: number;
+  /** TikTok minggu lewat: viewers tidak bisa diambil (preset 7 hari). `viewers` = 0 dan tidak ikut dihitung. */
+  viewersMissing?: boolean;
   interactions: number;
   followers: number;
   follows: number;

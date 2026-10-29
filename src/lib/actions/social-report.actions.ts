@@ -50,6 +50,8 @@ export interface WeeklyReportView extends ReportRow {
   shares: number | null;
   /** Tanggal viewers TikTok (preset 7 hari) diambil; null untuk Instagram dan laporan lama. */
   viewersCapturedOn: string | null;
+  /** Viewers tidak tersedia (TikTok minggu lewat): `viewers` = 0 dan tidak dihitung. */
+  viewersMissing: boolean;
   enteredAt: string;
   enteredByName: string | null;
 }
@@ -77,7 +79,8 @@ function toView(r: any, names: Map<string, string>): WeeklyReportView {
     accountId: r.account_id,
     weekStart: r.week_start,
     views: r.views,
-    viewers: r.viewers,
+    viewers: r.viewers ?? 0,
+    viewersMissing: r.viewers == null,
     interactions: r.interactions,
     followers: r.followers,
     follows: r.follows,
@@ -170,6 +173,8 @@ export interface WeeklyReportInput {
   shares?: number;
   netFollowers?: number;
   viewersCapturedOn?: string;
+  /** Hanya TikTok: viewers tidak bisa diambil (minggu sudah lewat dari batas preset 7 hari); disimpan kosong. */
+  viewersUnavailable?: boolean;
 }
 
 /** Simpan (atau timpa) laporan satu akun untuk satu minggu. Minggu dinormalkan ke Senin; minggu yang belum selesai ditolak. */
@@ -179,7 +184,6 @@ export async function saveWeeklyReport(input: WeeklyReportInput): Promise<Action
   if (!user) return fail("Not signed in");
   if (!input.accountId) return fail("Akun wajib dipilih");
   if (!isDateIso(input.weekStart)) return fail("Tanggal minggu tidak valid");
-  if (input.viewers > input.views) return fail("Viewers tidak boleh lebih besar dari views — cek kembali angkanya.");
   const week = mondayOf(input.weekStart);
   // Laporan mingguan diisi untuk minggu yang sudah selesai (tiap Senin untuk minggu lalu).
   const today = jakartaDateString(new Date());
@@ -196,27 +200,35 @@ export async function saveWeeklyReport(input: WeeklyReportInput): Promise<Action
   // TikTok: interaksi dilaporkan terpisah (like/komentar/share) dan followers langsung net, jadi nilai turunannya dihitung
   // di sini: interactions = jumlah, net followers → follows (naik) / unfollows (turun). Instagram tetap apa adanya.
   let { interactions, follows, unfollows } = input;
-  let tiktok: { likes: number; comments: number; shares: number; capturedOn: string } | null = null;
+  let tiktok: { likes: number; comments: number; shares: number; capturedOn: string | null } | null = null;
+  let viewers: number | null = input.viewers;
   if ((acct as any).platform === "tiktok") {
     const { likes, comments, shares, netFollowers, viewersCapturedOn } = input;
     if (!isCount(likes) || !isCount(comments) || !isCount(shares)) return fail("Likes, comments, dan shares wajib diisi (bilangan bulat ≥ 0)");
     if (typeof netFollowers !== "number" || !Number.isInteger(netFollowers) || Math.abs(netFollowers) >= 100_000_000) return fail("Net followers harus bilangan bulat");
-    if (!viewersCapturedOn || !isDateIso(viewersCapturedOn)) return fail("Tanggal pengambilan viewers wajib diisi");
-    if (viewersCapturedOn < addDays(week, 7)) return fail("Viewers 7 hari baru bisa diambil setelah minggu itu selesai (mulai Senin).");
-    if (viewersCapturedOn > today) return fail("Tanggal pengambilan viewers tidak boleh di masa depan");
+    if (input.viewersUnavailable) {
+      viewers = null;
+    } else {
+      if (!viewersCapturedOn || !isDateIso(viewersCapturedOn)) return fail("Tanggal pengambilan viewers wajib diisi");
+      if (viewersCapturedOn < addDays(week, 7)) return fail("Viewers 7 hari baru bisa diambil setelah minggu itu selesai (mulai Senin).");
+      if (viewersCapturedOn > today) return fail("Tanggal pengambilan viewers tidak boleh di masa depan");
+      // Preset 7 hari selalu menghitung mundur dari hari dibuka: lewat Kamis rentangnya sudah bukan minggu itu lagi.
+      if (viewersCapturedOn > addDays(week, 10)) return fail("Viewers TikTok hanya bisa diambil sampai Kamis setelah minggu itu. Tandai viewers tidak tersedia.");
+    }
     interactions = likes + comments + shares;
     follows = Math.max(netFollowers, 0);
     unfollows = Math.max(-netFollowers, 0);
-    tiktok = { likes, comments, shares, capturedOn: viewersCapturedOn };
+    tiktok = { likes, comments, shares, capturedOn: viewers == null ? null : (viewersCapturedOn as string) };
   }
-  const nums = [input.views, input.viewers, interactions, input.followers, follows, unfollows, input.posts, input.reels, input.stories];
+  if (viewers != null && viewers > input.views) return fail("Viewers tidak boleh lebih besar dari views — cek kembali angkanya.");
+  const nums = [input.views, ...(viewers == null ? [] : [viewers]), interactions, input.followers, follows, unfollows, input.posts, input.reels, input.stories];
   if (!nums.every(isCount)) return fail("Semua angka harus bilangan bulat ≥ 0");
   const { error } = await db.from("social_weekly_reports" as never).upsert(
     {
       account_id: input.accountId,
       week_start: week,
       views: input.views,
-      viewers: input.viewers,
+      viewers,
       interactions,
       followers: input.followers,
       follows,

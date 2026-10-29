@@ -38,7 +38,7 @@ function draftOf(r: WeeklyReportView | undefined): Draft {
   const d = {} as Draft;
   for (const k of ALL_FIELDS) d[k] = "";
   if (!r) return d;
-  for (const k of ["views", "viewers", "interactions", "followers", "follows", "unfollows", "posts", "reels", "stories"] as const) d[k] = String(r[k]);
+  for (const k of ["views", "viewers", "interactions", "followers", "follows", "unfollows", "posts", "reels", "stories"] as const) d[k] = k === "viewers" && r.viewersMissing ? "" : String(r[k]);
   for (const k of ["likes", "comments", "shares"] as const) d[k] = r[k] == null ? "" : String(r[k]);
   d.netFollowers = String(r.follows - r.unfollows);
   return d;
@@ -145,7 +145,11 @@ function AccountReportCard({
   const fields = FIELDS_BY_PLATFORM[account.platform];
   // TikTok: viewers hanya preset 7 hari, jadi dicatat kapan diambil. Pas bila diambil Senin setelah minggu itu.
   const idealCapture = addDays(weekStart, 7);
-  const [captured, setCaptured] = useState(existing?.viewersCapturedOn ?? (today >= idealCapture ? today : ""));
+  // Preset 7 hari hanya relevan sampai Kamis setelah minggu itu; sesudahnya viewers minggu itu tidak bisa diambil lagi.
+  const lastCapture = addDays(idealCapture, 3) < today ? addDays(idealCapture, 3) : today;
+  const lateWeek = today > addDays(idealCapture, 3);
+  const [unavail, setUnavail] = useState(isTikTok && (existing ? existing.viewersMissing : lateWeek));
+  const [captured, setCaptured] = useState(existing?.viewersCapturedOn ?? (!lateWeek && today >= idealCapture ? today : ""));
   // Akun yang belum diisi terbuka; yang sudah terisi dilipat (ringkasannya tetap terlihat).
   const [open, setOpen] = useState(!existing);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -203,9 +207,9 @@ function AccountReportCard({
   const n = (k: FieldKey) => (isFilled(draft[k]) ? Number(draft[k]) : null);
   const net = isTikTok ? n("netFollowers") : n("follows") != null && n("unfollows") != null ? (n("follows") as number) - (n("unfollows") as number) : null;
   const interactionsTotal = n("likes") != null && n("comments") != null && n("shares") != null ? (n("likes") as number) + (n("comments") as number) + (n("shares") as number) : null;
-  const captureOk = !isTikTok || (/^\d{4}-\d{2}-\d{2}$/.test(captured) && captured >= idealCapture && captured <= today);
-  const complete = fields.every((k) => isFilled(draft[k])) && captureOk;
-  const viewersTooHigh = n("views") != null && n("viewers") != null && (n("viewers") as number) > (n("views") as number);
+  const captureOk = !isTikTok || unavail || (/^\d{4}-\d{2}-\d{2}$/.test(captured) && captured >= idealCapture && captured <= lastCapture);
+  const complete = fields.every((k) => (unavail && k === "viewers") || isFilled(draft[k])) && captureOk;
+  const viewersTooHigh = !unavail && n("views") != null && n("viewers") != null && (n("viewers") as number) > (n("views") as number);
 
   function save() {
     if (!complete) return void toast.error("Isi semua angka (tulis 0 bila memang nol)");
@@ -215,7 +219,7 @@ function AccountReportCard({
         accountId: account.id,
         weekStart,
         views: Number(draft.views),
-        viewers: Number(draft.viewers),
+        viewers: unavail ? 0 : Number(draft.viewers),
         // TikTok: server menghitung interaksi/follows/unfollows dari like+komentar+share dan net followers.
         interactions: Number(draft.interactions || 0),
         followers: Number(draft.followers),
@@ -231,7 +235,8 @@ function AccountReportCard({
               comments: Number(draft.comments),
               shares: Number(draft.shares),
               netFollowers: Number(draft.netFollowers),
-              viewersCapturedOn: captured,
+              viewersCapturedOn: unavail ? undefined : captured,
+              viewersUnavailable: unavail,
             }
           : {}),
       });
@@ -270,7 +275,13 @@ function AccountReportCard({
           <span className="block truncate text-[11.5px] text-muted-foreground">
             @{account.handle}
             {existing && !open ? ` · ${nf.format(existing.views)} views · ${nf.format(existing.followers)} followers` : ""}
-            {existing && !open && isTikTok && existing.viewersCapturedOn && existing.viewersCapturedOn !== idealCapture ? " · viewers perkiraan" : ""}
+            {existing && !open && isTikTok
+              ? existing.viewersMissing
+                ? " · viewers tidak tersedia"
+                : existing.viewersCapturedOn && existing.viewersCapturedOn !== idealCapture
+                  ? " · viewers perkiraan"
+                  : ""
+              : ""}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
@@ -291,11 +302,12 @@ function AccountReportCard({
             <Num label="Views" value={draft.views} onChange={set("views")} onKeyDown={nextOnEnter} />
             <Num
               label="Viewers"
-              hint={isTikTok ? "preset 7 hari terakhir" : undefined}
-              value={draft.viewers}
+              hint={isTikTok ? (unavail ? "tidak tersedia" : "preset 7 hari terakhir") : undefined}
+              value={unavail ? "" : draft.viewers}
               onChange={set("viewers")}
               onKeyDown={nextOnEnter}
               invalid={viewersTooHigh}
+              disabled={unavail}
             />
             {isTikTok ? (
               <>
@@ -312,6 +324,17 @@ function AccountReportCard({
             )}
             {viewersTooHigh && <p className="col-span-2 text-[11px] text-destructive sm:col-span-3">Viewers lebih besar dari views — mungkin tertukar.</p>}
             {isTikTok && (
+              <label className="col-span-2 flex items-start gap-2 text-[12px] sm:col-span-3">
+                <input type="checkbox" checked={unavail} onChange={(e) => setUnavail(e.target.checked)} className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  <span className="font-semibold">Viewers tidak tersedia</span>
+                  <span className="block text-[10.5px] leading-snug text-muted-foreground">
+                    Preset 7 hari TikTok hanya cocok sampai Kamis setelah minggu itu selesai. {lateWeek ? "Minggu ini sudah lewat batas itu." : "Centang bila terlewat."}
+                  </span>
+                </span>
+              </label>
+            )}
+            {isTikTok && !unavail && (
               <div className="col-span-2 sm:col-span-3">
                 <label className="block">
                   <span className="block text-[12px] font-semibold leading-tight">Viewers diambil tanggal</span>
@@ -319,7 +342,7 @@ function AccountReportCard({
                     type="date"
                     value={captured}
                     min={idealCapture}
-                    max={today}
+                    max={lastCapture}
                     onChange={(e) => setCaptured(e.target.value)}
                     aria-invalid={!captureOk || undefined}
                     className={cn("mt-0.5 h-11 w-full rounded-lg border-2 bg-background px-3 text-base md:h-9 md:text-[14px]", captureOk ? "border-border" : "border-destructive")}
@@ -406,6 +429,7 @@ function Num({
   wide = false,
   invalid = false,
   signed = false,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
@@ -417,6 +441,7 @@ function Num({
   invalid?: boolean;
   /** Boleh negatif: keyboard angka iOS tidak punya tanda minus, jadi pakai keyboard teks. */
   signed?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <label className={cn("block", wide && "col-span-2 sm:col-span-1")}>
@@ -432,9 +457,10 @@ function Num({
         onKeyDown={onKeyDown}
         placeholder="0"
         aria-invalid={invalid || undefined}
+        disabled={disabled}
         // 16px di HP: di bawah itu iOS Safari memperbesar layar tiap kali input difokuskan.
         className={cn(
-          "mt-0.5 h-11 w-full rounded-lg border-2 bg-background px-3 text-base tabular-nums md:h-9 md:text-[14px]",
+          "mt-0.5 h-11 w-full rounded-lg border-2 bg-background px-3 text-base tabular-nums md:h-9 md:text-[14px] disabled:opacity-50",
           invalid ? "border-destructive" : "border-border"
         )}
       />

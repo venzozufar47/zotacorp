@@ -206,7 +206,8 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       accountId: r.account_id,
       weekStart: r.week_start,
       views: r.views,
-      viewers: r.viewers,
+      viewers: r.viewers ?? 0,
+      viewersMissing: r.viewers == null,
       interactions: r.interactions,
       followers: r.followers,
       follows: r.follows,
@@ -355,6 +356,8 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         } else {
           infoLines.push(`4 minggu: ${dm(curWindow.start)} – ${dm(addDays(curWindow.end, 6))}`);
           if (weeksReported < 4) infoLines.push(`Baru ${weeksReported} dari 4 minggu terisi`);
+          const missingViewers = def.code === "reach" ? curReports.filter((r) => r.viewersMissing).length : 0;
+          if (missingViewers > 0) infoLines.push(`Viewers TikTok tidak tersedia di ${missingViewers} laporan (tidak ikut dihitung)`);
         }
         const inputs: Record<string, unknown> =
           def.code === "omset"
