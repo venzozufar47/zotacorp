@@ -1,17 +1,33 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, XCircle, type LucideIcon } from "lucide-react";
 import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
 import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
 
 /**
- * Ubin berwarna penuh menurut status (lampu lalu lintas). Merah dan hijau sengaja dibuat sedikit lebih gelap dari warna
- * sistem dan ukurannya dibatasi: scorecard harus langsung terlihat, tetapi tidak boleh mengalahkan banner sapaan di atasnya.
+ * Ubin lampu lalu lintas dengan kedalaman: gradasi searah (gelap → terang) seperti banner sapaan, cincin tipis di tepi
+ * dalam, ikon status besar yang samar sebagai watermark, dan label status berikon (warna bukan satu-satunya penanda).
+ * Ukuran angka dibatasi supaya scorecard terlihat jelas tetapi tidak mengalahkan banner di atasnya.
  */
-const BAND_META: Record<ScorecardBand, { label: string; tile: string }> = {
-  green: { label: "Hijau", tile: "bg-[color-mix(in_srgb,var(--success)_72%,black)] text-white" },
-  yellow: { label: "Kuning", tile: "bg-warning text-foreground" },
-  red: { label: "Merah", tile: "bg-[color-mix(in_srgb,var(--destructive)_80%,black)] text-white" },
-  measuring: { label: "Diukur", tile: "bg-muted text-muted-foreground" },
-  unset: { label: "Belum diatur", tile: "bg-muted text-muted-foreground" },
+const BAND_META: Record<ScorecardBand, { label: string; Icon: LucideIcon; tile: string; chip: string }> = {
+  green: {
+    label: "Hijau",
+    Icon: CheckCircle2,
+    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--success)_58%,black)] to-[color-mix(in_srgb,var(--success)_80%,black)] text-white shadow-[0_8px_18px_-10px_color-mix(in_srgb,var(--success)_80%,black)]",
+    chip: "bg-white/20 text-white",
+  },
+  yellow: {
+    label: "Kuning",
+    Icon: AlertTriangle,
+    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--warning)_92%,white)] to-warning text-foreground shadow-[0_8px_18px_-10px_var(--warning)]",
+    chip: "bg-black/10 text-foreground",
+  },
+  red: {
+    label: "Merah",
+    Icon: XCircle,
+    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--destructive)_66%,black)] to-[color-mix(in_srgb,var(--destructive)_90%,black)] text-white shadow-[0_8px_18px_-10px_color-mix(in_srgb,var(--destructive)_85%,black)]",
+    chip: "bg-white/20 text-white",
+  },
+  measuring: { label: "Diukur", Icon: CircleDashed, tile: "bg-muted text-muted-foreground", chip: "bg-black/5 text-muted-foreground" },
+  unset: { label: "Belum diatur", Icon: CircleDashed, tile: "bg-muted text-muted-foreground", chip: "bg-black/5 text-muted-foreground" },
 };
 
 export function ScorecardView({
@@ -37,18 +53,29 @@ export function ScorecardView({
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
-        {scorecard.metrics.map((m) => {
+        {scorecard.metrics.map((m, i) => {
           const meta = BAND_META[m.band];
+          const Icon = meta.Icon;
+          // "Belum ada data" dan sejenisnya bukan angka: tampil lebih kecil supaya tidak meluap.
+          const isText = m.displayValue.length > 7;
           return (
-            <div key={m.key} className={`relative rounded-2xl px-3.5 py-3 ${meta.tile}`}>
-              <div className="flex items-start justify-between gap-1">
+            <div
+              key={m.key}
+              className={`animate-fade-up relative overflow-hidden rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 ${meta.tile}`}
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <Icon aria-hidden size={64} strokeWidth={1.5} className="pointer-events-none absolute -bottom-3 -right-3 opacity-[0.14]" />
+              <div className="relative flex items-start justify-between gap-1">
                 <span className="text-[11.5px] font-medium leading-snug">{m.label}</span>
                 <span className="-mr-2 -mt-1.5">
                   <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} settings={settingsLinks?.[m.key]} onSolid />
                 </span>
               </div>
-              <p className="mt-0.5 font-display text-2xl font-extrabold leading-tight tabular-nums">{m.displayValue}</p>
-              <p className="text-[11px] font-semibold">{meta.label}</p>
+              <p className={`relative mt-1 font-display font-extrabold leading-tight tabular-nums ${isText ? "text-lg" : "text-[28px]"}`}>{m.displayValue}</p>
+              <span className={`relative mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}>
+                <Icon aria-hidden size={12} strokeWidth={2.5} />
+                {meta.label}
+              </span>
             </div>
           );
         })}
