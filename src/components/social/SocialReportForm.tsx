@@ -19,12 +19,28 @@ const PLATFORM_LABEL = { instagram: "Instagram", tiktok: "TikTok" } as const;
 const PLATFORM_SHORT = { instagram: "IG", tiktok: "TT" } as const;
 const nf = new Intl.NumberFormat("id-ID");
 
-type Draft = Record<"views" | "viewers" | "interactions" | "followers" | "follows" | "unfollows" | "posts" | "reels" | "stories", string>;
-const FIELDS = ["views", "viewers", "interactions", "followers", "follows", "unfollows", "posts", "reels", "stories"] as const;
+type Draft = Record<
+  "views" | "viewers" | "interactions" | "likes" | "comments" | "shares" | "followers" | "netFollowers" | "follows" | "unfollows" | "posts" | "reels" | "stories",
+  string
+>;
+type FieldKey = keyof Draft;
+/** Isian per platform: Instagram punya satu angka interaksi + follows/unfollows; TikTok memisah like/komentar/share dan followers langsung net. */
+const FIELDS_BY_PLATFORM: Record<SocialAccountView["platform"], readonly FieldKey[]> = {
+  instagram: ["views", "viewers", "interactions", "followers", "follows", "unfollows", "posts", "reels", "stories"],
+  tiktok: ["views", "viewers", "likes", "comments", "shares", "followers", "netFollowers", "posts", "reels", "stories"],
+};
+const ALL_FIELDS = Array.from(new Set(Object.values(FIELDS_BY_PLATFORM).flat())) as FieldKey[];
+/** Net followers boleh negatif; semua isian lain hanya angka. */
+const validValue = (k: FieldKey, v: string) => (k === "netFollowers" ? /^-?\d{0,9}$/ : /^\d{0,9}$/).test(v);
+const isFilled = (v: string) => v !== "" && v !== "-";
 
 function draftOf(r: WeeklyReportView | undefined): Draft {
   const d = {} as Draft;
-  for (const k of FIELDS) d[k] = r ? String(r[k]) : "";
+  for (const k of ALL_FIELDS) d[k] = "";
+  if (!r) return d;
+  for (const k of ["views", "viewers", "interactions", "followers", "follows", "unfollows", "posts", "reels", "stories"] as const) d[k] = String(r[k]);
+  for (const k of ["likes", "comments", "shares"] as const) d[k] = r[k] == null ? "" : String(r[k]);
+  d.netFollowers = String(r.follows - r.unfollows);
   return d;
 }
 
@@ -79,8 +95,9 @@ export function SocialReportForm({ page, basePath }: { page: SocialReportPage; b
       </div>
 
       <p className="text-[12.5px] text-muted-foreground">
-        Isi tiap Senin untuk minggu yang baru selesai, dari menu Insights masing-masing akun (rentang Senin–Minggu). Followers diisi angka pada akhir minggu. Isian
-        yang belum disimpan tersimpan sementara di perangkat ini.
+        Isi tiap Senin untuk minggu yang baru selesai, dari menu Insights masing-masing akun (rentang Senin–Minggu). Followers diisi angka pada akhir minggu.
+        TikTok tidak bisa memilih tanggal untuk viewers: ambil preset 7 hari terakhir pada hari Senin supaya pas Senin–Minggu. Isian yang belum disimpan
+        tersimpan sementara di perangkat ini.
       </p>
 
       {page.brands.map((brand) => (
@@ -92,6 +109,7 @@ export function SocialReportForm({ page, basePath }: { page: SocialReportPage; b
                 key={`${acct.id}-${page.weekStart}`}
                 account={acct}
                 weekStart={page.weekStart}
+                today={page.today}
                 existing={page.thisWeek[acct.id]}
                 lastFollowers={page.lastFollowers[acct.id]}
                 isAdmin={page.isAdmin}
@@ -107,12 +125,14 @@ export function SocialReportForm({ page, basePath }: { page: SocialReportPage; b
 function AccountReportCard({
   account,
   weekStart,
+  today,
   existing,
   lastFollowers,
   isAdmin,
 }: {
   account: SocialAccountView;
   weekStart: string;
+  today: string;
   existing: WeeklyReportView | undefined;
   lastFollowers: { followers: number; weekStart: string } | undefined;
   isAdmin: boolean;
@@ -121,6 +141,11 @@ function AccountReportCard({
   const [pending, start] = useTransition();
   const [draft, setDraft] = useState<Draft>(() => draftOf(existing));
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const isTikTok = account.platform === "tiktok";
+  const fields = FIELDS_BY_PLATFORM[account.platform];
+  // TikTok: viewers hanya preset 7 hari, jadi dicatat kapan diambil. Pas bila diambil Senin setelah minggu itu.
+  const idealCapture = addDays(weekStart, 7);
+  const [captured, setCaptured] = useState(existing?.viewersCapturedOn ?? (today >= idealCapture ? today : ""));
   // Akun yang belum diisi terbuka; yang sudah terisi dilipat (ringkasannya tetap terlihat).
   const [open, setOpen] = useState(!existing);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -134,12 +159,13 @@ function AccountReportCard({
     try {
       const raw = localStorage.getItem(draftKey(account.id, weekStart));
       if (!raw) return;
-      const saved = JSON.parse(raw) as { draft?: Partial<Draft>; notes?: string };
+      const saved = JSON.parse(raw) as { draft?: Partial<Draft>; notes?: string; captured?: string };
       if (saved.draft) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- pemulihan sekali saat mount (sumber data hanya ada di browser)
-        setDraft((d) => ({ ...d, ...Object.fromEntries(FIELDS.filter((k) => /^\d{0,9}$/.test(saved.draft?.[k] ?? "")).map((k) => [k, saved.draft?.[k] ?? ""])) }));
+        setDraft((d) => ({ ...d, ...Object.fromEntries(ALL_FIELDS.filter((k) => validValue(k, saved.draft?.[k] ?? "")).map((k) => [k, saved.draft?.[k] ?? ""])) }));
         setOpen(true);
       }
+      if (typeof saved.captured === "string" && /^\d{4}-\d{2}-\d{2}$/.test(saved.captured)) setCaptured(saved.captured);
       if (typeof saved.notes === "string") setNotes(saved.notes.slice(0, 500));
     } catch {
       /* penyimpanan tak tersedia: lanjut tanpa pemulihan */
@@ -149,16 +175,21 @@ function AccountReportCard({
   useEffect(() => {
     if (existing || !restoredRef.current) return;
     try {
-      const empty = FIELDS.every((k) => draft[k] === "") && !notes;
+      const empty = ALL_FIELDS.every((k) => draft[k] === "") && !notes;
       if (empty) localStorage.removeItem(draftKey(account.id, weekStart));
-      else localStorage.setItem(draftKey(account.id, weekStart), JSON.stringify({ draft, notes }));
+      else localStorage.setItem(draftKey(account.id, weekStart), JSON.stringify({ draft, notes, captured }));
     } catch {
       /* abaikan */
     }
-  }, [draft, notes, existing, account.id, weekStart]);
+  }, [draft, notes, captured, existing, account.id, weekStart]);
 
-  const set = (k: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setDraft((d) => ({ ...d, [k]: e.target.value.replace(/[^\d]/g, "").slice(0, 9) }));
+  const set = (k: FieldKey) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setDraft((d) => {
+      const raw = e.target.value;
+      const digits = raw.replace(/\D/g, "").slice(0, 9);
+      // Net followers boleh negatif (tanda minus di depan); "+" diabaikan.
+      return { ...d, [k]: k === "netFollowers" && raw.trim().startsWith("-") ? `-${digits}` : digits };
+    });
 
   /** Enter / tombol "Next" pada keyboard angka → pindah ke isian berikutnya di kartu ini. */
   function nextOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -169,9 +200,11 @@ function AccountReportCard({
     (all[i + 1] ?? e.currentTarget).focus();
   }
 
-  const n = (k: keyof Draft) => (draft[k] === "" ? null : Number(draft[k]));
-  const net = n("follows") != null && n("unfollows") != null ? (n("follows") as number) - (n("unfollows") as number) : null;
-  const complete = FIELDS.every((k) => draft[k] !== "");
+  const n = (k: FieldKey) => (isFilled(draft[k]) ? Number(draft[k]) : null);
+  const net = isTikTok ? n("netFollowers") : n("follows") != null && n("unfollows") != null ? (n("follows") as number) - (n("unfollows") as number) : null;
+  const interactionsTotal = n("likes") != null && n("comments") != null && n("shares") != null ? (n("likes") as number) + (n("comments") as number) + (n("shares") as number) : null;
+  const captureOk = !isTikTok || (/^\d{4}-\d{2}-\d{2}$/.test(captured) && captured >= idealCapture && captured <= today);
+  const complete = fields.every((k) => isFilled(draft[k])) && captureOk;
   const viewersTooHigh = n("views") != null && n("viewers") != null && (n("viewers") as number) > (n("views") as number);
 
   function save() {
@@ -183,14 +216,24 @@ function AccountReportCard({
         weekStart,
         views: Number(draft.views),
         viewers: Number(draft.viewers),
-        interactions: Number(draft.interactions),
+        // TikTok: server menghitung interaksi/follows/unfollows dari like+komentar+share dan net followers.
+        interactions: Number(draft.interactions || 0),
         followers: Number(draft.followers),
-        follows: Number(draft.follows),
-        unfollows: Number(draft.unfollows),
+        follows: Number(draft.follows || 0),
+        unfollows: Number(draft.unfollows || 0),
         posts: Number(draft.posts),
         reels: Number(draft.reels),
         stories: Number(draft.stories),
         notes: notes || null,
+        ...(isTikTok
+          ? {
+              likes: Number(draft.likes),
+              comments: Number(draft.comments),
+              shares: Number(draft.shares),
+              netFollowers: Number(draft.netFollowers),
+              viewersCapturedOn: captured,
+            }
+          : {}),
       });
       if (!r.ok) return void toast.error(r.error);
       try {
@@ -227,6 +270,7 @@ function AccountReportCard({
           <span className="block truncate text-[11.5px] text-muted-foreground">
             @{account.handle}
             {existing && !open ? ` · ${nf.format(existing.views)} views · ${nf.format(existing.followers)} followers` : ""}
+            {existing && !open && isTikTok && existing.viewersCapturedOn && existing.viewersCapturedOn !== idealCapture ? " · viewers perkiraan" : ""}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
@@ -245,9 +289,49 @@ function AccountReportCard({
         <div className="border-t border-border/60 px-3.5 pb-3.5 pt-3">
           <Group title="Performance">
             <Num label="Views" value={draft.views} onChange={set("views")} onKeyDown={nextOnEnter} />
-            <Num label="Viewers" value={draft.viewers} onChange={set("viewers")} onKeyDown={nextOnEnter} invalid={viewersTooHigh} />
-            <Num label="Interaksi" hint="like + komentar + share + simpan" value={draft.interactions} onChange={set("interactions")} onKeyDown={nextOnEnter} wide />
+            <Num
+              label="Viewers"
+              hint={isTikTok ? "preset 7 hari terakhir" : undefined}
+              value={draft.viewers}
+              onChange={set("viewers")}
+              onKeyDown={nextOnEnter}
+              invalid={viewersTooHigh}
+            />
+            {isTikTok ? (
+              <>
+                <Num label="Likes" value={draft.likes} onChange={set("likes")} onKeyDown={nextOnEnter} />
+                <Num label="Comments" value={draft.comments} onChange={set("comments")} onKeyDown={nextOnEnter} />
+                <Num label="Shares" value={draft.shares} onChange={set("shares")} onKeyDown={nextOnEnter} />
+                <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 sm:flex-col sm:items-start sm:justify-center">
+                  <span className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Total interaksi</span>
+                  <span className="font-display text-[16px] font-bold tabular-nums">{interactionsTotal == null ? "—" : nf.format(interactionsTotal)}</span>
+                </div>
+              </>
+            ) : (
+              <Num label="Interaksi" hint="like + komentar + share + simpan" value={draft.interactions} onChange={set("interactions")} onKeyDown={nextOnEnter} wide />
+            )}
             {viewersTooHigh && <p className="col-span-2 text-[11px] text-destructive sm:col-span-3">Viewers lebih besar dari views — mungkin tertukar.</p>}
+            {isTikTok && (
+              <div className="col-span-2 sm:col-span-3">
+                <label className="block">
+                  <span className="block text-[12px] font-semibold leading-tight">Viewers diambil tanggal</span>
+                  <input
+                    type="date"
+                    value={captured}
+                    min={idealCapture}
+                    max={today}
+                    onChange={(e) => setCaptured(e.target.value)}
+                    aria-invalid={!captureOk || undefined}
+                    className={cn("mt-0.5 h-11 w-full rounded-lg border-2 bg-background px-3 text-base md:h-9 md:text-[14px]", captureOk ? "border-border" : "border-destructive")}
+                  />
+                </label>
+                <p className={cn("mt-1 text-[10.5px] leading-snug", captured === idealCapture ? "text-success" : "text-muted-foreground")}>
+                  {captured === idealCapture
+                    ? "Pas: viewers 7 hari terakhir = Senin–Minggu minggu ini."
+                    : `Ideal diambil Senin ${dm(idealCapture)}. Bila lebih lambat, rentang 7 harinya bergeser dan viewers dicatat sebagai perkiraan.`}
+                </p>
+              </div>
+            )}
           </Group>
           <Group title="Audience">
             <Num
@@ -258,14 +342,20 @@ function AccountReportCard({
               onKeyDown={nextOnEnter}
               wide
             />
-            <Num label="Follows" value={draft.follows} onChange={set("follows")} onKeyDown={nextOnEnter} />
-            <Num label="Unfollows" value={draft.unfollows} onChange={set("unfollows")} onKeyDown={nextOnEnter} />
-            <div className="col-span-2 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 sm:col-span-1 sm:flex-col sm:items-start sm:justify-center">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Net follows</span>
-              <span className={cn("font-display text-[16px] font-bold tabular-nums", net == null ? "text-muted-foreground" : net >= 0 ? "text-success" : "text-destructive")}>
-                {net == null ? "—" : `${net > 0 ? "+" : ""}${nf.format(net)}`}
-              </span>
-            </div>
+            {isTikTok ? (
+              <Num label="Net followers" hint="naik/turun minggu ini, mis. -15" value={draft.netFollowers} onChange={set("netFollowers")} onKeyDown={nextOnEnter} signed wide />
+            ) : (
+              <>
+                <Num label="Follows" value={draft.follows} onChange={set("follows")} onKeyDown={nextOnEnter} />
+                <Num label="Unfollows" value={draft.unfollows} onChange={set("unfollows")} onKeyDown={nextOnEnter} />
+                <div className="col-span-2 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 sm:col-span-1 sm:flex-col sm:items-start sm:justify-center">
+                  <span className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Net follows</span>
+                  <span className={cn("font-display text-[16px] font-bold tabular-nums", net == null ? "text-muted-foreground" : net >= 0 ? "text-success" : "text-destructive")}>
+                    {net == null ? "—" : `${net > 0 ? "+" : ""}${nf.format(net)}`}
+                  </span>
+                </div>
+              </>
+            )}
           </Group>
           <Group title="Routine">
             <Num label="Post" value={draft.posts} onChange={set("posts")} onKeyDown={nextOnEnter} />
@@ -315,6 +405,7 @@ function Num({
   onKeyDown,
   wide = false,
   invalid = false,
+  signed = false,
 }: {
   label: string;
   hint?: string;
@@ -324,14 +415,16 @@ function Num({
   /** Penuh selebar kartu di HP (label panjang). */
   wide?: boolean;
   invalid?: boolean;
+  /** Boleh negatif: keyboard angka iOS tidak punya tanda minus, jadi pakai keyboard teks. */
+  signed?: boolean;
 }) {
   return (
     <label className={cn("block", wide && "col-span-2 sm:col-span-1")}>
       <span className="block text-[12px] font-semibold leading-tight">{label}</span>
       <input
         data-fld
-        inputMode="numeric"
-        pattern="[0-9]*"
+        inputMode={signed ? "text" : "numeric"}
+        pattern={signed ? "-?[0-9]*" : "[0-9]*"}
         enterKeyHint="next"
         autoComplete="off"
         value={value}
