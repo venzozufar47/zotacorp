@@ -1,33 +1,15 @@
-import { AlertTriangle, CheckCircle2, CircleDashed, XCircle, type LucideIcon } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import { TILE_STYLE, type TileTone } from "./tile-styles";
 import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
 import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
 
-/**
- * Ubin lampu lalu lintas dengan kedalaman: gradasi searah (gelap → terang) seperti banner sapaan, cincin tipis di tepi
- * dalam, ikon status besar yang samar sebagai watermark, dan label status berikon (warna bukan satu-satunya penanda).
- * Ukuran angka dibatasi supaya scorecard terlihat jelas tetapi tidak mengalahkan banner di atasnya.
- */
-const BAND_META: Record<ScorecardBand, { label: string; Icon: LucideIcon; tile: string; chip: string }> = {
-  green: {
-    label: "Hijau",
-    Icon: CheckCircle2,
-    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--success)_58%,black)] to-[color-mix(in_srgb,var(--success)_80%,black)] text-white shadow-[0_8px_18px_-10px_color-mix(in_srgb,var(--success)_80%,black)]",
-    chip: "bg-white/20 text-white",
-  },
-  yellow: {
-    label: "Kuning",
-    Icon: AlertTriangle,
-    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--warning)_92%,white)] to-warning text-foreground shadow-[0_8px_18px_-10px_var(--warning)]",
-    chip: "bg-black/10 text-foreground",
-  },
-  red: {
-    label: "Merah",
-    Icon: XCircle,
-    tile: "bg-gradient-to-br from-[color-mix(in_srgb,var(--destructive)_66%,black)] to-[color-mix(in_srgb,var(--destructive)_90%,black)] text-white shadow-[0_8px_18px_-10px_color-mix(in_srgb,var(--destructive)_85%,black)]",
-    chip: "bg-white/20 text-white",
-  },
-  measuring: { label: "Diukur", Icon: CircleDashed, tile: "bg-muted text-muted-foreground", chip: "bg-black/5 text-muted-foreground" },
-  unset: { label: "Belum diatur", Icon: CircleDashed, tile: "bg-muted text-muted-foreground", chip: "bg-black/5 text-muted-foreground" },
+/** Label per band; gaya ubinnya dipakai bersama dengan scorecard sosmed (tile-styles). */
+const BAND_META: Record<ScorecardBand, { label: string } & (typeof TILE_STYLE)[TileTone]> = {
+  green: { label: "Hijau", ...TILE_STYLE.green },
+  yellow: { label: "Kuning", ...TILE_STYLE.yellow },
+  red: { label: "Merah", ...TILE_STYLE.red },
+  measuring: { label: "Diukur", ...TILE_STYLE.neutral },
+  unset: { label: "Belum diatur", ...TILE_STYLE.neutral },
 };
 
 export function ScorecardView({

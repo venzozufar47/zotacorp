@@ -21,12 +21,15 @@ export function ScorecardRangesInfo({
   label,
   ranges,
   note,
+  lines,
   settings,
   onSolid,
 }: {
   label: string;
   ranges?: { band: ScorecardBand; text: string }[];
   note?: string;
+  /** Keterangan bebas, satu baris per elemen (mis. rincian angka). */
+  lines?: string[];
   /** Pintasan ke halaman tempat target ini diatur (hanya diberikan di halaman owner). */
   settings?: { href: string; label: string };
   /** Tombol berada di atas ubin berwarna penuh: ikut warna teks ubin, bukan abu-abu. */
@@ -49,7 +52,7 @@ export function ScorecardRangesInfo({
     };
   }, [open]);
 
-  if (!ranges?.length && !note && !settings) return null;
+  if (!ranges?.length && !note && !lines?.length && !settings) return null;
 
   return (
     <span
@@ -80,6 +83,12 @@ export function ScorecardRangesInfo({
               <span key={r.band} className="flex items-center gap-2">
                 <span className={`size-2.5 shrink-0 rounded-full ${DOT[r.band]}`} />
                 {r.text}
+              </span>
+            ))
+          ) : lines?.length ? (
+            lines.map((l) => (
+              <span key={l} className="block">
+                {l}
               </span>
             ))
           ) : (

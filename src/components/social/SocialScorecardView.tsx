@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { TrendChart } from "@/components/admin/scorecard/ScorecardBits";
-import { METRIC_STATUS_LABEL, STATUS_ICON, STATUS_TEXT, STATUS_TONE } from "@/components/admin/scorecard/format";
+import { ScorecardRangesInfo } from "@/components/scorecard/ScorecardRangesInfo";
+import { METRIC_STATUS_LABEL } from "@/components/admin/scorecard/format";
+import { TILE_STYLE, type TileTone } from "@/components/scorecard/tile-styles";
 import type { BrandMetricView, SocialScorecardData } from "@/lib/actions/social-scorecard.actions";
 import { formatDateID } from "@/lib/utils/date-formats";
 
@@ -77,47 +79,51 @@ export function SocialScorecardView({ data, monthOptions }: { data: SocialScorec
   );
 }
 
-/** Keterangan di bawah angka Omset: rincian per cabang (gabungan) dan penanda bulan yang belum selesai. */
-function OmsetDetail({ m }: { m: BrandMetricView }) {
+/** Isi panduan ⓘ kartu Omset: rincian per cabang (gabungan) dan penanda bulan yang belum selesai. */
+function omsetLines(m: BrandMetricView): string[] {
   const rincian = m.inputs.rincian_cabang as { cabang: string; rp: number }[] | undefined;
-  const berjalan = m.inputs.bulan_berjalan === true;
   const sampai = typeof m.inputs.data_sampai === "string" ? (m.inputs.data_sampai as string) : null;
-  if (!rincian?.length && !berjalan) return null;
-  return (
-    <div className="mt-1 space-y-0.5 text-[10.5px] leading-snug text-muted-foreground">
-      {rincian && rincian.length > 0 && (
-        <p>
-          Gabungan {rincian.length} cabang: {rincian.map((r) => `${r.cabang} ${fmtShort(r.rp, "rupiah")}`).join(" · ")}
-        </p>
-      )}
-      {berjalan && <p className="font-semibold text-warning-foreground">Bulan belum selesai{sampai ? `, data sampai ${formatDateID(sampai).replace(/ \d{4}$/, "")}` : ""}</p>}
-    </div>
-  );
+  const lines: string[] = [];
+  if (rincian && rincian.length > 0) lines.push(`Gabungan ${rincian.length} cabang: ${rincian.map((r) => `${r.cabang} ${fmtShort(r.rp, "rupiah")}`).join(" · ")}`);
+  if (m.inputs.bulan_berjalan === true) lines.push(`Bulan belum selesai${sampai ? `, data sampai ${formatDateID(sampai).replace(/ \d{4}$/, "")}` : ""}`);
+  return lines;
 }
 
+const TONE_OF: Record<BrandMetricView["status"], TileTone> = { green: "green", yellow: "yellow", red: "red", incomplete: "neutral", not_assessed: "neutral" };
+
+/** Kartu metrik: kepala berwarna status (gaya sama dengan scorecard cabang) + panel putih berisi tren enam bulan. */
 function MetricCard({ m, months }: { m: BrandMetricView; months: string[] }) {
+  const style = TILE_STYLE[TONE_OF[m.status]];
+  const Icon = style.Icon;
+  const lines = omsetLines(m);
+  const isNumber = m.actual != null;
   return (
-    <div className="rounded-xl border border-border/70 bg-card p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-[12px] font-semibold text-foreground" title={m.note}>
-            {m.label}
-          </div>
-          <div className="text-[10.5px] text-muted-foreground">
+    <div className="relative rounded-3xl border border-border/60 bg-card has-[button[aria-expanded=true]]:z-30">
+      <div className={cn("relative rounded-t-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15", style.tile)}>
+        {/* Watermark dipotong di pembungkusnya sendiri; kepala tidak boleh overflow-hidden karena panduan ⓘ muncul di dalamnya. */}
+        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-t-3xl">
+          <Icon size={64} strokeWidth={1.5} className="absolute -bottom-3 -right-3 opacity-[0.14]" />
+        </span>
+        <div className="relative flex items-start justify-between gap-1">
+          <span className="text-[11.5px] font-medium leading-snug">{m.label}</span>
+          <span className="-mr-2 -mt-1.5">
+            <ScorecardRangesInfo label={m.label} lines={lines.length > 0 ? lines : undefined} note={lines.length > 0 ? undefined : m.note} onSolid />
+          </span>
+        </div>
+        <p className={cn("relative mt-1 font-display font-extrabold leading-tight tabular-nums", isNumber ? "text-[28px]" : "text-lg")}>{fmt(m.actual, m.kind)}</p>
+        <div className="relative mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", style.chip)}>
+            <Icon aria-hidden size={12} strokeWidth={2.5} />
+            {METRIC_STATUS_LABEL[m.status]}
+          </span>
+          <span className="text-[11px] leading-snug">
             {m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
             {m.score != null ? ` · ${nf0.format(m.score)}% dari target` : ""}
-          </div>
+          </span>
         </div>
-        <span className={cn("shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none", STATUS_TONE[m.status])}>
-          {STATUS_ICON[m.status]} {METRIC_STATUS_LABEL[m.status]}
-        </span>
       </div>
-      <div className="mt-1.5">
-        <span className={cn("font-display text-[24px] font-extrabold leading-none tabular-nums", STATUS_TEXT[m.status])}>{fmt(m.actual, m.kind)}</span>
-      </div>
-      <OmsetDetail m={m} />
-      {m.note && m.status === "incomplete" && <div className="mt-1 text-[10.5px] text-muted-foreground">{m.note}</div>}
-      <div className="mt-2">
+      <div className="rounded-b-3xl px-3 pb-3 pt-2">
+        {m.note && m.status === "incomplete" && <p className="mb-1 text-[10.5px] text-muted-foreground">{m.note}</p>}
         <TrendChart values={m.spark} months={months} status={m.status} green={null} red={null} />
       </div>
     </div>
