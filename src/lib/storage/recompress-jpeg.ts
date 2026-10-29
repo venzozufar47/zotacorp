@@ -1,3 +1,7 @@
+// Di build Vercel tipe sharp tidak ter-resolve lewat "exports" (TS7016), padahal di lokal ter-resolve.
+// Diabaikan agar build tidak gagal; runtime tidak terpengaruh.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
 import sharp from "sharp";
 
 /** Sisi terpanjang & kualitas yang sama dengan unggahan baru di browser (compress-image.ts). */
