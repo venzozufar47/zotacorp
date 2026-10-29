@@ -21,6 +21,8 @@ import { normalizeLink, LINK_ERROR } from "@/lib/costing/link";
 import { num } from "@/lib/costing/rows";
 import { sendPushToAdmins } from "@/lib/push/web-push";
 import { isPurchaseUnit } from "@/lib/costing/unit-options";
+import { brandMissing, certExpiry } from "@/lib/procurement/brand-store";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -52,6 +54,13 @@ export interface MaterialDetail {
   recipeCount: number;
   /** Satuan pakai terkunci: sudah dipakai resep, barang masuk, atau opname (mengubahnya membuat angka lama salah arti). */
   usageUnitLocked: boolean;
+  /** Jenis bahan Lampiran 5 yang tersimpan (null = belum diisi) dan apakah bahan masuk Daftar Halal. */
+  halalKind: "baku" | "tambahan" | "penolong" | null;
+  inHalalList: boolean;
+  /** Merek aktif terdaftar, nama merek yang sedang dipakai, dan jumlah merek yang datanya masih perlu dilengkapi. */
+  brandCount: number;
+  currentBrand: string | null;
+  brandsToComplete: number;
 }
 
 export async function listMaterialDetails(businessUnit: string): Promise<ActionResult<MaterialDetail[]>> {
@@ -61,11 +70,23 @@ export async function listMaterialDetails(businessUnit: string): Promise<ActionR
   const { data, error } = await admin
     .from("costing_materials" as never)
     .select(
-      "id, name, category, purchase_unit, purchase_price, content_per_purchase, usage_unit, shopee_url, is_active, review_status"
+      "id, name, category, purchase_unit, purchase_price, content_per_purchase, usage_unit, shopee_url, is_active, review_status, halal_kind, in_halal_list"
     )
     .eq("business_unit", businessUnit)
     .order("name");
   if (error) return { ok: false, error: error.message };
+  const [{ data: brandRows }, { data: usageRows }] = await Promise.all([
+    admin.from("costing_material_brands" as never).select("*").eq("business_unit", businessUnit).eq("is_active", true),
+    admin.from("costing_material_brand_usage" as never).select("material_id, brand_id").eq("business_unit", businessUnit).is("ended_on", null),
+  ]);
+  const today = jakartaDateString(new Date());
+  const brandsByMat = new Map<string, Record<string, unknown>[]>();
+  for (const b of (brandRows ?? []) as Record<string, unknown>[]) {
+    const arr = brandsByMat.get(b.material_id as string) ?? [];
+    arr.push(b);
+    brandsByMat.set(b.material_id as string, arr);
+  }
+  const currentByMat = new Map(((usageRows ?? []) as { material_id: string; brand_id: string }[]).map((u) => [u.material_id, u.brand_id]));
   const rows = (data ?? []) as Record<string, unknown>[];
   const ids = rows.map((r) => r.id as string);
   const counts = await recipeCounts(admin, ids);
@@ -85,6 +106,17 @@ export async function listMaterialDetails(businessUnit: string): Promise<ActionR
       pending: r.review_status === "pending",
       recipeCount: counts.get(r.id as string) ?? 0,
       usageUnitLocked: (counts.get(r.id as string) ?? 0) > 0 || withHistory.has(r.id as string),
+      halalKind: (r.halal_kind as MaterialDetail["halalKind"]) ?? null,
+      inHalalList: r.in_halal_list !== false,
+      ...(() => {
+        const bs = brandsByMat.get(r.id as string) ?? [];
+        const cur = bs.find((b) => b.id === currentByMat.get(r.id as string));
+        const todo =
+          r.in_halal_list === false
+            ? 0
+            : bs.filter((b) => brandMissing(b as never).length > 0 || (b.halal_status === "bersertifikat" && certExpiry((b.halal_valid_until as string | null) ?? null, today))).length;
+        return { brandCount: bs.length, currentBrand: (cur?.name as string | undefined) ?? null, brandsToComplete: todo };
+      })(),
     })),
   };
 }

@@ -18,6 +18,7 @@ import {
   listPurchases,
 } from "@/lib/actions/procurement-purchases.actions";
 import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions";
+import { listBrandsNeedingInfo } from "@/lib/actions/procurement-brands.actions";
 import { getCashPosition } from "@/lib/actions/procurement-wallet.actions";
 import { CashPositionCard } from "@/components/procurement/CashPositionCard";
 import { getShopeeWallet } from "@/lib/actions/procurement-shopee.actions";
@@ -157,9 +158,16 @@ async function PositionBar({ brand }: { brand: string }) {
 }
 
 async function BahanTab({ brand }: { brand: string }) {
-  const res = await listMaterialDetails(brand);
+  const [res, queue] = await Promise.all([listMaterialDetails(brand), listBrandsNeedingInfo(brand)]);
   if (!res.ok) return <p className="text-sm text-destructive">{res.error}</p>;
-  return <MaterialsManager businessUnit={brand} materials={res.data ?? []} />;
+  return (
+    <MaterialsManager
+      businessUnit={brand}
+      materials={res.data ?? []}
+      queue={queue.ok ? queue.data?.items ?? [] : []}
+      queueTotal={queue.ok ? queue.data?.total ?? 0 : 0}
+    />
+  );
 }
 
 async function StokTab({ brand, brands }: { brand: string; brands: string[] }) {

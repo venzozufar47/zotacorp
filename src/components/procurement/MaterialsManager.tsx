@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Search, X } from "lucide-react";
+import { AlertTriangle, Plus, Search, Tag, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseDecimalId, parseMoneyId } from "@/lib/utils/parse-number";
 import { NumberHint } from "@/components/shared/NumberHint";
@@ -14,6 +14,8 @@ import {
   setMaterialActive,
   type MaterialDetail,
 } from "@/lib/actions/procurement-materials.actions";
+import type { BrandQueueItem } from "@/lib/actions/procurement-brands.actions";
+import { BrandPanel, type BrandPanelMaterial } from "./BrandPanel";
 
 const USAGE_UNITS = ["gram", "ml", "pcs", "meter"] as const;
 
@@ -37,11 +39,25 @@ const inputCls =
   "w-full rounded-xl border-2 border-border bg-card px-3 py-2.5 text-base outline-none focus:border-foreground md:text-sm";
 
 /** Tab "Bahan": petugas menambah bahan baru dan merapikan detailnya sendiri (owner diberi tahu, bisa mengurungkan). */
-export function MaterialsManager({ businessUnit, materials }: { businessUnit: string; materials: MaterialDetail[] }) {
+export function MaterialsManager({
+  businessUnit,
+  materials,
+  queue = [],
+  queueTotal = 0,
+}: {
+  businessUnit: string;
+  materials: MaterialDetail[];
+  /** Antrean "Perlu dilengkapi" (data halal merek yang kurang, sertifikat habis, bahan dibeli tanpa merek). */
+  queue?: BrandQueueItem[];
+  queueTotal?: number;
+}) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [brandFor, setBrandFor] = useState<{ material: BrandPanelMaterial; startAdding: boolean } | null>(null);
+  const openBrands = (m: MaterialDetail, startAdding = false) =>
+    setBrandFor({ material: { id: m.id, name: m.name, category: m.category, halalKind: m.halalKind, inHalalList: m.inHalalList }, startAdding });
   /** true = mengetik nama kategori baru (bukan memilih dari daftar). */
   const [newCategory, setNewCategory] = useState(false);
   const [pending, start] = useTransition();
@@ -152,6 +168,37 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
         </button>
       </div>
 
+      {queueTotal > 0 && (
+        <section className="space-y-1.5 rounded-2xl border border-warning/50 bg-warning/10 p-3">
+          <h3 className="flex items-center gap-1.5 text-sm font-bold">
+            <AlertTriangle size={14} className="text-warning" /> Merek perlu dilengkapi ({queueTotal})
+          </h3>
+          <p className="text-[11.5px] text-muted-foreground">Untuk Daftar Bahan Halal. Boleh dicicil; yang paling banyak dipakai di atas.</p>
+          <ul className="divide-y divide-border/60">
+            {queue.slice(0, 6).map((it) => {
+              const m = materials.find((x) => x.id === it.materialId);
+              if (!m) return null;
+              return (
+                <li key={`${it.materialId}-${it.brand?.id ?? "none"}`}>
+                  <button type="button" onClick={() => openBrands(m, !it.brand)} className="flex w-full items-center gap-2 py-2 text-left">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {it.materialName}
+                        {it.brand && <span className="font-normal text-muted-foreground"> · {it.brand.name}</span>}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {it.expiry === "habis" ? "Sertifikat habis" : it.expiry === "segera" ? "Sertifikat segera habis" : `Kurang: ${it.missing.join(", ")}`}
+                      </span>
+                    </span>
+                    <span className="text-xs font-semibold text-primary">Lengkapi</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {inactiveCount > 0 && (
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
@@ -162,8 +209,8 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
       <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border bg-card">
         {rows.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">Tidak ada bahan.</li>}
         {rows.map((m) => (
-          <li key={m.id}>
-            <button type="button" onClick={() => open(m)} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-muted">
+          <li key={m.id} className="flex items-center">
+            <button type="button" onClick={() => open(m)} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-2 text-left active:bg-muted">
               <div className="min-w-0 flex-1">
                 <p className={cn("truncate text-sm font-semibold", !m.isActive && "text-muted-foreground line-through")}>
                   {m.name}
@@ -178,9 +225,23 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
               </div>
               <span className="text-xs font-semibold text-primary">Ubah</span>
             </button>
+            <button
+              type="button"
+              onClick={() => openBrands(m)}
+              aria-label={`Merek ${m.name}`}
+              className={cn(
+                "mr-3 inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                m.brandsToComplete > 0 ? "border-warning/60 bg-warning/15" : "border-border bg-card text-muted-foreground"
+              )}
+            >
+              <Tag size={11} />
+              <span className="max-w-24 truncate">{m.currentBrand ?? (m.brandCount > 0 ? `${m.brandCount} merek` : "Merek")}</span>
+            </button>
           </li>
         ))}
       </ul>
+
+      {brandFor && <BrandPanel material={brandFor.material} startAdding={brandFor.startAdding} onClose={() => setBrandFor(null)} />}
 
       {draft && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-background md:items-center md:justify-center md:bg-black/40">
