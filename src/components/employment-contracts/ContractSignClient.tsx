@@ -16,10 +16,36 @@ import {
 } from "@/lib/employment-contracts/markdown";
 import {
   contractSignState,
+  shouldRenderLampiran,
   type EmploymentContract,
   type ContractSignerIdentity,
 } from "@/lib/employment-contracts/types";
 import { SignaturePad } from "./SignaturePad";
+
+/**
+ * Perkecil foto KTP dari kamera HP (sering 4-8 MB) ke sisi terpanjang 1600px
+ * JPEG sebelum diunggah: tetap terbaca, jauh lebih ringan. Gagal decode
+ * (format tak dikenal) → kirim file asli; server yang menolak bila tak valid.
+ */
+async function shrinkImage(file: File, maxSide = 1600): Promise<File> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.85)
+    );
+    return blob ? new File([blob], "ktp.jpg", { type: "image/jpeg" }) : file;
+  } catch {
+    return file;
+  }
+}
 
 const IDENTITY_FIELDS: Array<{
   key: keyof ContractSignerIdentity;
@@ -53,6 +79,17 @@ export function ContractSignClient({
   }));
   const [consent, setConsent] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Foto KTP: wajib saat pertama kali tanda tangan. Pada tanda tangan ulang,
+  // foto yang sudah tersimpan dipakai kembali (boleh diganti).
+  const [ktpFile, setKtpFile] = useState<File | null>(null);
+  const [ktpPreview, setKtpPreview] = useState<string | null>(null);
+  const hasSavedKtp = !!contract.ktp_photo_path;
+
+  const pickKtp = (file: File | null) => {
+    if (ktpPreview) URL.revokeObjectURL(ktpPreview);
+    setKtpFile(file);
+    setKtpPreview(file ? URL.createObjectURL(file) : null);
+  };
 
   // Preview ikut ter-update saat karyawan mengisi identitas.
   const blocks = useMemo(
@@ -71,9 +108,26 @@ export function ContractSignClient({
   const submit = () => {
     const missing = IDENTITY_FIELDS.find((f) => !idf[f.key].trim());
     if (missing) return void toast.error(`${missing.label} wajib diisi`);
+    if (!hasSavedKtp && !ktpFile)
+      return void toast.error("Foto KTP wajib diunggah");
     if (!sigBlob) return void toast.error("Bubuhkan tanda tangan dulu");
     if (!consent) return void toast.error("Centang persetujuan");
     startTransition(async () => {
+      let ktpPath: string | null = null;
+      if (ktpFile) {
+        const small = await shrinkImage(ktpFile);
+        const kfd = new FormData();
+        kfd.append("file", small, small.name);
+        kfd.append("kind", "ktp");
+        kfd.append("id", contract.id);
+        const kup = await fetch("/api/employment-contracts/upload", {
+          method: "POST",
+          body: kfd,
+        });
+        const kj = await kup.json();
+        if (!kup.ok) return void toast.error(kj.error ?? "Gagal upload foto KTP");
+        ktpPath = kj.path;
+      }
       const fd = new FormData();
       fd.append("file", sigBlob, "ttd.png");
       fd.append("kind", "employee");
@@ -87,6 +141,7 @@ export function ContractSignClient({
       const res = await signEmploymentContract({
         contractId: contract.id,
         signaturePath: j.path,
+        ktpPath,
         identity: {
           nama: idf.nama.trim(),
           nik: idf.nik.trim(),
@@ -158,24 +213,28 @@ export function ContractSignClient({
         <div className="px-5 sm:px-8 py-6 max-w-[760px] mx-auto text-[13px] text-foreground leading-relaxed">
           <BlocksHtml blocks={blocks} />
 
-          {/* Lampiran 1 */}
-          <hr className="my-6 border-border" />
-          <h2 className="text-center font-bold text-base mb-3">
-            LAMPIRAN 1: DESKRIPSI PEKERJAAN
-          </h2>
-          <p className="mb-1">
-            <strong>Nama:</strong> {lampiran?.nama || contract.fields?.nama || "—"}
-            {" · "}
-            <strong>Posisi:</strong> {lampiran?.posisi || contract.fields?.jabatan || "—"}
-          </p>
-          <p className="mb-3">
-            <strong>Cabang:</strong> {lampiran?.cabang || contract.fields?.cabang || "—"}
-          </p>
-          <LampiranList title="B. Tujuan Posisi" items={lampiran?.tujuan} />
-          <LampiranList title="C. Tanggung Jawab Utama" items={lampiran?.tanggung_jawab} />
-          <LampiranList title="D. SOP yang Relevan" items={lampiran?.sop} />
-          <LampiranList title="E. Indikator Kinerja (KPI)" items={lampiran?.kpi} />
-          <LampiranList title="F. Waktu Kerja / Shift" items={lampiran?.shift} />
+          {/* Lampiran 1 — hanya bila kontrak punya lampiran */}
+          {shouldRenderLampiran(contract.body_markdown, lampiran) && (
+            <>
+              <hr className="my-6 border-border" />
+              <h2 className="text-center font-bold text-base mb-3">
+                LAMPIRAN 1: DESKRIPSI PEKERJAAN
+              </h2>
+              <p className="mb-1">
+                <strong>Nama:</strong> {lampiran?.nama || contract.fields?.nama || "—"}
+                {" · "}
+                <strong>Posisi:</strong> {lampiran?.posisi || contract.fields?.jabatan || "—"}
+              </p>
+              <p className="mb-3">
+                <strong>Cabang:</strong> {lampiran?.cabang || contract.fields?.cabang || "—"}
+              </p>
+              <LampiranList title="B. Tujuan Posisi" items={lampiran?.tujuan} />
+              <LampiranList title="C. Tanggung Jawab Utama" items={lampiran?.tanggung_jawab} />
+              <LampiranList title="D. SOP yang Relevan" items={lampiran?.sop} />
+              <LampiranList title="E. Indikator Kinerja (KPI)" items={lampiran?.kpi} />
+              <LampiranList title="F. Waktu Kerja / Shift" items={lampiran?.shift} />
+            </>
+          )}
         </div>
       </div>
 
@@ -209,6 +268,33 @@ export function ContractSignClient({
                 />
               </label>
             ))}
+          </div>
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Foto KTP{" "}
+              {!hasSavedKtp && <span className="text-destructive">*</span>}
+            </span>
+            <p className="text-xs text-muted-foreground">
+              {hasSavedKtp
+                ? "Foto KTP kamu sudah tersimpan. Unggah lagi hanya bila ingin menggantinya."
+                : "Foto KTP asli kamu (seluruh kartu terlihat jelas, tidak buram). Hanya dilihat admin untuk administrasi kepegawaian dan tidak dimasukkan ke dokumen kontrak."}
+            </p>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              disabled={pending}
+              onChange={(e) => pickKtp(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm file:mr-3 file:rounded-lg file:border-2 file:border-foreground file:bg-card file:px-3 file:py-1.5 file:text-sm file:font-semibold"
+            />
+            {ktpPreview && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={ktpPreview}
+                alt="Pratinjau foto KTP"
+                className="max-h-48 w-auto rounded-lg border border-border"
+              />
+            )}
           </div>
           <div>
             <span className="text-xs font-medium text-muted-foreground">Tanda tangan</span>

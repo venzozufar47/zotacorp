@@ -20,8 +20,12 @@ import {
   ArrowDown,
   Archive,
   ArchiveRestore,
+  IdCard,
+  RefreshCw,
 } from "lucide-react";
 import {
+  reviseEmploymentContract,
+  getContractKtpUrl,
   upsertContractTemplate,
   setTemplateEmployerSignature,
   prefillContractFields,
@@ -50,6 +54,7 @@ import {
 } from "@/lib/employment-contracts/types";
 import {
   YEOBO_SPACE_CONTRACT_BODY,
+  HAENGBOCAKE_CONTRACT_BODY,
   EMPLOYER,
 } from "@/lib/employment-contracts/default-templates";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
@@ -118,6 +123,7 @@ export function EmploymentContractsManager({
       ) : tab === "archive" ? (
         <ContractsTab
           archivedView
+          templates={templates}
           contracts={archivedContracts}
           employees={employees}
           businessUnits={businessUnits}
@@ -125,6 +131,7 @@ export function EmploymentContractsManager({
         />
       ) : (
         <ContractsTab
+          templates={templates}
           contracts={activeContracts}
           employees={employees}
           businessUnits={businessUnits}
@@ -288,6 +295,17 @@ function TemplatesTab({
           >
             Isi dari contoh Yeobo Space
           </button>
+          <span className="mx-2 text-xs text-muted-foreground">·</span>
+          <button
+            type="button"
+            onClick={() => {
+              setBody(HAENGBOCAKE_CONTRACT_BODY);
+              setTitle("Perjanjian Kerja Waktu Tidak Tertentu");
+            }}
+            className="text-xs text-primary hover:underline"
+          >
+            Isi dari contoh Haengbocake (PKWTT)
+          </button>
         </div>
         <textarea
           value={body}
@@ -352,12 +370,14 @@ function TemplatesTab({
 // ── Contracts tab ─────────────────────────────────────────────────────
 
 function ContractsTab({
+  templates,
   contracts,
   employees,
   businessUnits,
   employerSignatures,
   archivedView = false,
 }: {
+  templates: EmploymentContractTemplate[];
   contracts: ContractListRow[];
   employees: ContractEmployee[];
   businessUnits: string[];
@@ -377,7 +397,27 @@ function ContractsTab({
   const [batching, setBatching] = useState(false);
   const [editing, setEditing] = useState<ContractListRow | null>(null);
   const [duplicating, setDuplicating] = useState<ContractListRow | null>(null);
+  const [revising, setRevising] = useState<ContractListRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Foto KTP dibuka di tab baru lewat signed URL berumur pendek. Tab dibuka
+  // lebih dulu (sinkron dengan klik) supaya tidak diblokir popup blocker.
+  const viewKtp = async (id: string) => {
+    const tab = window.open("about:blank", "_blank");
+    setBusy(id);
+    const res = await getContractKtpUrl(id);
+    setBusy(null);
+    if (!res.ok || !res.data) {
+      tab?.close();
+      return void toast.error(res.ok ? "Gagal" : res.error);
+    }
+    if (tab) {
+      tab.opener = null;
+      tab.location.href = res.data.url;
+    } else {
+      toast.error("Pop-up diblokir browser");
+    }
+  };
 
   const preview = async (id: string) => {
     setBusy(id);
@@ -526,6 +566,11 @@ function ContractsTab({
                       <IconBtn title="Unduh PDF" onClick={() => download(c)} disabled={busy === c.id}>
                         <Download size={15} />
                       </IconBtn>
+                      {c.ktp_photo_path && (
+                        <IconBtn title="Lihat foto KTP" onClick={() => viewKtp(c.id)} disabled={busy === c.id}>
+                          <IdCard size={15} />
+                        </IconBtn>
+                      )}
                       {archivedView ? (
                         <IconBtn
                           title="Kembalikan ke daftar utama"
@@ -545,6 +590,14 @@ function ContractsTab({
                           {c.status !== "signed" && (
                             <IconBtn title="Edit isian" onClick={() => setEditing(c)}>
                               <Pencil size={15} />
+                            </IconBtn>
+                          )}
+                          {(c.status === "signed" || c.status === "pending_signature") && (
+                            <IconBtn
+                              title="Terbitkan revisi (karyawan diminta tanda tangan ulang)"
+                              onClick={() => setRevising(c)}
+                            >
+                              <RefreshCw size={15} />
                             </IconBtn>
                           )}
                           {c.status === "pending_signature" && (
@@ -591,7 +644,14 @@ function ContractsTab({
         <BatchIssueModal
           employees={employees}
           businessUnits={businessUnits}
+          templates={templates}
           onClose={() => setBatching(false)}
+        />
+      )}
+      {revising && (
+        <ReviseContractModal
+          contract={revising}
+          onClose={() => setRevising(null)}
         />
       )}
       {duplicating && (
@@ -895,10 +955,10 @@ function ContractFormModal({
                 </div>
               ))}
 
-              <div className="space-y-3 border-t border-border pt-3">
-                <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  Lampiran 1 — Deskripsi Pekerjaan (jobdesc)
-                </h4>
+              <details className="space-y-3 border-t border-border pt-3">
+                <summary className="cursor-pointer text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Lampiran 1 — Deskripsi Pekerjaan (opsional; kosongkan bila kontrak tanpa lampiran)
+                </summary>
                 <ListEditor
                   label="B. Tujuan Posisi"
                   items={lampiran.tujuan}
@@ -924,7 +984,7 @@ function ContractFormModal({
                   items={lampiran.shift}
                   onChange={(v) => setLampiran((l) => ({ ...l, shift: v }))}
                 />
-              </div>
+              </details>
             </>
           )}
         </div>
@@ -952,6 +1012,108 @@ function ContractFormModal({
   );
 }
 
+// ── Revise modal ──────────────────────────────────────────────────────
+
+/**
+ * Terbitkan revisi: menaikkan versi kontrak sehingga karyawan yang sudah
+ * menandatangani diminta tanda tangan ulang, dengan ringkasan perubahan yang
+ * ia baca di halaman Kontrak. Opsi "muat ulang isi dari template" mengganti
+ * badan kontrak dengan template BU saat ini (isian karyawan tetap).
+ */
+function ReviseContractModal({
+  contract,
+  onClose,
+}: {
+  contract: ContractListRow;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [note, setNote] = useState("");
+  const [refresh, setRefresh] = useState(true);
+  const [notify, setNotify] = useState(true);
+  const nextVersion = (contract.version ?? 1) + 1;
+
+  const submit = () => {
+    if (!note.trim()) return void toast.error("Tulis ringkasan perubahan");
+    startTransition(async () => {
+      const res = await reviseEmploymentContract({
+        id: contract.id,
+        note,
+        refreshFromTemplate: refresh,
+        notify,
+      });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`Revisi v${res.data?.version ?? nextVersion} diterbitkan`);
+      router.refresh();
+      onClose();
+    });
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4">
+      <div className="w-full max-w-lg rounded-2xl border-2 border-foreground bg-card shadow-hard my-8">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="font-display font-bold">
+            Terbitkan revisi — {contract.employee_name}
+          </h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Versi kontrak naik ke v{nextVersion}.{" "}
+            {contract.status === "signed"
+              ? "Karyawan akan diminta menandatangani ulang; foto KTP yang sudah tersimpan dipakai kembali."
+              : "Kontrak masih menunggu tanda tangan, jadi karyawan langsung membaca versi terbaru."}
+          </p>
+          <Field label="Ringkasan perubahan (dibaca karyawan)">
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className={INPUT}
+              placeholder="mis. Pasal 5 ayat 7 ditambah: ketentuan THR"
+            />
+          </Field>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={refresh}
+              onChange={(e) => setRefresh(e.target.checked)}
+              className="mt-0.5 size-4 accent-primary"
+            />
+            <span>
+              Ganti isi kontrak dengan template {contract.business_unit} saat
+              ini (isian karyawan tidak berubah)
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+              className="mt-0.5 size-4 accent-primary"
+            />
+            <span>Kirim notifikasi ke karyawan</span>
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+          <button onClick={onClose} className={BTN_OUTLINE}>
+            Batal
+          </button>
+          <button onClick={submit} disabled={pending} className={BTN_PRIMARY}>
+            <RefreshCw size={15} /> Terbitkan revisi
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Batch issue modal ─────────────────────────────────────────────────
 
 interface BatchCommon {
@@ -966,16 +1128,27 @@ interface BatchCommon {
 function BatchIssueModal({
   employees,
   businessUnits,
+  templates,
   onClose,
 }: {
   employees: ContractEmployee[];
   businessUnits: string[];
+  templates: EmploymentContractTemplate[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [bu, setBu] = useState(
     businessUnits.find((b) => b === "Yeobo Space") ?? businessUnits[0] ?? ""
+  );
+  // Tanggal berakhir hanya relevan untuk template berjangka (PKWT) yang
+  // memakai {tgl_berakhir}; template PKWTT (Haengbocake) tidak memakainya.
+  const needsEndDate = useMemo(
+    () =>
+      (templates.find((t) => t.business_unit === bu)?.body_markdown ?? "").includes(
+        "{tgl_berakhir}"
+      ),
+    [templates, bu]
   );
   const [common, setCommon] = useState<BatchCommon>({
     jabatan: "",
@@ -1012,9 +1185,11 @@ function BatchIssueModal({
     const valid = rows.filter((r) => r.userId);
     if (valid.length === 0) return void toast.error("Pilih minimal satu karyawan");
     for (const r of valid) {
-      if (!r.cabang.trim() || !r.gaji.trim() || !r.tglBerakhir.trim())
+      if (!r.cabang.trim() || !r.gaji.trim() || (needsEndDate && !r.tglBerakhir.trim()))
         return void toast.error(
-          "Lengkapi cabang, gaji, dan tanggal berakhir untuk setiap baris"
+          needsEndDate
+            ? "Lengkapi cabang, gaji, dan tanggal berakhir untuk setiap baris"
+            : "Lengkapi cabang dan gaji untuk setiap baris"
         );
     }
     startTransition(async () => {
@@ -1045,9 +1220,9 @@ function BatchIssueModal({
         <div className="p-4 space-y-4 max-h-[72vh] overflow-y-auto">
           <p className="text-xs text-muted-foreground">
             Nomor kontrak otomatis berurutan. Yang berbeda tiap karyawan: cabang,
-            gaji (terbilang otomatis), tanggal berakhir. Sisanya di bawah ini
-            berlaku untuk semua. Identitas pribadi tetap diisi karyawan saat
-            menandatangani.
+            gaji (terbilang otomatis){needsEndDate ? ", tanggal berakhir" : ""}.
+            Sisanya di bawah ini berlaku untuk semua. Identitas pribadi dan foto
+            KTP diisi karyawan saat menandatangani.
           </p>
 
           <div className="flex items-center gap-2">
@@ -1077,12 +1252,12 @@ function BatchIssueModal({
                   className={INPUT}
                 />
               </Field>
-              <Field label="Tanggal mulai">
+              <Field label="Tanggal mulai (kosong = tanggal mulai kerja di akun masing-masing)">
                 <input
                   value={common.tgl_mulai}
                   onChange={(e) => setCommon((c) => ({ ...c, tgl_mulai: e.target.value }))}
                   className={INPUT}
-                  placeholder="mis. 1 Juli 2026"
+                  placeholder="kosong = ikut akun, atau mis. 1 Juli 2026"
                 />
               </Field>
               <Field label="Kota (kosong = ikut template)">
@@ -1116,10 +1291,10 @@ function BatchIssueModal({
             </div>
           </div>
 
-          <div className="space-y-3 border-t border-border pt-3">
-            <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              Lampiran 1 — Deskripsi Pekerjaan (sama untuk semua)
-            </h4>
+          <details className="space-y-3 border-t border-border pt-3">
+            <summary className="cursor-pointer text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Lampiran 1 — Deskripsi Pekerjaan (opsional; kosongkan bila kontrak tanpa lampiran)
+            </summary>
             <ListEditor
               label="B. Tujuan Posisi"
               items={lampiran.tujuan}
@@ -1143,12 +1318,17 @@ function BatchIssueModal({
             <p className="text-[11px] text-muted-foreground">
               F. Waktu Kerja / Shift diisi per karyawan di tabel bawah.
             </p>
-          </div>
+          </details>
 
           <div className="border-t border-border pt-3">
             <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
               Karyawan (berbeda tiap baris)
             </h4>
+            <datalist id="contract-branch-options">
+              {["Pare", "Semarang", "Tlogosari", "Tembalang", "Jebres"].map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
             <div className="space-y-2">
               {rows.map((r, i) => {
                 const tb = terbilang((r.gaji || "").replace(/[^\d]/g, ""));
@@ -1174,6 +1354,7 @@ function BatchIssueModal({
                       onChange={(e) => setRow(i, { cabang: e.target.value })}
                       className={INPUT}
                       placeholder="Cabang"
+                      list="contract-branch-options"
                     />
                     <div>
                       <input
@@ -1195,7 +1376,8 @@ function BatchIssueModal({
                       value={r.tglBerakhir}
                       onChange={(e) => setRow(i, { tglBerakhir: e.target.value })}
                       className={INPUT}
-                      placeholder="Tgl berakhir"
+                      placeholder={needsEndDate ? "Tgl berakhir" : "Tgl berakhir (tidak dipakai)"}
+                      disabled={!needsEndDate}
                     />
                     <input
                       value={r.shift ?? ""}

@@ -19,9 +19,10 @@ import {
   type InlineSpan,
 } from "@/lib/employment-contracts/markdown";
 import { interpolate } from "@/lib/whatsapp/templates";
-import type {
-  ContractFields,
-  ContractLampiran,
+import {
+  shouldRenderLampiran,
+  type ContractFields,
+  type ContractLampiran,
 } from "@/lib/employment-contracts/types";
 
 const C = {
@@ -342,7 +343,21 @@ export function ContractPdfDocument({
     body.push(b);
   }
 
-  const nomorLine = `Nomor: ${fields.nomor || "____"}/PK/YS/${fields.tahun || ""}`;
+  // Judul + nomor mengikuti template (baris "# …" dan "Nomor: …" di badan
+  // kontrak), bukan hardcode — template Haengbocake memakai PKWTT dan "/PK/HB/".
+  const titleBlock = all.find(
+    (b): b is Extract<ContractBlock, { kind: "h1" }> => b.kind === "h1"
+  );
+  const docTitleText =
+    (titleBlock ? spansToText(titleBlock.spans).trim() : "") || "PERJANJIAN KERJA";
+  const nomorBlock = all.find(
+    (b): b is Extract<ContractBlock, { kind: "p" }> =>
+      b.kind === "p" && spansToText(b.spans).trim().startsWith("Nomor")
+  );
+  const nomorLine = nomorBlock
+    ? spansToText(nomorBlock.spans).trim()
+    : `Nomor: ${fields.nomor || "____"}/PK/YS/${fields.tahun || ""}`;
+  const withLampiran = shouldRenderLampiran(bodyMarkdown, lampiran);
   const nik = employeeNik || fields.nik || null;
   const signedLabel = signedAt
     ? new Date(signedAt).toLocaleString("id-ID", {
@@ -355,10 +370,14 @@ export function ContractPdfDocument({
     : null;
 
   return (
-    <Document title="Perjanjian Kerja" author="Yeobo Space">
+    <Document title={docTitleText} author={employerName || "Zota Apps"}>
       <Page size="A4" style={s.page}>
         <View style={s.titleWrap}>
-          <Text style={s.docTitle}>PERJANJIAN KERJA</Text>
+          <Text
+            style={[s.docTitle, docTitleText.length > 24 ? { fontSize: 13.5, letterSpacing: 1 } : {}]}
+          >
+            {docTitleText}
+          </Text>
           <Text style={s.docNomor}>{nomorLine}</Text>
           <View style={s.titleRule} />
         </View>
@@ -399,6 +418,7 @@ export function ContractPdfDocument({
         />
       </Page>
 
+      {withLampiran && (
       <Page size="A4" style={s.page}>
         <View style={s.titleWrap}>
           <Text style={s.docTitle}>LAMPIRAN 1</Text>
@@ -445,6 +465,7 @@ export function ContractPdfDocument({
           fixed
         />
       </Page>
+      )}
     </Document>
   );
 }

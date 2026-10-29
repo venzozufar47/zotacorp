@@ -120,6 +120,26 @@ export function emptyLampiran(): ContractLampiran {
   };
 }
 
+/** True bila Lampiran 1 punya isi minimal satu butir. */
+export function lampiranHasContent(l: ContractLampiran | null | undefined): boolean {
+  if (!l) return false;
+  return [l.tujuan, l.tanggung_jawab, l.sop, l.kpi, l.shift].some((list) =>
+    (list ?? []).some((x) => (x ?? "").trim().length > 0)
+  );
+}
+
+/**
+ * Lampiran 1 dirender bila ada isinya, ATAU badan kontrak merujuknya
+ * ("Lampiran 1" — template Yeobo). Kontrak tanpa lampiran (Haengbocake)
+ * tidak mendapat halaman lampiran kosong.
+ */
+export function shouldRenderLampiran(
+  bodyMarkdown: string | null | undefined,
+  l: ContractLampiran | null | undefined
+): boolean {
+  return lampiranHasContent(l) || /Lampiran\s+1/i.test(bodyMarkdown ?? "");
+}
+
 /** Penerbitan kontrak per karyawan (row employment_contracts). */
 export interface EmploymentContract {
   id: string;
@@ -143,6 +163,8 @@ export interface EmploymentContract {
   consent_ip: string | null;
   consent_user_agent: string | null;
   signed_pdf_path: string | null;
+  /** Foto KTP karyawan (bucket privat) — wajib diunggah saat tanda tangan. */
+  ktp_photo_path?: string | null;
   /** Versi isi kontrak saat ini (naik tiap ada revisi). */
   version: number;
   /** Versi yang ditandatangani karyawan (null = belum pernah TTD). */

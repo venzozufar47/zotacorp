@@ -50,6 +50,16 @@ function formatTanggalID(v: string | null | undefined): string {
   });
 }
 
+const KNOWN_BRANCHES = ["Pare", "Semarang", "Tlogosari", "Tembalang", "Jebres"];
+
+/** Nama cabang yang disebut di teks (mis. nama jabatan); "" bila tidak ada. */
+function inferBranchFromText(text: string): string {
+  const hit = KNOWN_BRANCHES.filter((b) =>
+    new RegExp(`\\b${b}\\b`, "i").test(text)
+  );
+  return hit.length === 1 ? hit[0] : "";
+}
+
 // ── Templates (admin) ─────────────────────────────────────────────────
 
 export async function listContractTemplates(): Promise<EmploymentContractTemplate[]> {
@@ -184,7 +194,13 @@ export async function prefillContractFields(
     .lt("created_at", `${yearNum + 1}-01-01`);
   const nomor = String((count ?? 0) + 1).padStart(3, "0");
 
-  const jabatan = p.position || p.job_role || "";
+  // job_role = nama jabatan menurut SOP ("Staf Depan & Koordinator Toko");
+  // position adalah teks bebas lama ("Cake Decorator Pare").
+  const jabatan = p.job_role || p.position || "";
+  // Profil tidak punya kolom cabang. Cabang ditebak dari nama jabatan bila
+  // menyebut cabang; selain itu dikosongkan agar admin memilih (jangan isi
+  // nama unit, nanti kalimat kontrak jadi "Haengbocake Haengbocake").
+  const cabang = inferBranchFromText(`${p.position ?? ""} ${p.job_role ?? ""}`);
   const fields: ContractFields = {
     nomor,
     hari: wib({ weekday: "long" }),
@@ -203,7 +219,7 @@ export async function prefillContractFields(
     tgl_lahir: "",
     alamat: "",
     jabatan,
-    cabang: bu,
+    cabang,
     tgl_mulai: formatTanggalID(p.first_day_of_work),
     tgl_berakhir: "",
     // Disimpan sebagai digit polos (tanpa pemisah ribuan) agar konsisten dengan
@@ -219,7 +235,7 @@ export async function prefillContractFields(
   const lampiran = emptyLampiran();
   lampiran.nama = p.full_name ?? "";
   lampiran.posisi = jabatan;
-  lampiran.cabang = bu;
+  lampiran.cabang = cabang;
 
   return {
     ok: true,
@@ -479,13 +495,14 @@ export async function bulkIssueEmploymentContracts(input: {
   const ids = rows.map((r) => r.userId);
   const { data: profsRaw } = await db
     .from("profiles" as never)
-    .select("id, full_name, whatsapp_number")
+    .select("id, full_name, whatsapp_number, first_day_of_work")
     .in("id", ids);
   const profById = new Map(
     ((profsRaw ?? []) as unknown as {
       id: string;
       full_name: string | null;
       whatsapp_number: string | null;
+      first_day_of_work: string | null;
     }[]).map((p) => [p.id, p])
   );
 
@@ -507,7 +524,10 @@ export async function bulkIssueEmploymentContracts(input: {
       alamat: "",
       jabatan: common.jabatan?.trim() || "",
       cabang: r.cabang.trim(),
-      tgl_mulai: common.tgl_mulai?.trim() || "",
+      // Kosong di form = pakai tanggal mulai kerja di akun masing-masing.
+      tgl_mulai:
+        common.tgl_mulai?.trim() ||
+        formatTanggalID(profById.get(r.userId)?.first_day_of_work),
       tgl_berakhir: r.tglBerakhir.trim(),
       gaji_nominal: g.nominal,
       gaji_terbilang: g.terbilang,
@@ -903,6 +923,8 @@ export async function getContractRenderData(
 export async function signEmploymentContract(input: {
   contractId: string;
   signaturePath: string;
+  /** Foto KTP (hasil upload kind=ktp). Wajib, kecuali kontrak sudah punya fotonya (TTD ulang). */
+  ktpPath?: string | null;
   identity: ContractSignerIdentity;
   consent: boolean;
 }): Promise<ActionResult> {
@@ -947,6 +969,13 @@ export async function signEmploymentContract(input: {
     return { ok: false, error: "Kontrak sudah ditandatangani / tidak aktif" };
   const currentVersion = c.version ?? 1;
 
+  // Foto KTP wajib. Path harus milik kontrak ini (hasil upload kind=ktp).
+  const ktpPath = input.ktpPath?.trim() || null;
+  if (ktpPath && !ktpPath.startsWith(`${input.contractId}/ktp-`))
+    return { ok: false, error: "Foto KTP tidak valid" };
+  if (!ktpPath && !c.ktp_photo_path)
+    return { ok: false, error: "Foto KTP wajib diunggah" };
+
   const h = await headers();
   const ua = h.get("user-agent")?.slice(0, 400) ?? null;
   const ip =
@@ -967,6 +996,7 @@ export async function signEmploymentContract(input: {
       employee_signed_at: nowIso,
       employee_signer_name: id.nama,
       employee_signer_nik: id.nik,
+      ...(ktpPath ? { ktp_photo_path: ktpPath } : {}),
       consent_ip: ip,
       consent_user_agent: ua,
       status: "signed",
@@ -1017,6 +1047,107 @@ export async function signEmploymentContract(input: {
 
   revalidateAll();
   return { ok: true };
+}
+
+/**
+ * Signed URL foto KTP karyawan — HANYA admin (data identitas sensitif; tidak
+ * ikut ke PDF kontrak dan tidak ditampilkan lagi ke karyawan setelah diunggah).
+ */
+export async function getContractKtpUrl(
+  contractId: string
+): Promise<ActionResult<{ url: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const db = adminClient();
+  const { data: cRaw } = await db
+    .from("employment_contracts" as never)
+    .select("ktp_photo_path")
+    .eq("id", contractId)
+    .maybeSingle();
+  const path = (cRaw as unknown as { ktp_photo_path: string | null } | null)
+    ?.ktp_photo_path;
+  if (!path) return { ok: false, error: "Belum ada foto KTP" };
+  const { data, error } = await db.storage
+    .from("employment-contracts")
+    .createSignedUrl(path, 300);
+  if (error || !data) return { ok: false, error: error?.message ?? "Gagal sign URL" };
+  return { ok: true, data: { url: data.signedUrl } };
+}
+
+/**
+ * Terbitkan REVISI kontrak: naikkan `version` sehingga karyawan yang sudah
+ * menandatangani versi lama diminta tanda tangan ulang (`signed_version <
+ * version` → state "update_required"), lengkap dengan ringkasan perubahan.
+ * Opsional memuat ulang badan kontrak dari template BU saat ini.
+ *
+ * Isian (fields/lampiran) diubah lewat "Edit isian" untuk kontrak yang belum
+ * ditandatangani; untuk kontrak yang sudah ditandatangani, perubahan isi
+ * bersumber dari template terbaru lewat opsi di sini.
+ */
+export async function reviseEmploymentContract(input: {
+  id: string;
+  /** Ringkasan perubahan — ditampilkan ke karyawan. Wajib. */
+  note: string;
+  refreshFromTemplate: boolean;
+  notify: boolean;
+}): Promise<ActionResult<{ version: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const note = input.note.trim();
+  if (!note) return { ok: false, error: "Ringkasan perubahan wajib diisi" };
+  const db = adminClient();
+
+  const { data: cRaw } = await db
+    .from("employment_contracts" as never)
+    .select("user_id, status, version, business_unit")
+    .eq("id", input.id)
+    .maybeSingle();
+  const c = cRaw as unknown as {
+    user_id: string;
+    status: EmploymentContractStatus;
+    version: number | null;
+    business_unit: string;
+  } | null;
+  if (!c) return { ok: false, error: "Kontrak tidak ditemukan" };
+  if (c.status !== "signed" && c.status !== "pending_signature")
+    return { ok: false, error: "Hanya kontrak aktif yang bisa direvisi" };
+
+  const patch: Record<string, unknown> = {
+    version: (c.version ?? 1) + 1,
+    update_note: note,
+  };
+  if (input.refreshFromTemplate) {
+    const { data: tplRaw } = await db
+      .from("employment_contract_templates" as never)
+      .select("body_markdown, employer_signature_path")
+      .eq("business_unit", c.business_unit)
+      .maybeSingle();
+    const tpl = tplRaw as unknown as {
+      body_markdown: string;
+      employer_signature_path: string | null;
+    } | null;
+    if (!tpl)
+      return { ok: false, error: `Template "${c.business_unit}" tidak ditemukan` };
+    patch.body_markdown = tpl.body_markdown;
+    patch.employer_signature_path = tpl.employer_signature_path;
+  }
+
+  const { error } = await db
+    .from("employment_contracts" as never)
+    .update(patch as never)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+
+  if (input.notify) {
+    void sendPushToUser(c.user_id, {
+      title: "Kontrak kerja diperbarui",
+      body: "Ada perubahan pada kontrakmu. Buka menu Kontrak Kerja untuk membaca dan menandatangani ulang.",
+      url: "/kontrak",
+    }).catch(() => {});
+  }
+
+  revalidateAll();
+  return { ok: true, data: { version: patch.version as number } };
 }
 
 /** Set tanda tangan Pemberi Kerja di template (sekali per BU). */

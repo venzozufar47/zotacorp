@@ -7,6 +7,9 @@
  *     Path: `${contractId}/employee-signature-${uuid}.png`.
  *   - kind=employer + templateId: admin upload TTD Pemberi Kerja (sekali per
  *     BU). Path: `templates/${templateId}/employer-signature-${uuid}.png`.
+ *   - kind=ktp + contractId: karyawan memfoto KTP saat menandatangani.
+ *     Path: `${contractId}/ktp-${uuid}.{jpg|png|webp}`. Bucket privat; hanya
+ *     dibuka lewat signed URL dari server action admin.
  */
 
 export const dynamic = "force-dynamic";
@@ -20,6 +23,12 @@ import { contractNeedsSignature } from "@/lib/employment-contracts/types";
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_SIZE = 3 * 1024 * 1024; // 3 MB — tanda tangan kecil.
+const MAX_KTP_SIZE = 8 * 1024 * 1024; // 8 MB — foto kamera HP.
+const EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -37,12 +46,20 @@ export async function POST(req: Request) {
   const kind = (formData.get("kind") as string | null)?.trim() ?? "";
   const id = (formData.get("id") as string | null)?.trim() ?? "";
 
-  if (!file || !id || (kind !== "employee" && kind !== "employer"))
+  if (
+    !file ||
+    !id ||
+    (kind !== "employee" && kind !== "employer" && kind !== "ktp")
+  )
     return NextResponse.json({ error: "file, kind, id wajib" }, { status: 400 });
   if (!ALLOWED_TYPES.includes(file.type))
     return NextResponse.json({ error: "Hanya PNG/JPEG/WebP" }, { status: 400 });
-  if (file.size > MAX_SIZE)
-    return NextResponse.json({ error: "Ukuran maks 3 MB" }, { status: 400 });
+  const maxSize = kind === "ktp" ? MAX_KTP_SIZE : MAX_SIZE;
+  if (file.size > maxSize)
+    return NextResponse.json(
+      { error: `Ukuran maks ${maxSize / 1024 / 1024} MB` },
+      { status: 400 }
+    );
 
   const admin = createAdminClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -77,7 +94,10 @@ export async function POST(req: Request) {
         { error: "Kontrak tidak dalam status menunggu tanda tangan" },
         { status: 409 }
       );
-    path = `${id}/employee-signature-${crypto.randomUUID()}.png`;
+    path =
+      kind === "ktp"
+        ? `${id}/ktp-${crypto.randomUUID()}.${EXT[file.type]}`
+        : `${id}/employee-signature-${crypto.randomUUID()}.png`;
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
