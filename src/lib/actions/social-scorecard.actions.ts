@@ -68,6 +68,8 @@ export interface BrandMetricView extends ScoredMetric {
   spark: (number | null)[];
   /** Rincian angka untuk keterangan kecil di kartu. */
   inputs: Record<string, unknown>;
+  /** Tampilan karyawan: nilai ditampilkan sebagai % pencapaian terhadap target (angka rupiah aktual tidak dikirim). */
+  valueAsScore?: boolean;
 }
 
 export interface ConfigHistoryRow {
@@ -190,7 +192,7 @@ export async function getSocialScorecard(monthIso?: string | null): Promise<Acti
 interface ComputeOpts {
   /** null = semua brand. */
   brandIds: string[] | null;
-  /** Tampilan karyawan: tanpa omset (angka keuangan) dan tanpa riwayat target. */
+  /** Tampilan karyawan: omset hanya sebagai % terhadap target (tanpa rupiah, tren, rincian cabang) dan tanpa riwayat target. */
   employeeView: boolean;
 }
 
@@ -229,8 +231,8 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
     }));
 
     // Laporan keuangan dimuat sekali per merek untuk seluruh rentang tren.
-    const needsHaeng = !opts.employeeView && brands.some((b) => BRAND_REVENUE[b.code]?.kind === "pos" || BRAND_REVENUE[b.code]?.kind === "cake");
-    const needsYeobo = !opts.employeeView && brands.some((b) => BRAND_REVENUE[b.code]?.kind === "yeobo");
+    const needsHaeng = brands.some((b) => BRAND_REVENUE[b.code]?.kind === "pos" || BRAND_REVENUE[b.code]?.kind === "cake");
+    const needsYeobo = brands.some((b) => BRAND_REVENUE[b.code]?.kind === "yeobo");
     const [haengPnl, yeoboPnl] = await Promise.all([
       needsHaeng ? fetchPnL(db, "Haengbocake", ym(first), ym(month)) : Promise.resolve(null),
       needsYeobo ? fetchYeoboPnL(db, ym(first), ym(month)) : Promise.resolve(null),
@@ -240,7 +242,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
     // target POS, haengbocake.idn = target Custom Cake): SATU sumber, supaya angka target tidak bisa berbeda antara dua
     // scorecard. Brand tanpa target cabang (Yeobo) memakai target sosmed sendiri.
     const branchTarget = { pos: 0, cake: 0 };
-    if (!opts.employeeView && needsHaeng) {
+    if (needsHaeng) {
       const tr = await db.from("scorecard_branch_targets" as never).select("branch, monthly_pos_target, monthly_cake_target");
       for (const t of (tr.data ?? []) as unknown as { monthly_pos_target: string | number | null; monthly_cake_target: string | number | null }[]) {
         branchTarget.pos += Number(t.monthly_pos_target) || 0;
@@ -270,7 +272,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       const versions = cfgRows.filter((c) => c.brand_id === b.id).map(toVersion);
       const cfgFor = (code: SocialMetricCode, m: string) => pickConfig(versions.filter((v) => v.metricCode === code), m);
 
-      const spec = opts.employeeView ? undefined : BRAND_REVENUE[b.code];
+      const spec = BRAND_REVENUE[b.code];
       const revenueOf = async (m: string): Promise<RevenueResult | null> => {
         if (!spec) return null;
         const { year, month: mm } = ym(m);
@@ -303,7 +305,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       const accountsReporting = new Set(curReports.map((r) => r.accountId)).size;
       const weeksReported = new Set(curReports.map((r) => r.weekStart)).size;
 
-      const metrics: BrandMetricView[] = SOCIAL_METRICS.filter((def) => !(opts.employeeView && def.code === "omset")).map((def) => {
+      const metrics: BrandMetricView[] = SOCIAL_METRICS.map((def) => {
         let cfg = cfgFor(def.code, month);
         const hk = spec?.kind;
         if (def.code === "omset" && (hk === "pos" || hk === "cake") && branchTarget[hk] > 0) {
@@ -334,15 +336,18 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
                   ...(monthInProgress ? { bulan_berjalan: true, ...(spec?.kind === "yeobo" && yeoboDataUntil ? { data_sampai: yeoboDataUntil } : {}) } : {}),
                 }
             : { minggu_terisi: weeksReported, akun_terisi: `${accountsReporting}/${brandAccounts.length}` };
+        // Karyawan hanya melihat omset sebagai % terhadap target: angka rupiah aktual, tren, dan rincian per cabang tidak dikirim.
+        const hideRupiah = opts.employeeView && def.code === "omset";
         return {
           ...scored,
+          ...(hideRupiah ? { actual: null, valueAsScore: true } : {}),
           label: def.label,
           kind: def.kind,
           note: def.note,
           greenBound: cfg?.greenBound ?? null,
           redBound: cfg?.redBound ?? null,
-          spark: valuesByMonth.map((v) => v[def.code]),
-          inputs,
+          spark: hideRupiah ? [] : valuesByMonth.map((v) => v[def.code]),
+          inputs: hideRupiah ? Object.fromEntries(Object.entries(inputs).filter(([k]) => k !== "rincian_cabang")) : inputs,
         };
       });
 
@@ -375,8 +380,8 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
 }
 
 /**
- * Scorecard sosmed untuk BERANDA pengisi laporan: hanya brand yang ia pegang (`social_report_editors`), tanpa omset
- * dan tanpa riwayat target. null = bukan pengisi. `simulateBrandCode` hanya berlaku di luar produksi, untuk meninjau
+ * Scorecard sosmed untuk BERANDA pengisi laporan: hanya brand yang ia pegang (`social_report_editors`), omset hanya
+ * sebagai % terhadap target (tanpa angka rupiah) dan tanpa riwayat target. null = bukan pengisi. `simulateBrandCode` hanya berlaku di luar produksi, untuk meninjau
  * tampilan tanpa mengubah data akses.
  */
 export async function getMySocialScorecard(simulateBrandCode?: string | null): Promise<SocialScorecardData | null> {

@@ -96,7 +96,7 @@ const TONE_OF: Record<BrandMetricView["status"], TileTone> = { green: "green", y
 export function SocialBrandTiles({ brand }: { brand: SocialBrandCard }) {
   const odd = brand.metrics.length % 2 === 1;
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-3">
+    <div className={cn("grid grid-cols-2 gap-2 sm:gap-2.5", brand.metrics.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
       {brand.metrics.map((m, i) => (
         <MetricCard key={m.code} m={m} months={[]} compact className={odd && i === 0 ? "col-span-2 lg:col-span-1" : undefined} />
       ))}
@@ -122,7 +122,9 @@ function MetricCard({ m, months, compact = false, className }: { m: BrandMetricV
             <ScorecardRangesInfo label={m.label} lines={lines.length > 0 ? lines : undefined} note={lines.length > 0 ? undefined : m.note} onSolid />
           </span>
         </div>
-        <p className={cn("relative mt-1 font-display font-extrabold leading-tight tabular-nums", isNumber ? "text-[28px]" : "text-lg")}>{fmt(m.actual, m.kind)}</p>
+        <p className={cn("relative mt-1 font-display font-extrabold leading-tight tabular-nums", isNumber || m.valueAsScore ? "text-[28px]" : "text-lg")}>
+          {m.valueAsScore ? (m.score != null ? `${nf0.format(m.score)}%` : "—") : fmt(m.actual, m.kind)}
+        </p>
         <div className="relative mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", style.chip)}>
             <Icon aria-hidden size={12} strokeWidth={2.5} />
@@ -130,7 +132,7 @@ function MetricCard({ m, months, compact = false, className }: { m: BrandMetricV
           </span>
           <span className="text-[11px] leading-snug">
             {m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
-            {m.score != null ? ` · ${nf0.format(m.score)}% dari target` : ""}
+            {m.score != null && !m.valueAsScore ? ` · ${nf0.format(m.score)}% dari target` : ""}
           </span>
         </div>
       </div>
