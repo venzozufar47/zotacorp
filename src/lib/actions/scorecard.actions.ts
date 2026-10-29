@@ -302,7 +302,7 @@ export async function computeMetricsAsOf(
       band: omzetTooEarly ? "measuring" : omzetBand(omzetPct),
       note: opts
         ? fullTarget
-          ? `Terkumpul ${rupiahJt(omzetActual)} dari target ${rupiahJt(fullTarget)} (POS ${rupiahJt(mtd.total)} + Custom Cake ${rupiahJt(cakeMtd)}). Hari kerja ke-${workedDays} dari ${monthWorkDays}: idealnya sudah ${rupiahJt(targetPace ?? 0)}.`
+          ? `Terkumpul ${rupiahJt(omzetActual)} dari target ${rupiahJt(fullTarget)}. Hari ini idealnya sudah ${rupiahJt(targetPace ?? 0)}.`
           : `POS ${rupiahJt(mtd.total)} + Custom Cake ${rupiahJt(cakeMtd)}`
         : undefined,
       ranges: omzetRanges(),
