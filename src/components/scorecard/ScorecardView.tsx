@@ -61,10 +61,13 @@ export function ScorecardView({
           return (
             <div
               key={m.key}
-              className={`animate-fade-up relative overflow-hidden rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 ${meta.tile}`}
+              className={`animate-fade-up relative rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 has-[button[aria-expanded=true]]:z-30 ${meta.tile}`}
               style={{ animationDelay: `${i * 60}ms` }}
             >
-              <Icon aria-hidden size={64} strokeWidth={1.5} className="pointer-events-none absolute -bottom-3 -right-3 opacity-[0.14]" />
+              {/* Watermark dipotong di pembungkusnya sendiri; ubin tidak boleh overflow-hidden karena panduan ⓘ muncul di dalamnya. */}
+              <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+                <Icon size={64} strokeWidth={1.5} className="absolute -bottom-3 -right-3 opacity-[0.14]" />
+              </span>
               <div className="relative flex items-start justify-between gap-1">
                 <span className="text-[11.5px] font-medium leading-snug">{m.label}</span>
                 <span className="-mr-2 -mt-1.5">
