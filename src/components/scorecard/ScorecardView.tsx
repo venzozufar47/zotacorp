@@ -62,10 +62,6 @@ export function ScorecardView({
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
-        Abu-abu (&quot;Diukur&quot; / &quot;Belum diatur&quot;) berarti datanya belum cukup — bukan nilai buruk.
-      </p>
-
     </div>
   );
 }
