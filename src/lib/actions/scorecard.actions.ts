@@ -429,5 +429,14 @@ export async function getMyScorecards(): Promise<{
   const detected = branches.length > 0;
   const list: ScorecardBranch[] = detected ? branches : ["Pare", "Semarang"];
   const cards = await Promise.all(list.map((b) => getBranchScorecard(b)));
-  return { detected, scorecards: cards.filter((c): c is BranchScorecard => c !== null) };
+  // Cabang tidak terdeteksi → dua cabang tampil, jadi tanpa angka rupiah (nominal omzet/target cabang lain bukan urusan
+  // mereka): hanya persentase. Karyawan dengan cabang terdeteksi tetap melihat angka cabangnya sendiri.
+  const scorecards = cards
+    .filter((c): c is BranchScorecard => c !== null)
+    .map((c) =>
+      detected
+        ? c
+        : { ...c, omzetTarget: { pos: null, cake: null }, metrics: c.metrics.map((m) => (m.key === "omzet" ? { ...m, note: undefined } : m)) }
+    );
+  return { detected, scorecards };
 }

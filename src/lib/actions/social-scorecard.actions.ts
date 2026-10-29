@@ -343,8 +343,8 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         return {
           ...scored,
           ...(hideRupiah ? { actual: null, valueAsScore: true } : {}),
-          // Yeobo: nominal target omset juga tidak ditampilkan ke karyawan (hanya % pencapaian).
-          ...(hideRupiah && spec?.kind === "yeobo" ? { target: null, targetHidden: true } : {}),
+          // Nominal target omset juga tidak ditampilkan ke karyawan, untuk semua brand (hanya % pencapaian).
+          ...(hideRupiah ? { target: null, targetHidden: true } : {}),
           label: def.label,
           kind: def.kind,
           note: def.note,
