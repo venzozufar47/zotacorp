@@ -564,7 +564,7 @@ interface Created {
  */
 export async function createPurchase(
   input: CreatePurchaseInput
-): Promise<ActionResult<{ id: string; total: number; flagged: number }>> {
+): Promise<ActionResult<{ id: string; total: number; flagged: number; newBrands?: { materialId: string; id: string; name: string }[] }>> {
   const ctx: { rollback?: () => Promise<void> } = {};
   try {
     return await createPurchaseImpl(input, ctx);
@@ -581,7 +581,7 @@ export async function createPurchase(
 async function createPurchaseImpl(
   input: CreatePurchaseInput,
   ctx: { rollback?: () => Promise<void> }
-): Promise<ActionResult<{ id: string; total: number; flagged: number }>> {
+): Promise<ActionResult<{ id: string; total: number; flagged: number; newBrands?: { materialId: string; id: string; name: string }[] }>> {
   if (input.moneySource !== "pengadaan" && input.moneySource !== "laci" && input.moneySource !== "shopee")
     return { ok: false, error: "Pilih sumber uangnya dulu" };
   const access = await authorizePurchaseAccess(input.businessUnit);
@@ -994,6 +994,7 @@ async function createPurchaseImpl(
 
   // Merek baru dari baris nota dibuat sekarang (di dalam paket penulisan, ikut dibatalkan bila nota gagal).
   const newBrandIds = new Map<string, string>();
+  const newBrandsOut: { materialId: string; id: string; name: string }[] = [];
   for (const c of calcs) {
     if (c.kind !== "bahan" || !c.materialId || c.brandId || !c.newBrandName) continue;
     const key = c.materialId + "|" + c.newBrandName.toLowerCase();
@@ -1005,7 +1006,10 @@ async function createPurchaseImpl(
         return { ok: false, error: r.error };
       }
       id = r.id;
-      if (r.created) created.brandIds.push(id);
+      if (r.created) {
+        created.brandIds.push(id);
+        newBrandsOut.push({ materialId: c.materialId, id, name: c.newBrandName });
+      }
       newBrandIds.set(key, id);
     }
     c.brandId = id;
@@ -1216,7 +1220,7 @@ async function createPurchaseImpl(
     }
   }
   revalidateAll();
-  return { ok: true, data: { id: purchaseId, total: grandTotal, flagged } };
+  return { ok: true, data: { id: purchaseId, total: grandTotal, flagged, newBrands: newBrandsOut } };
 }
 
 // ─────────────────────────────────────────────────────────────────────

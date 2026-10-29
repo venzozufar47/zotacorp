@@ -48,6 +48,8 @@ export function BrandPanel({ material, onClose, startAdding = false }: { materia
   const [editId, setEditId] = useState<string | null>(null);
   const [adding, setAdding] = useState(startAdding);
   const [newName, setNewName] = useState("");
+  // `savedKind` = yang sudah tersimpan; `kind` = yang tampil (usulan dari kategori bila belum tersimpan).
+  const [savedKind, setSavedKind] = useState<HalalKind | "">(material.halalKind ?? "");
   const [kind, setKind] = useState<HalalKind | "">(material.halalKind ?? defaultHalalKind(material.category) ?? "");
   const [inList, setInList] = useState(material.inHalalList);
   const [pending, start] = useTransition();
@@ -139,8 +141,10 @@ export function BrandPanel({ material, onClose, startAdding = false }: { materia
                       key={k}
                       type="button"
                       onClick={() => {
-                        const next = kind === k ? "" : k;
+                        // Ketuk yang sudah tersimpan = kosongkan; ketuk usulan (belum tersimpan) = simpan.
+                        const next = savedKind === k ? "" : k;
                         setKind(next);
+                        setSavedKind(next);
                         saveMaterialHalal({ kind: next });
                       }}
                       aria-pressed={kind === k}
@@ -153,7 +157,7 @@ export function BrandPanel({ material, onClose, startAdding = false }: { materia
                     </button>
                   ))}
                 </div>
-                {!material.halalKind && kind && <p className="text-[11px] text-muted-foreground">Usulan dari kategori; ketuk untuk menyimpan atau ganti.</p>}
+                {!savedKind && kind && <p className="text-[11px] text-muted-foreground">Usulan dari kategori; ketuk untuk menyimpan atau pilih yang lain.</p>}
               </div>
             )}
           </section>
@@ -275,10 +279,10 @@ function BrandEditor({
     producer: string | null;
     country: string | null;
     halalStatus: HalalStatus;
-    halalIssuer: string | null;
-    halalCertNo: string | null;
-    halalValidUntil: string | null;
-    halalNote: string | null;
+    halalIssuer?: string | null;
+    halalCertNo?: string | null;
+    halalValidUntil?: string | null;
+    halalNote?: string | null;
   }) => void;
   onMakeCurrent: () => void;
   onToggleActive: () => void;
@@ -396,10 +400,11 @@ function BrandEditor({
             producer: producer.trim() || null,
             country: country.trim() || null,
             halalStatus: status,
-            halalIssuer: status === "bersertifikat" ? issuer.trim() || null : null,
-            halalCertNo: status === "bersertifikat" ? certNo.trim() || null : null,
-            halalValidUntil: status === "bersertifikat" ? validUntil || null : null,
-            halalNote: status === "tidak_wajib" ? note.trim() || null : null,
+            // Data sertifikat/keterangan hanya dikirim saat statusnya cocok: ganti status tidak menghapus data yang sudah ada.
+            ...(status === "bersertifikat"
+              ? { halalIssuer: issuer.trim() || null, halalCertNo: certNo.trim() || null, halalValidUntil: validUntil || null }
+              : {}),
+            ...(status === "tidak_wajib" ? { halalNote: note.trim() || null } : {}),
           })
         }
         className="w-full rounded-xl border-2 border-foreground bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"

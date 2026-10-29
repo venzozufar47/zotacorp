@@ -176,7 +176,7 @@ export function MaterialsManager({
           <h3 className="flex items-center gap-1.5 text-sm font-bold">
             <AlertTriangle size={14} className="text-warning" /> Merek perlu dilengkapi ({queueTotal})
           </h3>
-          <p className="text-[11.5px] text-muted-foreground">Untuk Daftar Bahan Halal. Boleh dicicil; yang paling banyak dipakai di atas.</p>
+          <p className="text-[11.5px] text-muted-foreground">Untuk Daftar Bahan Halal. Boleh dicicil; yang paling banyak dibeli di atas.</p>
           <ul className="divide-y divide-border/60">
             {queue.slice(0, 6).map((it) => {
               const m = materials.find((x) => x.id === it.materialId);

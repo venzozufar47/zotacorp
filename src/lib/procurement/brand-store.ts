@@ -61,6 +61,11 @@ export async function findOrCreateBrand(
     } as never)
     .select("id")
     .single();
+  if (error?.code === "23505") {
+    // Balapan: merek bernama sama baru saja dibuat di permintaan lain → pakai yang itu.
+    const { data: again } = await admin.from("costing_material_brands" as never).select("id").eq("material_id", input.materialId).ilike("name", likeEscape(name)).maybeSingle();
+    if (again) return { ok: true, id: (again as { id: string }).id, created: false };
+  }
   if (error || !data) return { ok: false, error: error?.message ?? "Gagal menyimpan merek" };
   return { ok: true, id: (data as { id: string }).id, created: true };
 }
@@ -76,17 +81,45 @@ export async function brandBelongsToMaterial(admin: Admin, brandId: string, mate
   return !!data;
 }
 
-interface Segment {
-  brand_id: string;
-  started_on: string;
-  ended_on: string | null;
+/** Satu kejadian yang menentukan merek mana yang dipakai: barang masuk bermerek (auto) atau pilihan petugas (manual). */
+export interface UsageEvent {
+  brandId: string;
+  /** YYYY-MM-DD */
+  date: string;
+  /** Pengurut untuk tanggal yang sama (waktu dibuat). */
+  ts: string;
+  source: "auto" | "manual";
+}
+
+export interface UsageRun {
+  brandId: string;
+  startedOn: string;
+  /** null = sedang dipakai. */
+  endedOn: string | null;
+  source: "auto" | "manual";
+  ts: string;
 }
 
 /**
- * Susun ulang riwayat merek "otomatis" satu bahan dari barang masuk bermerek: tiap pergantian merek menutup merek lama di
- * tanggal merek baru masuk. Baris `manual` (ketukan petugas) dipertahankan dan menang atas riwayat otomatis yang
- * tumpang tindih. Dipanggil setelah nota dibuat/diubah/dihapus dan setelah barang masuk berubah, jadi riwayat selalu
- * mengikuti barang masuk yang tersisa.
+ * Riwayat merek yang dipakai dari kejadian berurutan: yang TERBARU menentukan merek yang dipakai, baik itu barang masuk
+ * maupun pilihan manual petugas. Kejadian dengan merek yang sama dengan sebelumnya tidak membuka rentang baru. Murni (tanpa DB).
+ */
+export function computeUsageRuns(events: readonly UsageEvent[]): UsageRun[] {
+  const sorted = [...events].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : x.ts < y.ts ? -1 : x.ts > y.ts ? 1 : 0));
+  const runs: UsageRun[] = [];
+  for (const ev of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && last.brandId === ev.brandId) continue;
+    if (last) last.endedOn = ev.date;
+    runs.push({ brandId: ev.brandId, startedOn: ev.date, endedOn: null, source: ev.source, ts: ev.ts });
+  }
+  return runs;
+}
+
+/**
+ * Susun ulang riwayat merek yang dipakai satu bahan dari barang masuk bermerek DITAMBAH pilihan manual yang tersimpan
+ * (baris `manual`). Dipanggil setelah nota dibuat/diubah/dihapus dan barang masuk berubah, jadi riwayat selalu mengikuti
+ * data yang tersisa. Pembelian bermerek lain SETELAH pilihan manual otomatis mengambil alih, dan sebaliknya.
  */
 export async function rebuildBrandUsage(admin: Admin, materialId: string): Promise<void> {
   const [{ data: mat }, { data: recs }, { data: existing }] = await Promise.all([
@@ -98,40 +131,33 @@ export async function rebuildBrandUsage(admin: Admin, materialId: string): Promi
       .not("brand_id", "is", null)
       .order("receipt_date", { ascending: true })
       .order("created_at", { ascending: true }),
-    admin.from("costing_material_brand_usage" as never).select("id, brand_id, started_on, ended_on, source").eq("material_id", materialId),
+    admin.from("costing_material_brand_usage" as never).select("id, brand_id, started_on, source, created_at").eq("material_id", materialId),
   ]);
   const businessUnit = (mat as { business_unit?: string } | null)?.business_unit;
   if (!businessUnit) return;
 
-  const segs: Segment[] = [];
-  for (const r of (recs ?? []) as { brand_id: string; receipt_date: string }[]) {
-    const last = segs[segs.length - 1];
-    if (last && last.brand_id === r.brand_id) continue;
-    if (last) last.ended_on = r.receipt_date;
-    segs.push({ brand_id: r.brand_id, started_on: r.receipt_date, ended_on: null });
-  }
+  const events: UsageEvent[] = [];
+  for (const r of (recs ?? []) as { brand_id: string; receipt_date: string; created_at: string }[])
+    events.push({ brandId: r.brand_id, date: r.receipt_date, ts: r.created_at, source: "auto" });
+  const oldRows = (existing ?? []) as { id: string; brand_id: string; started_on: string; source: string; created_at: string }[];
+  for (const u of oldRows) if (u.source === "manual") events.push({ brandId: u.brand_id, date: u.started_on, ts: u.created_at, source: "manual" });
 
-  const rows = (existing ?? []) as { id: string; brand_id: string; started_on: string; ended_on: string | null; source: string }[];
-  const manualOpen = rows.find((r) => r.source === "manual" && r.ended_on == null) ?? null;
-  const autoIds = rows.filter((r) => r.source === "auto").map((r) => r.id);
-  if (autoIds.length) await admin.from("costing_material_brand_usage" as never).delete().in("id", autoIds);
-
-  const inserts: Record<string, unknown>[] = [];
-  for (const s of segs) {
-    let ended = s.ended_on;
-    if (manualOpen && (ended == null || ended > manualOpen.started_on)) {
-      // Pilihan manual yang sedang berjalan menggantikan riwayat otomatis sejak tanggal mulainya.
-      if (s.started_on >= manualOpen.started_on) continue;
-      ended = manualOpen.started_on;
-    }
-    inserts.push({ material_id: materialId, brand_id: s.brand_id, business_unit: businessUnit, started_on: s.started_on, ended_on: ended, source: "auto" });
-  }
-  if (inserts.length) await admin.from("costing_material_brand_usage" as never).insert(inserts as never);
+  const runs = computeUsageRuns(events);
+  // Hapus + isi ulang dalam SATU transaksi (fungsi SQL): gagal di tengah tidak boleh menghilangkan pilihan manual petugas.
+  const { error } = await admin.rpc(
+    "replace_brand_usage" as never,
+    {
+      p_material: materialId,
+      p_business_unit: businessUnit,
+      p_runs: runs.map((r) => ({ brand_id: r.brandId, started_on: r.startedOn, ended_on: r.endedOn, source: r.source, created_at: r.ts })),
+    } as never
+  );
+  if (error) throw new Error(error.message);
 }
 
 /**
- * Pilihan manual "Ganti merek dipakai": tutup merek yang sedang dipakai pada `startedOn` lalu buka merek pilihan.
- * Tanpa perubahan bila merek itu memang sudah dipakai.
+ * Pilihan manual "Ganti merek dipakai": catat kejadian manual (rentang nol hari) lalu susun ulang riwayat, jadi merek
+ * pilihan itu menjadi yang dipakai sampai ada barang masuk bermerek lain. Tanpa perubahan bila merek itu sudah dipakai.
  */
 export async function setActiveBrandManual(
   admin: Admin,
@@ -139,26 +165,25 @@ export async function setActiveBrandManual(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: open } = await admin
     .from("costing_material_brand_usage" as never)
-    .select("id, brand_id, started_on")
+    .select("brand_id")
     .eq("material_id", input.materialId)
     .is("ended_on", null)
     .maybeSingle();
-  const cur = open as { id: string; brand_id: string; started_on: string } | null;
-  if (cur?.brand_id === input.brandId) return { ok: true };
-  if (cur) {
-    // Tanggal mulai tidak boleh lebih awal dari mulai merek yang sedang ditutup.
-    const endOn = input.startedOn < cur.started_on ? cur.started_on : input.startedOn;
-    const { error } = await admin.from("costing_material_brand_usage" as never).update({ ended_on: endOn } as never).eq("id", cur.id);
-    if (error) return { ok: false, error: error.message };
-  }
+  if ((open as { brand_id?: string } | null)?.brand_id === input.brandId) return { ok: true };
   const { error } = await admin.from("costing_material_brand_usage" as never).insert({
     material_id: input.materialId,
     brand_id: input.brandId,
     business_unit: input.businessUnit,
-    started_on: cur && input.startedOn < cur.started_on ? cur.started_on : input.startedOn,
+    started_on: input.startedOn,
+    ended_on: input.startedOn,
     source: "manual",
   } as never);
   if (error) return { ok: false, error: error.message };
+  try {
+    await rebuildBrandUsage(admin, input.materialId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal memperbarui riwayat merek" };
+  }
   return { ok: true };
 }
 

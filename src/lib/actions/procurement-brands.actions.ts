@@ -10,7 +10,6 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, requireProcurementForBu, requireProcurementForMaterial, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import { loadBrandProcurement } from "@/lib/procurement/rows";
 import {
   brandMissing,
   brandNameError,
@@ -168,7 +167,7 @@ export async function registerBrand(input: {
       changes: { terdaftar: { from: null, to: "baru" } },
       sensitive: false,
       userId: gate.userId,
-      action: "create",
+      action: "update",
     });
   }
   revalidateAll();
@@ -390,23 +389,49 @@ export interface BrandQueueItem {
   expiry: "habis" | "segera" | null;
 }
 
+/** Barang masuk satu cabang, dibaca per halaman 1000 baris (batas baris PostgREST) sampai habis. */
+async function allReceipts(admin: Admin, businessUnit: string): Promise<{ material_id: string; total_paid: number | string | null; receipt_date: string }[]> {
+  const out: { material_id: string; total_paid: number | string | null; receipt_date: string }[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data } = await admin
+      .from("costing_material_receipts" as never)
+      .select("material_id, total_paid, receipt_date")
+      .eq("business_unit", businessUnit)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    const rows = (data ?? []) as { material_id: string; total_paid: number | string | null; receipt_date: string }[];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
 /**
  * Antrean "Perlu dilengkapi": merek berdata halal kurang, sertifikat habis/hampir habis, dan bahan yang dibeli tanpa
- * merek terdaftar. Hanya bahan yang masuk Daftar Halal; urut menurut biaya pemakaian (paling banyak dipakai dulu).
+ * merek terdaftar. Hanya bahan yang masuk Daftar Halal; urut menurut nilai belanja 90 hari terakhir (paling banyak dibeli
+ * dulu) — ukuran murah yang tidak memuat ulang perhitungan pemakaian resep di setiap buka tab Bahan.
  */
 export async function listBrandsNeedingInfo(businessUnit: string): Promise<ActionResult<{ items: BrandQueueItem[]; total: number }>> {
   const gate = await requireProcurementForBu(businessUnit);
   if (!gate.ok) return fail(gate.error);
   const admin = createAdminClient();
   const today = jakartaDateString(new Date());
-  const [{ data: mats }, { data: brands }, { data: recs }, proc] = await Promise.all([
+  const [{ data: mats }, { data: brands }, recs] = await Promise.all([
     admin.from("costing_materials" as never).select("id, name, category").eq("business_unit", businessUnit).eq("is_active", true).eq("in_halal_list", true),
     admin.from("costing_material_brands" as never).select("*").eq("business_unit", businessUnit).eq("is_active", true),
-    admin.from("costing_material_receipts" as never).select("material_id").eq("business_unit", businessUnit),
-    loadBrandProcurement(admin, { businessUnit, includeUntracked: true }).catch(() => null),
+    allReceipts(admin, businessUnit),
   ]);
-  const cost = (id: string) => proc?.usage.byMaterial.get(id)?.cost ?? 0;
-  const bought = new Set(((recs ?? []) as { material_id: string }[]).map((r) => r.material_id));
+  const since = new Date(`${today}T00:00:00Z`);
+  since.setUTCDate(since.getUTCDate() - 90);
+  const sinceIso = since.toISOString().slice(0, 10);
+  const spend = new Map<string, number>();
+  const bought = new Set<string>();
+  for (const r of recs) {
+    bought.add(r.material_id);
+    if (r.receipt_date >= sinceIso) spend.set(r.material_id, (spend.get(r.material_id) ?? 0) + Number(r.total_paid ?? 0));
+  }
+  const cost = (id: string) => spend.get(id) ?? 0;
   const byMaterial = new Map<string, Record<string, unknown>[]>();
   for (const b of (brands ?? []) as Record<string, unknown>[]) {
     const arr = byMaterial.get(b.material_id as string) ?? [];

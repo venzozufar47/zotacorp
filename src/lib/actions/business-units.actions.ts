@@ -123,6 +123,10 @@ export async function renameBusinessUnit(input: { id: string; newName: string })
     "costing_material_procurement",
     "costing_material_opnames",
     "costing_material_receipts",
+    // Merek bahan (PRD merek): ikut dipindah supaya merek dan profil halal tidak yatim saat nama unit diganti.
+    "costing_material_brands",
+    "costing_material_brand_usage",
+    "procurement_halal_profiles",
   ]) {
     await supabase
       .from(table as never)

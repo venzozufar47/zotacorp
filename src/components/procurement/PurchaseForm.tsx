@@ -289,6 +289,23 @@ export function PurchaseForm({
           label: l.kind === "lain" ? l.description : l.material.name,
         })),
       ]);
+      // Daftar merek di form ikut diperbarui: merek baru dari nota ini bisa langsung dipilih, dan merek yang baru dipakai
+      // menjadi bawaan pembelian berikutnya.
+      const newBrands = res.data.newBrands ?? [];
+      setMaterials((prev) =>
+        prev.map((m) => {
+          const mine = lines.filter((l) => l.kind === "bahan" && l.material.id === m.id);
+          if (mine.length === 0) return m;
+          const brands = [...m.brands, ...newBrands.filter((b) => b.materialId === m.id && !m.brands.some((x) => x.id === b.id)).map((b) => ({ id: b.id, name: b.name }))];
+          let def = m.defaultBrandId;
+          for (const l of mine) {
+            if (l.kind !== "bahan") continue;
+            const id = l.brandId ?? newBrands.find((b) => b.materialId === m.id && b.name.toLowerCase() === (l.newBrandName ?? "").toLowerCase())?.id ?? null;
+            if (id) def = id;
+          }
+          return { ...m, brands, defaultBrandId: def };
+        })
+      );
       setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged, source });
       setLines([]);
       setReceiptPath(null);
@@ -997,13 +1014,16 @@ function BahanComposer({
               </button>
             </div>
             {addingBrand && (
-              <Input
-                autoFocus
-                value={newBrand}
-                onChange={(e) => setNewBrand(e.target.value)}
-                placeholder="Nama merek (mis. Segitiga Biru)"
-                maxLength={80}
-              />
+              <>
+                <Input
+                  autoFocus
+                  value={newBrand}
+                  onChange={(e) => setNewBrand(e.target.value)}
+                  placeholder="Nama merek (mis. Segitiga Biru)"
+                  maxLength={80}
+                />
+                {!newBrand.trim() && <p className="text-[11px] text-muted-foreground">Ketik nama merek, atau pilih &ldquo;Tanpa merek&rdquo; di atas.</p>}
+              </>
             )}
           </div>
 
@@ -1104,7 +1124,7 @@ function BahanComposer({
             <Button
               type="button"
               className="flex-1"
-              disabled={!calc}
+              disabled={!calc || (addingBrand && !newBrand.trim())}
               onClick={() =>
                 calc &&
                 onAdd({
