@@ -75,8 +75,9 @@ import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.
 import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, FlaskConical } from "lucide-react";
+import { NoticeCard } from "@/components/dashboard/NoticeCard";
 import { ScorecardSection, ScorecardSectionSkeleton } from "@/components/scorecard/ScorecardSection";
-import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon, Lock, ArrowRight } from "lucide-react";
+import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon, Lock } from "lucide-react";
 import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
 import { Wallet as BonusIcon } from "lucide-react";
 import { countPendingSopAcknowledgments } from "@/lib/actions/sop-documents.actions";
@@ -336,69 +337,39 @@ export default async function DashboardPage() {
       <CoachingNotesCard notes={coachingNotes} />
 
       {pendingContract && (
-        <Link
+        <NoticeCard
           href="/kontrak"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <FileSignature size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {pendingContract.isUpdate
-                ? "Kontrak kerja diperbarui — perlu tanda tangan ulang"
-                : "Kontrak kerja menunggu tanda tangan"}
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              {pendingContract.isUpdate
-                ? pendingContract.updateNote
-                  ? `Perubahan: ${pendingContract.updateNote} Ketuk untuk baca & tanda tangani ulang.`
-                  : "Ada perubahan pada kontrakmu. Ketuk untuk baca & tanda tangani ulang."
-                : "Tandatangani kontrakmu. Ketuk untuk membuka."}
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<FileSignature size={20} />}
+          title={pendingContract.isUpdate ? "Kontrak kerja diperbarui — perlu tanda tangan ulang" : "Kontrak kerja menunggu tanda tangan"}
+          body={
+            pendingContract.isUpdate
+              ? pendingContract.updateNote
+                ? `Perubahan: ${pendingContract.updateNote} Ketuk untuk baca & tanda tangani ulang.`
+                : "Ada perubahan pada kontrakmu. Ketuk untuk baca & tanda tangani ulang."
+              : "Tandatangani kontrakmu. Ketuk untuk membuka."
+          }
+        />
       )}
 
       {profile?.disc_test_required && (
-        <Link
+        <NoticeCard
           href="/disc"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <Brain size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              Kamu diminta mengambil Tes Kepribadian DISC
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              ±10 menit. Slip gaji terkunci sampai tes selesai — ketuk untuk mulai.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<Brain size={20} />}
+          title="Kamu diminta mengambil Tes Kepribadian DISC"
+          body="±10 menit. Slip gaji terkunci sampai tes selesai — ketuk untuk mulai."
+        />
       )}
 
       {isHeadOfStudio && studioQueueCount > 0 && (
-        <Link
+        <NoticeCard
           href="/tickets"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <TicketIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {studioQueueCount} tiket menunggu ditangani
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Tiket ditujukan kepadamu — ketuk untuk menindaklanjuti.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<TicketIcon size={20} />}
+          title={`${studioQueueCount} tiket menunggu ditangani`}
+          body="Tiket ditujukan kepadamu — ketuk untuk menindaklanjuti."
+        />
       )}
 
       {procurementBadge &&
@@ -422,93 +393,57 @@ export default async function DashboardPage() {
           const names = items.slice(0, 3).map((i) => i.name).join(", ");
           const more = needBuy - Math.min(items.length, 3);
           return (
-            <Link
+            <NoticeCard
               href={href}
-              className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-            >
-              <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-                <PackageSearch size={18} />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block font-display font-bold text-sm">
-                  {needBuy > 0
-                    ? single
-                      ? `${first.name} perlu dibeli`
-                      : `${needBuy} bahan perlu dibeli`
-                    : `Opname bahan sudah ${staleDays} hari lalu`}
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  {needBuy > 0
-                    ? single
-                      ? `${first.businessUnit.replace("Haengbocake ", "")} · ${stockText(first)} · ketuk untuk melihat stok & catat belanja.`
-                      : `${names}${more > 0 ? ` +${more} lainnya` : ""} · ketuk untuk melihat stok & catat belanja.`
-                    : "Ketuk untuk mulai opname."}
-                  {needBuy > 0 && (staleDays ?? 0) > 14 && ` Opname terakhir ${staleDays} hari lalu.`}
-                </span>
-              </span>
-              <span className="text-sm font-bold shrink-0">→</span>
-            </Link>
+              tone="warn"
+              icon={<PackageSearch size={20} />}
+              title={
+                needBuy > 0
+                  ? single
+                    ? `${first.name} perlu dibeli`
+                    : `${needBuy} bahan perlu dibeli`
+                  : `Opname bahan sudah ${staleDays} hari lalu`
+              }
+              body={
+                (needBuy > 0
+                  ? single
+                    ? `${first.businessUnit.replace("Haengbocake ", "")} · ${stockText(first)} · ketuk untuk melihat stok & catat belanja.`
+                    : `${names}${more > 0 ? ` +${more} lainnya` : ""} · ketuk untuk melihat stok & catat belanja.`
+                  : "Ketuk untuk mulai opname.") +
+                (needBuy > 0 && (staleDays ?? 0) > 14 ? ` Opname terakhir ${staleDays} hari lalu.` : "")
+              }
+            />
           );
         })()}
 
       {FEATURES.izin && pendingLeaveApprovals > 0 && (
-        <Link
+        <NoticeCard
           href="/tim"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <CalendarClock size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {pendingLeaveApprovals} pengajuan izin menunggu persetujuanmu
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Kamu atasan langsung pemohon — ketuk untuk tinjau.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<CalendarClock size={20} />}
+          title={`${pendingLeaveApprovals} pengajuan izin menunggu persetujuanmu`}
+          body="Kamu atasan langsung pemohon — ketuk untuk tinjau."
+        />
       )}
 
       {myTicketsSummary.awaitingConfirmation > 0 && (
-        <Link
+        <NoticeCard
           href="/tickets"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-success/20 px-4 py-3 shadow-hard-sm hover:bg-success/30 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <TicketIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {myTicketsSummary.awaitingConfirmation} tiket menunggu konfirmasimu
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Sudah ditandai selesai — cek & konfirmasi, atau tandai belum beres.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="success"
+          icon={<TicketIcon size={20} />}
+          title={`${myTicketsSummary.awaitingConfirmation} tiket menunggu konfirmasimu`}
+          body="Sudah ditandai selesai — cek & konfirmasi, atau tandai belum beres."
+        />
       )}
 
       {myTicketsSummary.openCount > 0 && (
-        <Link
+        <NoticeCard
           href="/tickets"
-          className="flex items-center gap-3 rounded-2xl border-2 border-border bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-            <TicketIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {myTicketsSummary.openCount} tiket kamu sedang diproses
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Ketuk untuk lihat status & lampiran.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="neutral"
+          icon={<TicketIcon size={20} />}
+          title={`${myTicketsSummary.openCount} tiket kamu sedang diproses`}
+          body="Ketuk untuk lihat status & lampiran."
+        />
       )}
 
       {branchQueue.length > 0 && (
@@ -541,138 +476,73 @@ export default async function DashboardPage() {
       <CleaningChecklistCard initial={cleaningTasks} />
 
       {FEATURES.survei && !answeredMonthlyPulse && (
-        <Link
+        <NoticeCard
           href="/survei"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-primary/10 px-4 py-3 shadow-hard-sm hover:bg-primary/20 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <SurveyIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">Survei bulanan (anonim)</span>
-            <span className="block text-xs text-muted-foreground">
-              3 pertanyaan, ±30 detik. Jawabanmu tidak tersimpan dengan nama.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="info"
+          icon={<SurveyIcon size={20} />}
+          title="Survei bulanan (anonim)"
+          body="3 pertanyaan, ±30 detik. Jawabanmu tidak tersimpan dengan nama."
+        />
       )}
 
       {FEATURES.pengakuanSop && pendingSopCount > 0 && (
-        <Link
+        <NoticeCard
           href="/pengakuan-sop"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
-            <SopIcon size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">
-              {pendingSopCount} SOP belum kamu akui
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Baca dan konfirmasi sudah memahami.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          tone="warn"
+          icon={<SopIcon size={20} />}
+          title={`${pendingSopCount} SOP belum kamu akui`}
+          body="Baca dan konfirmasi sudah memahami."
+        />
       )}
 
       {FEATURES.pengaduan && (
-      <Link
+      <NoticeCard
         href="/tim?bagian=pengaduan"
-        className="group flex items-center gap-3 rounded-2xl border-2 border-foreground bg-gradient-to-br from-accent/70 to-card px-4 py-3 shadow-hard-sm transition duration-200 hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
-      >
-        <span className="grid place-items-center size-11 rounded-xl border-2 border-foreground bg-card shrink-0">
-          <ShieldQuestion size={20} aria-hidden />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="flex items-center gap-2">
-            <span className="font-display font-bold text-sm">Pengaduan</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-semibold">
-              <Lock size={10} aria-hidden /> Boleh anonim
-            </span>
+        icon={<ShieldQuestion size={20} />}
+        title="Pengaduan"
+        badge={
+          <span className="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-semibold">
+            <Lock size={10} aria-hidden /> Boleh anonim
           </span>
-          <span className="block text-xs text-muted-foreground">
-            Lapor masalah — dijaga kerahasiaannya.
-          </span>
-        </span>
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-background transition group-hover:translate-x-0.5">
-          <ArrowRight size={16} aria-hidden />
-        </span>
-      </Link>
+        }
+        body="Lapor masalah — dijaga kerahasiaannya."
+      />
       )}
 
       {FEATURES.persetujuan && (
-      <Link
+      <NoticeCard
         href="/persetujuan"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-      >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <Inbox size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Persetujuan ke Owner</span>
-          <span className="block text-xs text-muted-foreground">
-            Ajukan usulan atau lihat status permintaanmu.
-          </span>
-        </span>
-        <span className="text-sm font-bold shrink-0">→</span>
-      </Link>
+        icon={<Inbox size={20} />}
+        title="Persetujuan ke Owner"
+        body="Ajukan usulan atau lihat status permintaanmu."
+      />
       )}
 
       {FEATURES.bonus && (
-      <Link
+      <NoticeCard
         href="/bonus"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-      >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <BonusIcon size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Bonus tim</span>
-          <span className="block text-xs text-muted-foreground">
-            Lihat rincian bonusmu dan cara hitungnya.
-          </span>
-        </span>
-        <span className="text-sm font-bold shrink-0">→</span>
-      </Link>
+        icon={<BonusIcon size={20} />}
+        title="Bonus tim"
+        body="Lihat rincian bonusmu dan cara hitungnya."
+      />
       )}
 
       {FEATURES.risetProduk && canFileComplaintFlag && (
-        <Link
+        <NoticeCard
           href="/riset-produk"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-            <FlaskConical size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">Riset produk</span>
-            <span className="block text-xs text-muted-foreground">
-              Usulkan ide, catat percobaan, kelola tester dan kartu produk.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          icon={<FlaskConical size={20} />}
+          title="Riset produk"
+          body="Usulkan ide, catat percobaan, kelola tester dan kartu produk."
+        />
       )}
 
       {FEATURES.keluhan && canFileComplaintFlag && (
-        <Link
+        <NoticeCard
           href="/keluhan"
-          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-        >
-          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-            <MessageSquareWarning size={18} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-display font-bold text-sm">Keluhan & insiden pelanggan</span>
-            <span className="block text-xs text-muted-foreground">
-              Catat keluhan baru atau tutup yang masih terbuka.
-            </span>
-          </span>
-          <span className="text-sm font-bold shrink-0">→</span>
-        </Link>
+          icon={<MessageSquareWarning size={20} />}
+          title="Keluhan & insiden pelanggan"
+          body="Catat keluhan baru atau tutup yang masih terbuka."
+        />
       )}
 
       {/* Kartu Omzet admin, ditunjukkan ke karyawan yang di-assign admin
