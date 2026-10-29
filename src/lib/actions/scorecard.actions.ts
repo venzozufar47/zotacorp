@@ -264,14 +264,14 @@ export async function computeMetricsAsOf(
       : null;
   // Hanya komponen yang punya target ikut dihitung, supaya omzet yang tak bertarget tidak menggelembungkan persen.
   const omzetActual = opts ? (opts.posTarget ? mtd.total : 0) + (opts.cakeTarget ? cakeMtd : 0) : mtd.total + cakeMtd;
-  // Tampilan scorecard = PROGRES terhadap target bulan penuh (naik ke 100% di akhir bulan). Cek "2 minggu merah"
-  // (period "week") tetap memakai laju sebanding hari kerja, kalau tidak setiap awal bulan terbaca merah palsu.
-  const progressMode = !!opts && period === "month";
+  // Persentase omzet dinilai terhadap target SEBANDING HARI KERJA BERJALAN (laju), baik untuk kartu bulanan maupun cek
+  // "2 minggu merah", supaya awal bulan tidak otomatis merah. Pada hari terakhir periode (dipakai kalkulator bonus), laju
+  // sama dengan target bulan penuh, jadi hasilnya tidak berubah.
   const fullTarget = (opts?.posTarget ?? 0) + (opts?.cakeTarget ?? 0);
-  const basis = progressMode ? fullTarget : targetPace;
+  const basis = targetPace;
   const omzetPct = basis && basis > 0 ? (omzetActual / basis) * 100 : null;
   // Target ada tapi belum ada hari kerja berjalan (laju): belum bisa dinilai, bukan 0%.
-  const omzetTooEarly = !progressMode && !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
+  const omzetTooEarly = !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
   const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
   const daysSinceEpoch =
     (new Date(asOf).getTime() - new Date(COMPLAINT_TRACKING_EPOCH).getTime()) / 86_400_000;
