@@ -25,11 +25,11 @@ export const firstName = (full: string | undefined | null): string => (full ?? "
 /* ── warna: satu skala untuk seluruh halaman ─────────────────────────────── */
 
 export const SEG_BG: Record<SegKey, string> = {
-  ok: "bg-[#34c759]",
+  ok: "bg-success",
   late: "bg-[#ffcf70]",
-  redo: "bg-[#ff9f0a]",
+  redo: "bg-warning",
   abs: "bg-[#9aa3a6]",
-  miss: "bg-[#ff3b30]",
+  miss: "bg-destructive",
 };
 const SEG_FG: Record<SegKey, string> = {
   ok: "text-white",
@@ -41,10 +41,10 @@ const SEG_FG: Record<SegKey, string> = {
 
 /** Warna sel strip per status harian; `off` = abu muda, `pending` = teal pucat. */
 export const CELL_BG: Record<CleaningDayStatus, string> = {
-  ok: "bg-[#34c759]",
+  ok: "bg-success",
   late: "bg-[#ffcf70]",
   redo: "bg-[#ffe3df] shadow-[inset_0_0_0_1.5px_#ff8a80]",
-  miss: "bg-[#ff3b30]",
+  miss: "bg-destructive",
   miss_absent: "bg-[#9aa3a6]",
   pending: "bg-[#f0f1f3] shadow-[inset_0_0_0_1px_#d8d8dd]",
   off: "bg-[#fafafb] shadow-[inset_0_0_0_1px_#f0f0f2]",

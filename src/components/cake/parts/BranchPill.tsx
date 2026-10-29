@@ -28,9 +28,9 @@ export function BranchPill({ branch, active, count, onClick, asChip }: Props) {
         fontWeight: 600,
       }
     : {
-        background: "var(--cake-surface)",
+        background: "var(--card)",
         color: "var(--cake-muted)",
-        borderColor: "var(--cake-border)",
+        borderColor: "var(--border)",
       };
 
   if (asChip) {
@@ -56,7 +56,7 @@ export function BranchPill({ branch, active, count, onClick, asChip }: Props) {
         <span
           className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums"
           style={{
-            background: active ? "rgba(255,255,255,0.5)" : "var(--cake-border)",
+            background: active ? "rgba(255,255,255,0.5)" : "var(--border)",
             color: "inherit",
           }}
         >
@@ -85,15 +85,15 @@ export function AllBranchesPill({
       style={
         active
           ? {
-              background: "var(--cake-fg)",
+              background: "var(--foreground)",
               color: "#fff",
-              borderColor: "var(--cake-fg)",
+              borderColor: "var(--foreground)",
               fontWeight: 600,
             }
           : {
-              background: "var(--cake-surface)",
+              background: "var(--card)",
               color: "var(--cake-muted)",
-              borderColor: "var(--cake-border)",
+              borderColor: "var(--border)",
             }
       }
     >
@@ -102,7 +102,7 @@ export function AllBranchesPill({
         <span
           className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums"
           style={{
-            background: active ? "rgba(255,255,255,0.22)" : "var(--cake-border)",
+            background: active ? "rgba(255,255,255,0.22)" : "var(--border)",
             color: "inherit",
           }}
         >

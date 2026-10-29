@@ -20,9 +20,9 @@ const VARIANT_BY_DIFF = (diff: number) => {
       key: "late" as const,
       label: "Slip TANGGAL LAMPAU",
       sub: "Hati-hati — slip ini untuk hari yang sudah lewat.",
-      bg: "linear-gradient(135deg, #FEE2E2 0%, #FCA5A5 100%)",
-      borderColor: "#991B1B",
-      ink: "#7F1D1D",
+      bg: "linear-gradient(135deg, var(--cake-slip-late-from) 0%, var(--cake-slip-late-to) 100%)",
+      borderColor: "var(--cake-slip-late-border)",
+      ink: "var(--cake-slip-late-ink)",
     };
   }
   if (diff === 0) {
@@ -30,9 +30,9 @@ const VARIANT_BY_DIFF = (diff: number) => {
       key: "today" as const,
       label: "Slip HARI INI",
       sub: "Slip ini untuk hari ini — verifikasi cepat, kue harus dipanggang sekarang.",
-      bg: "linear-gradient(135deg, #D1FAE5 0%, #6EE7B7 100%)",
-      borderColor: "#065F46",
-      ink: "#064E3B",
+      bg: "linear-gradient(135deg, var(--cake-slip-today-from) 0%, var(--cake-slip-today-to) 100%)",
+      borderColor: "var(--cake-slip-today-border)",
+      ink: "var(--cake-slip-today-ink)",
     };
   }
   if (diff === 1) {
@@ -40,18 +40,18 @@ const VARIANT_BY_DIFF = (diff: number) => {
       key: "besok" as const,
       label: "Slip BESOK",
       sub: "Alur normal — siapkan untuk produksi besok pagi.",
-      bg: "linear-gradient(135deg, #F4EEDD 0%, #FDE68A 100%)",
-      borderColor: "#92400E",
-      ink: "#78350F",
+      bg: "linear-gradient(135deg, var(--cake-slip-besok-from) 0%, var(--cake-slip-besok-to) 100%)",
+      borderColor: "var(--cake-slip-besok-border)",
+      ink: "var(--cake-slip-besok-ink)",
     };
   }
   return {
     key: "far" as const,
     label: "Slip lebih jauh",
     sub: "Slip ini untuk hari setelah besok — pastikan tidak salah membuka slip yang seharusnya besok.",
-    bg: "linear-gradient(135deg, #EAE4F2 0%, #C4B5FD 100%)",
-    borderColor: "#5B21B6",
-    ink: "#4C1D95",
+    bg: "linear-gradient(135deg, var(--cake-slip-far-from) 0%, var(--cake-slip-far-to) 100%)",
+    borderColor: "var(--cake-slip-far-border)",
+    ink: "var(--cake-slip-far-ink)",
   };
 };
 

@@ -1,28 +1,55 @@
 /**
- * Haengbocake admin visual tokens — scoped to [data-haengbocake]
- * elements so they don't leak into the rest of the app's Oceanic
- * theme. Loaded once from `src/app/cake-orders/layout.tsx`.
+ * Haengbocake (custom cake) theme — scoped to [data-haengbocake], loaded once
+ * from `src/app/cake-orders/layout.tsx`.
  *
- * Values mirror the prototype in `Haengbocake Admin.html` so the
- * production UI matches the approved design's color signals
- * (urgency colors, column tints, Pare/Sem chips, etc).
+ * Mekanismenya sama dengan POS (workstation.css): brand, permukaan, teks, dan
+ * garis MENIMPA token standar (--primary, --background, --foreground, …) supaya
+ * komponen yang memakai bg-primary / text-foreground ikut berubah tanpa tahu
+ * sedang di tema apa. Namespace --cake-* hanya untuk arti domain yang tidak
+ * punya token standar: urgensi, kolom kanban, chip status, chip cabang.
+ *
+ * Values mirror the prototype in `Haengbocake Admin.html`. Lihat docs/THEMING.md.
  */
 [data-haengbocake] {
-  /* surface */
-  --cake-bg: #FBF8EF;
+  /* ── Override token standar ─────────────────────────────── */
+  --background: #FBF8EF;
+  --foreground: #1B2540;
+  --card: #FFFFFF;
+  --card-foreground: #1B2540;
+  --popover: #FFFFFF;
+  --popover-foreground: #1B2540;
+  --muted-foreground: #475569;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --primary: #2A7F62;
+  --primary-foreground: #FFFFFF;
+  --accent: #E8F3EE;
+  --accent-foreground: #2A7F62;
+  --ring: #2A7F62;
+
+  /* ── Domain-only (tidak ada token standarnya) ───────────── */
   --cake-bg-elev: #FFFDF7;
-  --cake-surface: #FFFFFF;
-  --cake-fg: #1B2540;
-  --cake-fg-soft: #475569;
   --cake-muted: #94A3B8;
   --cake-muted-2: #CBD5E1;
-  --cake-border: #E5E7EB;
   --cake-border-strong: #1B2540;
 
-  /* primary */
-  --cake-primary: #2A7F62;
-  --cake-primary-light: #E8F3EE;
-  --cake-primary-fg: #FFFFFF;
+  /* slip hero (hero banner di halaman slip, per jarak hari) */
+  --cake-slip-late-from: #FEE2E2;
+  --cake-slip-late-to: #FCA5A5;
+  --cake-slip-late-border: #991B1B;
+  --cake-slip-late-ink: #7F1D1D;
+  --cake-slip-today-from: #D1FAE5;
+  --cake-slip-today-to: #6EE7B7;
+  --cake-slip-today-border: #065F46;
+  --cake-slip-today-ink: #064E3B;
+  --cake-slip-besok-from: #F4EEDD;
+  --cake-slip-besok-to: #FDE68A;
+  --cake-slip-besok-border: #92400E;
+  --cake-slip-besok-ink: #78350F;
+  --cake-slip-far-from: #EAE4F2;
+  --cake-slip-far-to: #C4B5FD;
+  --cake-slip-far-border: #5B21B6;
+  --cake-slip-far-ink: #4C1D95;
 
   /* branch chips */
   --cake-pare-soft: #DCFCE7;

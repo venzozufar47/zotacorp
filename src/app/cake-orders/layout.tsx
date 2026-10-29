@@ -7,9 +7,10 @@ import "@/styles/haengbocake.css";
  * staff member opens, fills in, and submits without distraction. The
  * pages themselves render their own back link to /dashboard.
  *
- * The `data-haengbocake` attribute scopes the Haengbocake color tokens
- * (cream surface, navy ink, Pare/Sem pastels, urgency colors) to this
- * route only. Defined in `src/styles/haengbocake.css`.
+ * The `data-haengbocake` attribute scopes the Haengbocake theme to this
+ * route only: it overrides the standard tokens (--primary, --background, …)
+ * and defines `--cake-*` only for domain meaning (urgency, kanban columns,
+ * branch chips). See `src/styles/haengbocake.css` and docs/THEMING.md.
  */
 export const viewport: Viewport = {
   width: "device-width",
@@ -26,8 +27,7 @@ export default function CakeOrdersLayout({
   return (
     <div
       data-haengbocake
-      className="min-h-screen"
-      style={{ background: "var(--cake-bg)", color: "var(--cake-fg)" }}
+      className="min-h-screen bg-background text-foreground"
     >
       <div className="max-w-[1700px] mx-auto px-4 py-4 md:px-6">{children}</div>
     </div>

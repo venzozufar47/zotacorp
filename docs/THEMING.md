@@ -17,7 +17,7 @@ kode yang ada, bukan rencana: kalau kode berubah, ubah dokumen ini di commit yan
 |---|---|---|---|
 | **Oceanic** (default, satu-satunya tema org) | seluruh app | blok `:root` di `src/app/globals.css` | `data-theme="oceanic"` di `<html>` (`src/app/layout.tsx`). Beberapa subtree memasangnya sendiri (halaman kas, dashboard investor) agar override komponen tetap berlaku. |
 | **POS** (pink) | semua halaman `/pos/*` | `src/components/pos/workstation.css` | `data-pos-shell data-pos-palette="pink"` di akar shell POS (`PosShell`, `POSClient`, `PosLockedScreen`). Menimpa token **yang sama** (`--primary`, `--accent`, `--background`, `--ring`, `--pop-*`, `--success`). |
-| **Custom cake / Haengbocake** (krem + hijau) | semua halaman `/cake-orders/*` | `src/styles/haengbocake.css` | `data-haengbocake` di `src/app/cake-orders/layout.tsx`. Mendefinisikan namespace `--cake-*` (lihat "Penyimpangan yang diketahui"). |
+| **Custom cake / Haengbocake** (krem + hijau) | semua halaman `/cake-orders/*` | `src/styles/haengbocake.css` | `data-haengbocake` di `src/app/cake-orders/layout.tsx`. Menimpa token standar (`--primary`, `--background`, `--foreground`, `--card`, `--border`, `--accent`, `--ring`, …) seperti POS. `--cake-*` hanya untuk arti domain. |
 
 Tema Playful dan Minimal sudah dihapus. Jangan menghidupkannya lagi; tidak ada pengalih tema.
 
@@ -67,25 +67,27 @@ diam-diam tidak menghasilkan apa pun di sekitar 30 berkas.
 - **Template email** (`src/lib/email/*`): klien email tidak mendukung variabel CSS.
 - **Grafik** (`InvestorCharts` dan sejenisnya) bila pustaka grafiknya butuh nilai literal. Ambil nilainya dari token,
   jangan mengarang.
-- **Tipe `--cake-*` untuk arti domain**: warna urgensi (terlambat/hari ini/pekan ini/jauh), warna kolom kanban, dan
-  chip cabang Pare/Semarang di `haengbocake.css`.
+- **`--cake-*` untuk arti domain** (bukan pengecualian warna literal, tapi satu-satunya namespace paralel yang sah):
+  urgensi (terlambat/hari ini/pekan ini/jauh), kolom kanban, chip status pesanan, chip cabang Pare/Semarang, dan banner
+  slip (`--cake-slip-*`) di `haengbocake.css`. Warna merek/permukaan/teks/garis di halaman itu memakai token standar.
+- **Desain slip gaji** (`src/components/payslip/**`, `src/lib/payslip/**`): warnanya sengaja tetap sama di semua tema
+  dan dipakai bersama PDF-nya.
 
 ## Penyimpangan yang diketahui (belum dirapikan)
 
 Dicatat agar tidak ditiru dan bisa dibersihkan bertahap:
 
-1. **Custom cake memakai namespace paralel.** `haengbocake.css` mendefinisikan `--cake-primary`, `--cake-bg`,
-   `--cake-surface`, `--cake-fg`, `--cake-border` dan sebagainya, bukan menimpa `--primary`/`--background`/dst. Akibatnya
-   komponennya campuran: sekitar 9 berkas memakai `var(--cake-*)`, sekitar 13 memakai token Tailwind biasa. Arah
-   perbaikan: warna merek/permukaan/teks/garis jadi penimpa token (seperti POS); `--cake-*` hanya tinggal untuk arti
-   domain di atas.
-2. **Heksadesimal di komponen.** Sekitar 350 literal `#rrggbb` di `.ts/.tsx`. Sebagian pengecualian sah (PDF, email).
-   Penyimpangan terbesar di luar itu: `src/components/cake/parts/SlipHero.tsx`,
-   `src/components/admin/cleaning/sop/shared.tsx`, `src/components/payslip/parts/*`.
-3. **Belum ada pemeriksaan otomatis.** Tidak ada aturan lint yang menolak warna literal baru, jadi aturan di atas baru
-   ditegakkan lewat dokumen dan review.
-
-Cara menghitung ulang literal: `grep -rEo "#[0-9a-fA-F]{6}\b" src --include=*.tsx --include=*.ts | cut -d: -f1 | sort | uniq -c | sort -rn`.
+1. **Warna heksadesimal di komponen.** Aturan lint `no-restricted-syntax` (di `eslint.config.mjs`) memberi
+   **peringatan** untuk literal `#rrggbb` di `src/**`, kecuali di pengecualian sah (PDF, email, slip gaji, grafik
+   investor, tes). Saat aturan dipasang (2026-10-29) ada 115 peringatan di 32 berkas; yang terbanyak:
+   `cleaning/sop/shared.tsx`, `lib/cashflow/bank-display.ts` (warna merek bank), `AttendanceLiveView.tsx`,
+   `settings/LanguageCard.tsx`, `investor/HeroContract.tsx`, `cleaning/sop/SopKepatuhan.tsx`,
+   `admin/scorecard/ScorecardBits.tsx`, `attendance/CheckInButton.tsx`. Hitung ulang dengan `npx eslint src`.
+   Peringatan baru yang Anda tambahkan sendiri harus nol.
+2. **Aturan masih peringatan, bukan error**, supaya tidak memblokir pekerjaan sampai yang lama selesai. Naikkan jadi
+   `"error"` begitu jumlahnya nol.
+3. **Dialog/popup (portal) di luar `[data-haengbocake]` atau `[data-pos-shell]`** dirender di akar dokumen, jadi memakai
+   token Oceanic, bukan tema fiturnya. Berlaku untuk POS maupun custom cake; belum ada penanganan khusus.
 
 ## Daftar periksa sebelum commit UI
 

@@ -510,14 +510,14 @@ export function CakeOrdersBoard({
               className="flex flex-col rounded-[22px] p-2.5 pb-3 min-h-[320px] transition-colors"
               style={{
                 background: col.colBg,
-                outline: isOver ? "2px dashed var(--cake-fg)" : "none",
+                outline: isOver ? "2px dashed var(--foreground)" : "none",
                 outlineOffset: -4,
               }}
             >
               {/* Column header per Haengbocake design: chip + UPPERCASE
                   label on left, count on right. Subtitle below. */}
               <div className="flex items-center justify-between px-2 pt-1.5 pb-2.5">
-                <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--cake-fg)" }}>
+                <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--foreground)" }}>
                   <span
                     aria-hidden
                     className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-[7px] text-[11px]"
@@ -529,14 +529,14 @@ export function CakeOrdersBoard({
                 </span>
                 <span
                   className="text-[12px] font-bold tabular-nums"
-                  style={{ color: "var(--cake-fg-soft)" }}
+                  style={{ color: "var(--muted-foreground)" }}
                 >
                   {list.length}
                 </span>
               </div>
               <div
                 className="text-[10.5px] mb-2 px-2"
-                style={{ color: "var(--cake-fg-soft)" }}
+                style={{ color: "var(--muted-foreground)" }}
               >
                 {col.sub}
               </div>
@@ -805,10 +805,10 @@ function Card({
     far: "var(--cake-muted-2, #CBD5E1)",
   };
   const URGENCY_WASH: Record<typeof urgency, string> = {
-    late: "linear-gradient(90deg, #FEF2F2 0 6px, var(--cake-surface) 6px)",
-    soon: "linear-gradient(90deg, #ECFDF5 0 6px, var(--cake-surface) 6px)",
-    week: "linear-gradient(90deg, #FFFBEB 0 6px, var(--cake-surface) 6px)",
-    far: "var(--cake-surface)",
+    late: "linear-gradient(90deg, #FEF2F2 0 6px, var(--card) 6px)",
+    soon: "linear-gradient(90deg, #ECFDF5 0 6px, var(--card) 6px)",
+    week: "linear-gradient(90deg, #FFFBEB 0 6px, var(--card) 6px)",
+    far: "var(--card)",
   };
 
   // Active/match/dim visual states.
@@ -835,7 +835,7 @@ function Card({
             : "var(--cake-shadow-card, 0 1px 2px rgba(27,37,64,0.06))",
         border: `1px solid ${
           isActive
-            ? "var(--cake-primary)"
+            ? "var(--primary)"
             : "rgba(27, 37, 64, 0.06)"
         }`,
       }}
@@ -860,14 +860,14 @@ function Card({
             <BranchChipInline branch={order.branch} />
             <span
               className="font-bold text-[14px] tracking-[-0.005em] truncate uppercase"
-              style={{ color: "var(--cake-fg)" }}
+              style={{ color: "var(--foreground)" }}
             >
               {order.customer_name}
             </span>
           </div>
           <span
             className="text-[12px] font-bold tabular-nums whitespace-nowrap"
-            style={{ color: "var(--cake-fg)" }}
+            style={{ color: "var(--foreground)" }}
           >
             Rp {formatIDR(order.total_idr)}
           </span>
@@ -894,7 +894,7 @@ function Card({
                 className="ml-1.5 inline-flex items-center px-1.5 h-[19px] rounded-full text-[10.5px] font-medium tabular-nums align-middle"
                 style={{
                   background: "rgba(27, 37, 64, 0.06)",
-                  color: "var(--cake-fg)",
+                  color: "var(--foreground)",
                 }}
               >
                 {order.dimension_cm} cm
@@ -932,7 +932,7 @@ function Card({
           }}
           className="mx-3 mb-2.5 w-[calc(100%-1.5rem)] inline-flex items-center justify-center gap-1 h-8 rounded-[10px] text-[12px] font-semibold hover:opacity-90"
           style={{
-            background: "var(--cake-fg)",
+            background: "var(--foreground)",
             color: "#fff",
           }}
         >
@@ -945,8 +945,8 @@ function Card({
         <div
           className="mx-3 mb-2.5 flex items-center justify-center h-8 rounded-[10px] text-[11px] font-medium border border-dashed"
           style={{
-            borderColor: "var(--cake-fg)",
-            color: "var(--cake-fg)",
+            borderColor: "var(--foreground)",
+            color: "var(--foreground)",
             opacity: 0.55,
           }}
         >
@@ -967,7 +967,7 @@ function Card({
             }}
             className="mx-3 mb-2.5 w-[calc(100%-1.5rem)] inline-flex items-center justify-center gap-1 h-7 rounded-[8px] border border-dashed text-[10.5px] font-medium transition-colors"
             style={{
-              borderColor: "var(--cake-border)",
+              borderColor: "var(--border)",
               color: "var(--cake-muted)",
             }}
           >
@@ -985,8 +985,8 @@ function Card({
           }}
           className="mx-3 mb-2.5 w-[calc(100%-1.5rem)] inline-flex items-center justify-center gap-1 h-7 rounded-[8px] border text-[10.5px] font-medium transition-colors"
           style={{
-            borderColor: "var(--cake-primary)",
-            color: "var(--cake-primary)",
+            borderColor: "var(--primary)",
+            color: "var(--primary)",
           }}
         >
           <ArchiveRestore size={11} strokeWidth={2.5} />
@@ -1024,7 +1024,7 @@ function CardRow({
   return (
     <div
       className="flex items-center gap-1.5 text-[11.5px] leading-tight"
-      style={{ color: "var(--cake-fg-soft)" }}
+      style={{ color: "var(--muted-foreground)" }}
     >
       <span
         aria-hidden

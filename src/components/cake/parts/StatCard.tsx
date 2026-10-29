@@ -6,7 +6,7 @@ interface Props {
   label: string;
   value: ReactNode;
   /** Accent color for the left border + value text. Pass a hex / CSS
-   *  variable (e.g., "var(--cake-primary)"). */
+   *  variable (e.g., "var(--primary)"). */
   accent?: string;
   mono?: boolean;
 }
@@ -20,8 +20,8 @@ export function StatCard({ label, value, accent = "var(--cake-muted)", mono }: P
     <div
       className="rounded-2xl border-2 px-4 py-3"
       style={{
-        background: "var(--cake-surface)",
-        borderColor: "var(--cake-border)",
+        background: "var(--card)",
+        borderColor: "var(--border)",
         borderLeftWidth: 4,
         borderLeftColor: accent,
       }}

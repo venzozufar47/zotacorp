@@ -57,7 +57,7 @@ export function CakePageHeader({
       href={backHref}
       aria-label="Kembali"
       className="grid place-items-center size-9 shrink-0 rounded-xl border-2 hover:bg-[var(--cake-bg-elev)] transition-colors"
-      style={{ borderColor: "var(--cake-border)", color: "var(--cake-fg)" }}
+      style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
     >
       <ArrowLeft size={16} strokeWidth={2.5} />
     </Link>
@@ -67,7 +67,7 @@ export function CakePageHeader({
       onClick={onBack}
       aria-label="Kembali"
       className="grid place-items-center size-9 shrink-0 rounded-xl border-2 hover:bg-[var(--cake-bg-elev)] transition-colors"
-      style={{ borderColor: "var(--cake-border)", color: "var(--cake-fg)" }}
+      style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
     >
       <ArrowLeft size={16} strokeWidth={2.5} />
     </button>
@@ -94,12 +94,12 @@ export function CakePageHeader({
           )}
           <h1
             className="text-[20px] sm:text-[22px] font-bold tracking-tight truncate"
-            style={{ color: "var(--cake-fg)" }}
+            style={{ color: "var(--foreground)" }}
           >
             {title}
           </h1>
           {sub && (
-            <p className="text-[12.5px] mt-0.5" style={{ color: "var(--cake-fg-soft)" }}>
+            <p className="text-[12.5px] mt-0.5" style={{ color: "var(--muted-foreground)" }}>
               {sub}
             </p>
           )}
@@ -135,14 +135,14 @@ export function CakeHeaderButton({
   const style: React.CSSProperties =
     variant === "primary"
       ? {
-          background: "var(--cake-primary)",
-          color: "var(--cake-primary-fg)",
-          borderColor: "var(--cake-primary)",
+          background: "var(--primary)",
+          color: "var(--primary-foreground)",
+          borderColor: "var(--primary)",
         }
       : {
-          background: "var(--cake-surface)",
-          color: "var(--cake-fg)",
-          borderColor: "var(--cake-border)",
+          background: "var(--card)",
+          color: "var(--foreground)",
+          borderColor: "var(--border)",
         };
   const className =
     "inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border-2 text-[12.5px] font-medium hover:opacity-90 transition-opacity";

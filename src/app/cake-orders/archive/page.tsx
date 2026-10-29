@@ -87,7 +87,7 @@ export default async function CakeOrdersArchivePage() {
           <StatCard
             label="Nilai total"
             value={`Rp ${formatIDR(totalValue)}`}
-            accent="var(--cake-primary)"
+            accent="var(--primary)"
             mono
           />
         </div>
@@ -98,13 +98,13 @@ export default async function CakeOrdersArchivePage() {
           className="rounded-2xl border-2 border-dashed px-6 py-12 text-center"
           style={{
             background: "var(--cake-bg-elev)",
-            borderColor: "var(--cake-border)",
+            borderColor: "var(--border)",
           }}
         >
           <div className="text-4xl mb-2">🗄️</div>
           <p
             className="text-sm"
-            style={{ color: "var(--cake-fg-soft)" }}
+            style={{ color: "var(--muted-foreground)" }}
           >
             Belum ada pesanan yang diarsipkan.
           </p>

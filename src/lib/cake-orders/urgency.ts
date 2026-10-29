@@ -42,5 +42,5 @@ export const URGENCY_TOKENS: Record<
   late: { border: "var(--cake-late)", soft: "var(--cake-late-soft)", fg: "#991B1B" },
   soon: { border: "var(--cake-today)", soft: "var(--cake-today-soft)", fg: "#065F46" },
   week: { border: "var(--cake-week)", soft: "var(--cake-week-soft)", fg: "#92400E" },
-  far: { border: "var(--cake-far)", soft: "var(--cake-far-soft)", fg: "var(--cake-fg-soft)" },
+  far: { border: "var(--cake-far)", soft: "var(--cake-far-soft)", fg: "var(--muted-foreground)" },
 };
