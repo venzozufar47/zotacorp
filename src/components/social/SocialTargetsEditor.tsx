@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -55,6 +56,8 @@ function MetricRow({ brand, m, month }: { brand: SocialBrandCard; m: BrandMetric
   const [green, setGreen] = useState(String(m.greenBound ?? 100));
   const [red, setRed] = useState(String(m.redBound ?? 70));
   const [reason, setReason] = useState("");
+  // Omset brand Haengbocake memakai target omzet cabang (satu sumber dengan Scorecard Cabang): tidak diubah dari sini.
+  const fromBranch = m.inputs?.target_sumber === "cabang";
 
   function save() {
     const t = target.trim() === "" ? null : Number(target.replace(",", "."));
@@ -84,10 +87,16 @@ function MetricRow({ brand, m, month }: { brand: SocialBrandCard; m: BrandMetric
         <span className="text-[12px] text-muted-foreground">
           target {m.target == null ? "belum diisi" : `${UNIT[m.kind]}${nf.format(m.target)}`} · hijau ≥ {m.greenBound ?? "—"}% · merah &lt; {m.redBound ?? "—"}%
         </span>
-        {!editing && (
-          <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setEditing(true)}>
-            Ubah
-          </Button>
+        {fromBranch ? (
+          <Link href="/admin/scorecard" className="ml-auto text-[11.5px] font-semibold text-primary hover:underline">
+            Diatur di Scorecard Cabang →
+          </Link>
+        ) : (
+          !editing && (
+            <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setEditing(true)}>
+              Ubah
+            </Button>
+          )
         )}
       </div>
       {editing && (

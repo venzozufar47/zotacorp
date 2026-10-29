@@ -76,6 +76,8 @@ import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, FlaskConical } from "lucide-react";
 import { NoticeCard } from "@/components/dashboard/NoticeCard";
+import { SocialScorecardSection } from "@/components/social/SocialScorecardSection";
+import { isSocialReportEditor } from "@/lib/social/access";
 import { ScorecardSection, ScorecardSectionSkeleton } from "@/components/scorecard/ScorecardSection";
 import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon, Lock } from "lucide-react";
 import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
@@ -122,9 +124,14 @@ const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   },
 ];
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ simsosmed?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+
+  // Pengisi laporan sosmed melihat scorecard sosmed (brand miliknya), BUKAN scorecard cabang. `?simsosmed=<kode brand>`
+  // hanya berlaku di luar produksi: meninjau tampilan itu tanpa mengubah data akses siapa pun.
+  const simSosmed = process.env.NODE_ENV !== "production" ? ((await searchParams)?.simsosmed ?? null) : null;
+  const isSocialEditor = simSosmed ? true : await isSocialReportEditor();
 
   // Single parallel fetch — no sequential waterfalls. The overtime and
   // extra-work queries are cheap even when their results go unused, and
@@ -292,7 +299,7 @@ export default async function DashboardPage() {
       {/* Scorecard cabang — hal yang paling penting dilihat tiap hari, jadi tepat di bawah sapaan (di atas semua kartu lain).
           Dihitung di luar jalur kritis lewat Suspense; skeleton menjaga tinggi supaya halaman tidak melompat. */}
       <Suspense fallback={<ScorecardSectionSkeleton />}>
-        <ScorecardSection />
+        {isSocialEditor ? <SocialScorecardSection simulate={simSosmed} /> : <ScorecardSection />}
       </Suspense>
 
       <ProfileCompletionCard missingSections={missingSections} />

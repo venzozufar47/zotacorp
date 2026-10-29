@@ -7,7 +7,7 @@ import { TrendChart } from "@/components/admin/scorecard/ScorecardBits";
 import { ScorecardRangesInfo } from "@/components/scorecard/ScorecardRangesInfo";
 import { METRIC_STATUS_LABEL } from "@/components/admin/scorecard/format";
 import { TILE_STYLE, type TileTone } from "@/components/scorecard/tile-styles";
-import type { BrandMetricView, SocialScorecardData } from "@/lib/actions/social-scorecard.actions";
+import type { BrandMetricView, SocialBrandCard, SocialScorecardData } from "@/lib/actions/social-scorecard.actions";
 import { formatDateID } from "@/lib/utils/date-formats";
 
 const nf0 = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
@@ -23,7 +23,7 @@ function fmt(value: number | null, kind: BrandMetricView["kind"]): string {
 /** Kompak untuk sumbu: 1,2 jt / 340 rb. */
 function fmtShort(value: number | null, kind: BrandMetricView["kind"]): string {
   if (value == null) return "—";
-  if (kind === "pct") return `${nf0.format(value)}%`;
+  if (kind === "pct") return `${Number.isInteger(value) ? nf0.format(value) : nf1.format(value)}%`;
   const abs = Math.abs(value);
   const base = kind === "rupiah" ? "Rp" : "";
   if (abs >= 1_000_000) return `${base}${nf1.format(value / 1_000_000)} jt`;
@@ -92,16 +92,28 @@ function omsetLines(m: BrandMetricView): string[] {
 const TONE_OF: Record<BrandMetricView["status"], TileTone> = { green: "green", yellow: "yellow", red: "red", incomplete: "neutral", not_assessed: "neutral" };
 
 /** Kartu metrik: kepala berwarna status (gaya sama dengan scorecard cabang) + panel putih berisi tren enam bulan. */
-function MetricCard({ m, months }: { m: BrandMetricView; months: string[] }) {
+/** Ubin sosmed untuk beranda karyawan: hanya kepala berwarna (tanpa panel tren), ringkas seperti scorecard cabang. */
+export function SocialBrandTiles({ brand }: { brand: SocialBrandCard }) {
+  const odd = brand.metrics.length % 2 === 1;
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-3">
+      {brand.metrics.map((m, i) => (
+        <MetricCard key={m.code} m={m} months={[]} compact className={odd && i === 0 ? "col-span-2 lg:col-span-1" : undefined} />
+      ))}
+    </div>
+  );
+}
+
+function MetricCard({ m, months, compact = false, className }: { m: BrandMetricView; months: string[]; compact?: boolean; className?: string }) {
   const style = TILE_STYLE[TONE_OF[m.status]];
   const Icon = style.Icon;
   const lines = omsetLines(m);
   const isNumber = m.actual != null;
   return (
-    <div className="relative rounded-3xl border border-border/60 bg-card has-[button[aria-expanded=true]]:z-30">
-      <div className={cn("relative rounded-t-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15", style.tile)}>
+    <div className={cn("relative rounded-3xl border border-border/60 bg-card has-[button[aria-expanded=true]]:z-30", className)}>
+      <div className={cn("relative px-3.5 py-3 ring-1 ring-inset ring-white/15", compact ? "rounded-3xl" : "rounded-t-3xl", style.tile)}>
         {/* Watermark dipotong di pembungkusnya sendiri; kepala tidak boleh overflow-hidden karena panduan ⓘ muncul di dalamnya. */}
-        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-t-3xl">
+        <span aria-hidden className={cn("pointer-events-none absolute inset-0 overflow-hidden", compact ? "rounded-3xl" : "rounded-t-3xl")}>
           <Icon size={64} strokeWidth={1.5} className="absolute -bottom-3 -right-3 opacity-[0.14]" />
         </span>
         <div className="relative flex items-start justify-between gap-1">
@@ -122,10 +134,12 @@ function MetricCard({ m, months }: { m: BrandMetricView; months: string[] }) {
           </span>
         </div>
       </div>
-      <div className="rounded-b-3xl px-3 pb-3 pt-2">
-        {m.note && m.status === "incomplete" && <p className="mb-1 text-[10.5px] text-muted-foreground">{m.note}</p>}
-        <TrendChart values={m.spark} months={months} status={m.status} green={null} red={null} />
-      </div>
+      {!compact && (
+        <div className="rounded-b-3xl px-3 pb-3 pt-2">
+          {m.note && m.status === "incomplete" && <p className="mb-1 text-[10.5px] text-muted-foreground">{m.note}</p>}
+          <TrendChart values={m.spark} months={months} status={m.status} green={null} red={null} />
+        </div>
+      )}
     </div>
   );
 }
