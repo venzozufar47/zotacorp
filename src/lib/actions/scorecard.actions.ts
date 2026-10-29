@@ -313,7 +313,7 @@ export async function computeMetricsAsOf(
       displayValue: complaintsPer1000.toFixed(1),
       band: complaintsBand,
       rangesNote:
-        "Ambang belum ditentukan Owner (SOP: diisi setelah 30 hari pengukuran). Selama 30 hari pertama sejak 18 Okt 2026 angkanya otomatis dihitung hijau.",
+        "Ambang belum ditentukan owner",
     },
   ];
 }
