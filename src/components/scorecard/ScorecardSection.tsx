@@ -1,5 +1,6 @@
 import { getMyScorecards } from "@/lib/actions/scorecard.actions";
 import { ScorecardView } from "./ScorecardView";
+import { ScorecardPrevMonth } from "./ScorecardPrevMonth";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -7,8 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
  * server asinkron: dibungkus <Suspense> di beranda supaya hitungannya (beberapa kueri POS) tidak
  * menahan halaman.
  */
-export async function ScorecardSection() {
-  const { detected, scorecards } = await getMyScorecards();
+export async function ScorecardSection({ simulatePrevMonth = false }: { simulatePrevMonth?: boolean } = {}) {
+  const { detected, scorecards } = await getMyScorecards({ simulatePrevMonth });
   if (scorecards.length === 0) return null;
   return (
     <section aria-label="Scorecard cabang" className="space-y-4 animate-fade-up">
@@ -19,6 +20,7 @@ export async function ScorecardSection() {
             <span aria-hidden className="ml-3 h-px flex-1 bg-gradient-to-r from-border to-transparent" />
           </div>
           <ScorecardView scorecard={sc} />
+          <ScorecardPrevMonth scorecard={sc} />
         </div>
       ))}
       {!detected && (

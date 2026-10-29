@@ -124,13 +124,16 @@ const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   },
 ];
 
-export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ simsosmed?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ simsosmed?: string; simbulanlalu?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   // Pengisi laporan sosmed melihat scorecard sosmed (brand miliknya), BUKAN scorecard cabang. `?simsosmed=<kode brand>`
   // hanya berlaku di luar produksi: meninjau tampilan itu tanpa mengubah data akses siapa pun.
-  const simSosmed = process.env.NODE_ENV !== "production" ? ((await searchParams)?.simsosmed ?? null) : null;
+  const sim = process.env.NODE_ENV !== "production" ? await searchParams : undefined;
+  const simSosmed = sim?.simsosmed ?? null;
+  // `?simbulanlalu=1` (non-produksi): tampilkan strip "Hasil bulan lalu" walau bukan tanggal 1–7.
+  const simPrevMonth = sim?.simbulanlalu === "1";
   const isSocialEditor = simSosmed ? true : await isSocialReportEditor();
 
   // Single parallel fetch — no sequential waterfalls. The overtime and
@@ -299,7 +302,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
       {/* Scorecard cabang — hal yang paling penting dilihat tiap hari, jadi tepat di bawah sapaan (di atas semua kartu lain).
           Dihitung di luar jalur kritis lewat Suspense; skeleton menjaga tinggi supaya halaman tidak melompat. */}
       <Suspense fallback={<ScorecardSectionSkeleton />}>
-        {isSocialEditor ? <SocialScorecardSection simulate={simSosmed} /> : <ScorecardSection />}
+        {isSocialEditor ? <SocialScorecardSection simulate={simSosmed} /> : <ScorecardSection simulatePrevMonth={simPrevMonth} />}
       </Suspense>
 
       <ProfileCompletionCard missingSections={missingSections} />

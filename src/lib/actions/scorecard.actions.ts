@@ -64,6 +64,8 @@ export interface BranchScorecard {
   twoWeeksRedLabels: string[];
   /** Target omzet bulanan POS dan Custom Cake (terpisah); null = belum diatur. */
   omzetTarget: { pos: number | null; cake: number | null };
+  /** Hasil akhir bulan lalu; hanya ada pada tanggal 1–7 supaya bisa dievaluasi dan tidak hilang tiba-tiba saat ganti bulan. */
+  prevMonth?: { label: string; metrics: ScorecardMetric[] };
 }
 
 /** Sebelum tanggal ini, metrik keluhan dihitung hijau tanpa syarat (SOP
@@ -368,7 +370,28 @@ export async function getOmzetHistory(branch: ScorecardBranch): Promise<OmzetMon
   return rows.filter((r): r is OmzetMonth => r !== null);
 }
 
-export async function getBranchScorecard(branch: ScorecardBranch): Promise<BranchScorecard | null> {
+/**
+ * Tanggal 1–7: hasil akhir bulan lalu tetap ditampilkan (terlipat) di beranda. `simulate` (hanya di luar produksi) memakai
+ * bulan berjalan sebagai "bulan lalu" untuk meninjau tampilannya di tengah bulan.
+ */
+function prevMonthWindow(today: string, simulate: boolean): { asOf: string; label: string } | null {
+  const monthStart = monthStartOf(today);
+  const label = (d: string) => MONTH_NAMES_ID[Number(d.slice(5, 7)) - 1];
+  if (Number(today.slice(8, 10)) <= 7) {
+    const asOf = addDays(monthStart, -1);
+    return { asOf, label: label(asOf) };
+  }
+  if (!simulate) return null;
+  const next = new Date(`${monthStart}T00:00:00Z`);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  const asOf = addDays(next.toISOString().slice(0, 10), -1);
+  return { asOf, label: label(asOf) };
+}
+
+export async function getBranchScorecard(
+  branch: ScorecardBranch,
+  prev: { asOf: string; label: string } | null = null
+): Promise<BranchScorecard | null> {
   const user = await getCurrentUser();
   if (!user) return null;
   if (!(await canView())) return null;
@@ -400,18 +423,32 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
 
   // Aturan SOP "2 minggu merah berturut-turut" tetap memakai ukuran mingguan (7 hari bergulir,
   // dibandingkan dengan seminggu sebelumnya).
-  const [metrics, weekNow, weekPrev] = await Promise.all([
+  const [metrics, weekNow, weekPrev, prevRaw] = await Promise.all([
     computeMetricsAsOf(branch, account.id, dailyTarget, today, "month", opts),
     computeMetricsAsOf(branch, account.id, dailyTarget, today, "week", opts),
     computeMetricsAsOf(branch, account.id, dailyTarget, lastWeek, "week", opts),
+    prev ? computeMetricsAsOf(branch, account.id, dailyTarget, prev.asOf, "month", opts) : Promise.resolve(null),
   ]);
+  // Hasil akhir bulan lalu: label disesuaikan (bukan "bulan berjalan"/"hari ini"), dan catatan laju dibuang karena pada hari
+  // terakhir laju sama dengan target penuh.
+  const prevMonth =
+    prev && prevRaw
+      ? {
+          label: prev.label,
+          metrics: prevRaw.map((m) => ({
+            ...m,
+            label: m.key === "omzet" ? `Omzet ${prev.label} vs target` : m.label.replace(" 30 hari terakhir", ` 30 hari s.d. akhir ${prev.label}`),
+            note: m.note ? m.note.split(" Hari ini idealnya")[0] : undefined,
+          })),
+        }
+      : undefined;
 
   const prevByKey = new Map(weekPrev.map((m) => [m.key, m]));
   const twoWeeksRedLabels = weekNow
     .filter((m) => m.band === "red" && prevByKey.get(m.key)?.band === "red")
     .map((m) => m.label);
 
-  return { branch, metrics, twoWeeksRedLabels, omzetTarget };
+  return { branch, metrics, twoWeeksRedLabels, omzetTarget, prevMonth };
 }
 
 /**
@@ -419,7 +456,7 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
  * anggota tim / penugasan POS, lihat `resolveUserBranches`). Cabang tak terdeteksi → kedua cabang
  * ditampilkan (`detected: false`), karena scorecard memang terbuka untuk semua staf Haengbocake.
  */
-export async function getMyScorecards(): Promise<{
+export async function getMyScorecards(opts?: { simulatePrevMonth?: boolean }): Promise<{
   detected: boolean;
   scorecards: BranchScorecard[];
 }> {
@@ -428,7 +465,8 @@ export async function getMyScorecards(): Promise<{
   const branches = await resolveUserBranches(user.id);
   const detected = branches.length > 0;
   const list: ScorecardBranch[] = detected ? branches : ["Pare", "Semarang"];
-  const cards = await Promise.all(list.map((b) => getBranchScorecard(b)));
+  const prev = prevMonthWindow(jakartaDateString(new Date()), !!opts?.simulatePrevMonth && process.env.NODE_ENV !== "production");
+  const cards = await Promise.all(list.map((b) => getBranchScorecard(b, prev)));
   // Cabang tidak terdeteksi → dua cabang tampil, jadi tanpa angka rupiah (nominal omzet/target cabang lain bukan urusan
   // mereka): hanya persentase. Karyawan dengan cabang terdeteksi tetap melihat angka cabangnya sendiri.
   const scorecards = cards
@@ -436,7 +474,12 @@ export async function getMyScorecards(): Promise<{
     .map((c) =>
       detected
         ? c
-        : { ...c, omzetTarget: { pos: null, cake: null }, metrics: c.metrics.map((m) => (m.key === "omzet" ? { ...m, note: undefined } : m)) }
+        : {
+            ...c,
+            omzetTarget: { pos: null, cake: null },
+            metrics: c.metrics.map((m) => (m.key === "omzet" ? { ...m, note: undefined } : m)),
+            prevMonth: c.prevMonth && { ...c.prevMonth, metrics: c.prevMonth.metrics.map((m) => (m.key === "omzet" ? { ...m, note: undefined } : m)) },
+          }
     );
   return { detected, scorecards };
 }
