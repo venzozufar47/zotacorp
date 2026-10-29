@@ -207,7 +207,7 @@ export function ContractSignClient({
             {contract.employee_signed_at
               ? ` pada ${new Date(contract.employee_signed_at).toLocaleString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
               : ""}
-            . Slip gaji kamu sudah terbuka.
+            .
           </span>
           <button
             type="button"
@@ -348,9 +348,14 @@ export function ContractSignClient({
             />
             <span className="text-xs leading-relaxed text-foreground">
               Saya menyatakan telah membaca, memahami, dan menyetujui seluruh isi
-              Perjanjian Kerja beserta Lampiran ini, dan menandatanganinya secara
-              elektronik dengan sadar tanpa paksaan. Tanda tangan elektronik ini
-              sah sebagai alat bukti sesuai UU ITE.
+              Perjanjian Kerja
+              {shouldRenderLampiran(contract.body_markdown, lampiran)
+                ? " beserta Lampiran"
+                : ""}{" "}
+              ini, termasuk pemrosesan data pribadi saya (termasuk foto KTP) untuk
+              administrasi kepegawaian, dan menandatanganinya secara elektronik
+              dengan sadar tanpa paksaan. Tanda tangan elektronik ini sah sebagai
+              alat bukti sesuai UU ITE.
             </span>
           </label>
           <button

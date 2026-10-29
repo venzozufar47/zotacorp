@@ -83,7 +83,17 @@ export const CONTRACT_FIELD_DEFS: Array<{
   { key: "gaji_terbilang", label: "Terbilang", group: "Upah" },
   { key: "komponen_upah", label: "Komponen upah", group: "Upah" },
   { key: "periode_bayar", label: "Periode bayar (bulanan/mingguan)", group: "Upah" },
+  { key: "tgl_bayar", label: "Tanggal bayar upah (mis. 5 (lima))", group: "Upah" },
   { key: "cara_bayar", label: "Cara bayar", group: "Upah" },
+];
+
+/** Isian yang dibuat otomatis (nomor & tanggal terbit): tampil, tidak bisa diketik. */
+export const CONTRACT_AUTO_FIELDS: ReadonlyArray<ContractFieldKey> = [
+  "nomor",
+  "hari",
+  "tanggal",
+  "bulan",
+  "tahun",
 ];
 
 /** Identitas pribadi yang WAJIB diisi karyawan saat menandatangani. */
@@ -175,6 +185,11 @@ export interface EmploymentContract {
   signed_pdf_path: string | null;
   /** Foto KTP karyawan (bucket privat) — wajib diunggah saat tanda tangan. */
   ktp_photo_path?: string | null;
+  /** Pengakhiran hubungan kerja (diisi saat admin mengakhiri kontrak yang sudah aktif). */
+  ended_at?: string | null;
+  end_reason?: "resign" | "phk" | "lainnya" | null;
+  resign_notice_at?: string | null;
+  end_note?: string | null;
   /** Versi isi kontrak saat ini (naik tiap ada revisi). */
   version: number;
   /** Versi yang ditandatangani karyawan (null = belum pernah TTD). */

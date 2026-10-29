@@ -11,6 +11,7 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import { sendPushToUser } from "@/lib/push/web-push";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
 import { isValidTanggalLahir } from "@/lib/employment-contracts/birth";
+import { isIsoDate, type EndReason } from "@/lib/employment-contracts/ending";
 import {
   BRANCH_OPTIONS,
   emptyLampiran,
@@ -51,6 +52,42 @@ function formatTanggalID(v: string | null | undefined): string {
     year: "numeric",
   });
 }
+
+/**
+ * Nomor urut kontrak berikutnya untuk satu BU di satu tahun = nomor TERTINGGI
+ * yang sudah ada + 1. Dulu memakai jumlah baris + 1, yang menghasilkan nomor
+ * kembar begitu satu kontrak di tengah dihapus (001,002,003 → hapus 002 →
+ * "003" lagi). Kontrak yang dihapus tidak memakai ulang nomornya.
+ */
+async function nextContractSeq(
+  db: ReturnType<typeof adminClient>,
+  businessUnit: string,
+  year: number
+): Promise<number> {
+  const { data } = await db
+    .from("employment_contracts" as never)
+    .select("contract_number")
+    .eq("business_unit", businessUnit)
+    .gte("created_at", `${year}-01-01`)
+    .lt("created_at", `${year + 1}-01-01`);
+  let max = 0;
+  for (const r of (data ?? []) as unknown as { contract_number: string | null }[]) {
+    const n = parseInt(r.contract_number ?? "", 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max + 1;
+}
+
+/** Isian yang boleh diubah lewat "Terbitkan revisi" pada kontrak yang sudah ditandatangani. */
+const REVISABLE_FIELDS = [
+  "jabatan",
+  "cabang",
+  "gaji_nominal",
+  "tgl_mulai",
+  "tgl_bayar",
+  "komponen_upah",
+  "periode_bayar",
+] as const;
 
 const KNOWN_BRANCHES = ["Pare", "Semarang", "Tlogosari", "Tembalang", "Jebres"];
 
@@ -247,14 +284,8 @@ export async function prefillContractFields(
     now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta", year: "numeric" })
   );
 
-  // Nomor kontrak otomatis: urut per BU per tahun (lanjutan dari yang sudah ada).
-  const { count } = await db
-    .from("employment_contracts" as never)
-    .select("id", { count: "exact", head: true })
-    .eq("business_unit", bu)
-    .gte("created_at", `${yearNum}-01-01`)
-    .lt("created_at", `${yearNum + 1}-01-01`);
-  const nomor = String((count ?? 0) + 1).padStart(3, "0");
+  // Nomor kontrak otomatis: urut per BU per tahun (nomor tertinggi + 1).
+  const nomor = String(await nextContractSeq(db, bu, yearNum)).padStart(3, "0");
 
   // job_role = nama jabatan menurut SOP ("Staf Depan & Koordinator Toko");
   // position adalah teks bebas lama ("Cake Decorator Pare").
@@ -320,13 +351,7 @@ export async function getNextContractNumber(
       year: "numeric",
     })
   );
-  const { count } = await db
-    .from("employment_contracts" as never)
-    .select("id", { count: "exact", head: true })
-    .eq("business_unit", businessUnit.trim())
-    .gte("created_at", `${yearNum}-01-01`)
-    .lt("created_at", `${yearNum + 1}-01-01`);
-  return String((count ?? 0) + 1).padStart(3, "0");
+  return String(await nextContractSeq(db, businessUnit.trim(), yearNum)).padStart(3, "0");
 }
 
 // ── Contracts list (admin) ────────────────────────────────────────────
@@ -368,7 +393,7 @@ export interface IssueContractInput {
   fields: ContractFields;
   lampiran: ContractLampiran;
   contractNumber?: string | null;
-  notifyWhatsApp?: boolean;
+  notifyPush?: boolean;
 }
 
 export async function issueEmploymentContract(
@@ -411,13 +436,7 @@ export async function issueEmploymentContract(
       year: "numeric",
     })
   );
-  const { count } = await db
-    .from("employment_contracts" as never)
-    .select("id", { count: "exact", head: true })
-    .eq("business_unit", bu)
-    .gte("created_at", `${yearNum}-01-01`)
-    .lt("created_at", `${yearNum + 1}-01-01`);
-  const nomor = String((count ?? 0) + 1).padStart(3, "0");
+  const nomor = String(await nextContractSeq(db, bu, yearNum)).padStart(3, "0");
   const fields: ContractFields = normalizeGajiFields({ ...input.fields, nomor });
 
   const { data, error } = await db
@@ -443,10 +462,10 @@ export async function issueEmploymentContract(
   if (error || !data) return { ok: false, error: error?.message ?? "Gagal terbit" };
   const contractId = (data as unknown as { id: string }).id;
 
-  if (input.notifyWhatsApp) {
+  if (input.notifyPush) {
     void sendPushToUser(input.userId, {
       title: "Kontrak kerja siap ditandatangani",
-      body: "Buka menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.",
+      body: "Buka menu Kontrak Kerja untuk membaca & menandatanganinya.",
       url: "/kontrak",
     }).catch(() => {});
   }
@@ -512,7 +531,7 @@ export async function bulkIssueEmploymentContracts(input: {
   /** Lampiran 1 (jobdesc) bersama untuk semua kontrak di batch ini. */
   lampiran?: ContractLampiran;
   rows: BulkContractRow[];
-  notifyWhatsApp?: boolean;
+  notifyPush?: boolean;
 }): Promise<ActionResult<{ issued: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -541,13 +560,7 @@ export async function bulkIssueEmploymentContracts(input: {
   const yearNum = Number(
     now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta", year: "numeric" })
   );
-  const { count } = await db
-    .from("employment_contracts" as never)
-    .select("id", { count: "exact", head: true })
-    .eq("business_unit", bu)
-    .gte("created_at", `${yearNum}-01-01`)
-    .lt("created_at", `${yearNum + 1}-01-01`);
-  let seq = count ?? 0;
+  let seq = (await nextContractSeq(db, bu, yearNum)) - 1;
 
   const common = input.common;
   const dateBase = {
@@ -639,12 +652,12 @@ export async function bulkIssueEmploymentContracts(input: {
     .insert(toInsert as never);
   if (error) return { ok: false, error: error.message };
 
-  if (input.notifyWhatsApp) {
+  if (input.notifyPush) {
     for (const r of rows) {
       if (!profById.get(r.userId)) continue;
       void sendPushToUser(r.userId, {
         title: "Kontrak kerja siap ditandatangani",
-        body: "Buka menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.",
+        body: "Buka menu Kontrak Kerja untuk membaca & menandatanganinya.",
         url: "/kontrak",
       }).catch(() => {});
     }
@@ -659,7 +672,6 @@ export async function updateEmploymentContract(
   patch: {
     fields?: ContractFields;
     lampiran?: ContractLampiran;
-    contractNumber?: string | null;
     status?: EmploymentContractStatus;
   }
 ): Promise<ActionResult> {
@@ -667,10 +679,22 @@ export async function updateEmploymentContract(
   if (!gate.ok) return { ok: false, error: gate.error };
   const db = adminClient();
   const upd: Record<string, unknown> = {};
-  if (patch.fields) upd.fields = normalizeGajiFields(patch.fields);
+  if (patch.fields) {
+    // Nomor surat dibuat otomatis dan TIDAK boleh diubah dari form (mencegah
+    // nomor kembar): pertahankan nomor yang sudah tersimpan.
+    const { data: cur } = await db
+      .from("employment_contracts" as never)
+      .select("fields")
+      .eq("id", id)
+      .maybeSingle();
+    const curNomor = (cur as unknown as { fields: ContractFields | null } | null)
+      ?.fields?.nomor;
+    upd.fields = normalizeGajiFields({
+      ...patch.fields,
+      nomor: curNomor ?? patch.fields.nomor,
+    });
+  }
   if (patch.lampiran) upd.lampiran = patch.lampiran;
-  if (patch.contractNumber !== undefined)
-    upd.contract_number = patch.contractNumber?.trim() || null;
   if (patch.status) upd.status = patch.status;
   if (Object.keys(upd).length === 0) return { ok: true };
   const { error } = await db
@@ -711,10 +735,80 @@ export async function deleteEmploymentContract(id: string): Promise<ActionResult
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const db = adminClient();
+  // Berkas milik kontrak (foto KTP, tanda tangan, PDF, termasuk unggahan yatim
+  // yang tak pernah terpakai) ada di folder `{id}/`. Catat daftarnya sebelum
+  // baris dihapus, lalu hapus setelahnya: data pribadi tidak boleh tersisa
+  // tanpa pemilik setelah kontraknya dihapus (Pasal 13).
+  const { data: files } = await db.storage
+    .from("employment-contracts")
+    .list(id, { limit: 1000 });
   const { error } = await db
     .from("employment_contracts" as never)
     .delete()
     .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  const paths = (files ?? []).map((f) => `${id}/${f.name}`);
+  if (paths.length > 0) {
+    const { error: rmErr } = await db.storage
+      .from("employment-contracts")
+      .remove(paths);
+    if (rmErr) console.error("[contract] gagal hapus berkas", id, rmErr.message);
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * Akhiri hubungan kerja pada kontrak yang sudah ditandatangani: mencatat alasan
+ * (resign/PHK/lainnya), tanggal efektif, dan untuk resign tanggal
+ * pemberitahuan tertulis (dasar hitung 30 hari → denda). Status menjadi
+ * "terminated". Batas larangan usaha sejenis dan denda dihitung dari data ini
+ * (lib/employment-contracts/ending.ts).
+ */
+export async function endEmploymentContract(input: {
+  id: string;
+  reason: EndReason;
+  /** YYYY-MM-DD */
+  endedAt: string;
+  /** YYYY-MM-DD; wajib untuk resign. */
+  resignNoticeAt?: string | null;
+  note?: string;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!isIsoDate(input.endedAt))
+    return { ok: false, error: "Tanggal berakhir tidak valid" };
+  const notice = input.resignNoticeAt || null;
+  if (input.reason === "resign") {
+    if (!isIsoDate(notice))
+      return { ok: false, error: "Tanggal pemberitahuan resign wajib diisi" };
+    if (notice > input.endedAt)
+      return {
+        ok: false,
+        error: "Tanggal pemberitahuan tidak boleh setelah tanggal berakhir",
+      };
+  }
+  const db = adminClient();
+  const { data: cRaw } = await db
+    .from("employment_contracts" as never)
+    .select("status")
+    .eq("id", input.id)
+    .maybeSingle();
+  const status = (cRaw as unknown as { status: EmploymentContractStatus } | null)
+    ?.status;
+  if (!status) return { ok: false, error: "Kontrak tidak ditemukan" };
+  if (status !== "signed")
+    return { ok: false, error: "Hanya kontrak yang sudah ditandatangani yang diakhiri di sini" };
+  const { error } = await db
+    .from("employment_contracts" as never)
+    .update({
+      status: "terminated",
+      ended_at: input.endedAt,
+      end_reason: input.reason,
+      resign_notice_at: input.reason === "resign" ? notice : null,
+      end_note: input.note?.trim() || null,
+    } as never)
+    .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidateAll();
   return { ok: true };
@@ -1170,6 +1264,12 @@ export async function reviseEmploymentContract(input: {
   note: string;
   refreshFromTemplate: boolean;
   notify: boolean;
+  /**
+   * Perubahan isian karyawan yang ikut direvisi (mis. gaji naik, pindah
+   * cabang). Hanya kunci di REVISABLE_FIELDS yang diterima; nilai kosong
+   * diabaikan. Identitas pribadi dan nomor surat tidak bisa diubah di sini.
+   */
+  fieldsPatch?: Partial<Record<(typeof REVISABLE_FIELDS)[number], string>>;
 }): Promise<ActionResult<{ version: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -1179,7 +1279,7 @@ export async function reviseEmploymentContract(input: {
 
   const { data: cRaw } = await db
     .from("employment_contracts" as never)
-    .select("user_id, status, version, business_unit")
+    .select("user_id, status, version, business_unit, fields")
     .eq("id", input.id)
     .maybeSingle();
   const c = cRaw as unknown as {
@@ -1187,6 +1287,7 @@ export async function reviseEmploymentContract(input: {
     status: EmploymentContractStatus;
     version: number | null;
     business_unit: string;
+    fields: ContractFields | null;
   } | null;
   if (!c) return { ok: false, error: "Kontrak tidak ditemukan" };
   if (c.status !== "signed" && c.status !== "pending_signature")
@@ -1196,6 +1297,16 @@ export async function reviseEmploymentContract(input: {
     version: (c.version ?? 1) + 1,
     update_note: note,
   };
+  // Perubahan isian (gaji, jabatan, cabang, …): whitelist + normalisasi gaji
+  // (terbilang ikut dihitung ulang).
+  if (input.fieldsPatch) {
+    const merged: ContractFields = { ...(c.fields ?? {}) };
+    for (const k of REVISABLE_FIELDS) {
+      const v = input.fieldsPatch[k]?.trim();
+      if (v) merged[k] = v;
+    }
+    patch.fields = normalizeGajiFields(merged);
+  }
   if (input.refreshFromTemplate) {
     const { data: tplRaw } = await db
       .from("employment_contract_templates" as never)

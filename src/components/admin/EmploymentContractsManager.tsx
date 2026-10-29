@@ -22,8 +22,10 @@ import {
   ArchiveRestore,
   IdCard,
   RefreshCw,
+  UserX,
 } from "lucide-react";
 import {
+  endEmploymentContract,
   reviseEmploymentContract,
   getContractKtpUrl,
   upsertContractTemplate,
@@ -43,6 +45,7 @@ import {
 import { contractNomorSurat } from "@/lib/employment-contracts/markdown";
 import {
   BRANCH_OPTIONS,
+  CONTRACT_AUTO_FIELDS,
   CONTRACT_FIELD_DEFS,
   CONTRACT_STATUS_LABELS,
   contractNeedsSignature,
@@ -59,6 +62,18 @@ import {
   EMPLOYER,
 } from "@/lib/employment-contracts/default-templates";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
+import {
+  END_REASON_LABELS,
+  RESIGN_NOTICE_DAYS,
+  bodyHasNonCompete,
+  bodyHasResignFine,
+  daysBetween,
+  isIsoDate,
+  nonCompeteUntil,
+  parseRupiah,
+  resignFineApplies,
+  type EndReason,
+} from "@/lib/employment-contracts/ending";
 import {
   downloadContractPdf,
   previewContractPdf,
@@ -121,6 +136,7 @@ export function EmploymentContractsManager({
       {tab === "templates" ? (
         <TemplatesTab
           templates={templates}
+          contracts={contracts}
           businessUnits={businessUnits}
           employerSignatures={employerSignatures}
         />
@@ -199,10 +215,12 @@ function SignatureChip({ status }: { status: EmployerSignatureStatus | undefined
 
 function TemplatesTab({
   templates,
+  contracts,
   businessUnits,
   employerSignatures,
 }: {
   templates: EmploymentContractTemplate[];
+  contracts: ContractListRow[];
   businessUnits: string[];
   employerSignatures: Record<string, EmployerSignatureStatus>;
 }) {
@@ -213,7 +231,6 @@ function TemplatesTab({
     () => templates.find((t) => t.business_unit === bu) ?? null,
     [templates, bu]
   );
-  const [title, setTitle] = useState("");
   const [kota, setKota] = useState("");
   const [body, setBody] = useState("");
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -221,16 +238,31 @@ function TemplatesTab({
   // Sync form ke template terpilih saat BU berubah.
   if (loadedFor !== bu) {
     setLoadedFor(bu);
-    setTitle(existing?.title ?? "Perjanjian Kerja");
     setKota(existing?.kota ?? "");
     setBody(existing?.body_markdown ?? "");
   }
+
+  // Judul dokumen diambil dari baris "# …" pertama di badan kontrak (itulah
+  // yang dicetak di PDF), jadi tidak diisi terpisah.
+  const derivedTitle =
+    (/^#\s+(.+)$/m.exec(body)?.[1] ?? "").trim() || "Perjanjian Kerja";
+
+  // Kontrak aktif unit ini yang isinya berbeda dari template tersimpan:
+  // kontrak yang sudah terbit tidak ikut berubah saat template disimpan.
+  const staleCount = existing
+    ? contracts.filter(
+        (c) =>
+          c.business_unit === bu &&
+          (c.status === "signed" || c.status === "pending_signature") &&
+          c.body_markdown !== existing.body_markdown
+      ).length
+    : 0;
 
   const save = () => {
     startTransition(async () => {
       const res = await upsertContractTemplate({
         businessUnit: bu,
-        title,
+        title: derivedTitle,
         bodyMarkdown: body,
         kota,
       });
@@ -279,8 +311,12 @@ function TemplatesTab({
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="Judul">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className={INPUT} />
+        <Field label="Judul dokumen (otomatis dari baris # pertama badan kontrak)">
+          <input
+            value={derivedTitle}
+            readOnly
+            className={`${INPUT} bg-muted/40 text-muted-foreground`}
+          />
         </Field>
         <Field label="Kota">
           <input value={kota} onChange={(e) => setKota(e.target.value)} className={INPUT} placeholder="mis. Semarang" />
@@ -304,10 +340,7 @@ function TemplatesTab({
           <span className="mx-2 text-xs text-muted-foreground">·</span>
           <button
             type="button"
-            onClick={() => {
-              setBody(HAENGBOCAKE_CONTRACT_BODY);
-              setTitle("Perjanjian Kerja Waktu Tidak Tertentu");
-            }}
+            onClick={() => setBody(HAENGBOCAKE_CONTRACT_BODY)}
             className="text-xs text-primary hover:underline"
           >
             Isi dari contoh Haengbocake (PKWTT)
@@ -322,11 +355,23 @@ function TemplatesTab({
         />
       </Field>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <button onClick={save} disabled={pending} className={BTN_PRIMARY}>
           Simpan template
         </button>
+        <p className="text-xs text-muted-foreground max-w-xl">
+          Menyimpan template hanya memengaruhi kontrak yang diterbitkan setelah
+          ini. Kontrak yang sudah terbit tidak berubah sampai Anda memakai{" "}
+          <strong>Terbitkan revisi</strong> di tab Kontrak Karyawan.
+        </p>
       </div>
+      {staleCount > 0 && (
+        <div className="rounded-xl border-2 border-foreground bg-warning/40 px-3 py-2.5 text-sm">
+          <strong>{staleCount} kontrak {bu}</strong> masih memakai isi yang
+          berbeda dari template tersimpan. Buka tab Kontrak Karyawan dan pakai{" "}
+          <strong>Terbitkan revisi</strong> bila isi barunya harus berlaku.
+        </div>
+      )}
 
       {existing && (
         <div className="rounded-xl border-2 border-foreground bg-card p-4 space-y-3">
@@ -406,6 +451,7 @@ function ContractsTab({
   const [editing, setEditing] = useState<ContractListRow | null>(null);
   const [duplicating, setDuplicating] = useState<ContractListRow | null>(null);
   const [revising, setRevising] = useState<ContractListRow | null>(null);
+  const [ending, setEnding] = useState<ContractListRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   // Foto KTP dibuka di tab baru lewat signed URL berumur pendek. Tab dibuka
@@ -556,6 +602,7 @@ function ContractsTab({
                   <td className="px-3 py-2">{c.business_unit}</td>
                   <td className="px-3 py-2">
                     <StatusBadge contract={c} />
+                    <EndInfo contract={c} />
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {c.employee_signed_at
@@ -606,6 +653,14 @@ function ContractsTab({
                               onClick={() => setRevising(c)}
                             >
                               <RefreshCw size={15} />
+                            </IconBtn>
+                          )}
+                          {c.status === "signed" && (
+                            <IconBtn
+                              title="Akhiri hubungan kerja (resign / PHK)"
+                              onClick={() => setEnding(c)}
+                            >
+                              <UserX size={15} />
                             </IconBtn>
                           )}
                           {c.status === "pending_signature" && (
@@ -661,9 +716,16 @@ function ContractsTab({
           onClose={() => setBatching(false)}
         />
       )}
+      {ending && (
+        <EndContractModal contract={ending} onClose={() => setEnding(null)} />
+      )}
       {revising && (
         <ReviseContractModal
           contract={revising}
+          rolesByBu={rolesByBu}
+          templateBodies={Object.fromEntries(
+            templates.map((t) => [t.business_unit, t.body_markdown])
+          )}
           onClose={() => setRevising(null)}
         />
       )}
@@ -886,8 +948,7 @@ function ContractFormModal({
           userId,
           fields,
           lampiran,
-          contractNumber: fields.nomor ?? null,
-          notifyWhatsApp: true,
+          notifyPush: true,
         });
         if (!res.ok) return void toast.error(res.error);
         toast.success("Kontrak diterbitkan & karyawan dinotifikasi");
@@ -895,7 +956,6 @@ function ContractFormModal({
         const res = await updateEmploymentContract(contract!.id, {
           fields,
           lampiran,
-          contractNumber: fields.nomor ?? null,
         });
         if (!res.ok) return void toast.error(res.error);
         toast.success("Kontrak diperbarui");
@@ -1012,6 +1072,19 @@ function ContractFormModal({
                           </Field>
                         );
                       }
+                      // Nomor surat & tanggal terbit dibuat otomatis: tampil saja,
+                      // tidak bisa diketik (mencegah nomor kembar).
+                      if (CONTRACT_AUTO_FIELDS.includes(d.key)) {
+                        return (
+                          <Field key={d.key} label={d.label}>
+                            <input
+                              value={fields[d.key] ?? ""}
+                              readOnly
+                              className={`${INPUT} bg-muted/40 text-muted-foreground`}
+                            />
+                          </Field>
+                        );
+                      }
                       // Terbilang: read-only, selalu sinkron dengan nominal.
                       if (d.key === "gaji_terbilang") {
                         return (
@@ -1119,6 +1192,191 @@ function ContractFormModal({
   );
 }
 
+// ── End (resign / PHK) ────────────────────────────────────────────────
+
+function fmtIsoDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** Ringkasan pengakhiran di kolom Status: alasan, tanggal, denda, batas larangan usaha. */
+function EndInfo({ contract }: { contract: ContractListRow }) {
+  if (contract.status !== "terminated" || !contract.ended_at) return null;
+  const reason = contract.end_reason as EndReason | null;
+  const fine =
+    reason === "resign" &&
+    bodyHasResignFine(contract.body_markdown) &&
+    resignFineApplies(reason, contract.resign_notice_at, contract.ended_at);
+  return (
+    <div className="mt-1 space-y-0.5 text-[11px] leading-tight text-muted-foreground">
+      <div>
+        Berakhir {fmtIsoDate(contract.ended_at)}
+        {reason ? ` · ${END_REASON_LABELS[reason].split(" (")[0]}` : ""}
+      </div>
+      {fine && (
+        <div className="text-destructive font-medium">
+          Denda resign &lt; {RESIGN_NOTICE_DAYS} hari: Rp{" "}
+          {parseRupiah(contract.fields?.gaji_nominal).toLocaleString("id-ID")}
+        </div>
+      )}
+      {bodyHasNonCompete(contract.body_markdown) && (
+        <div>Larangan usaha sejenis s.d. {fmtIsoDate(nonCompeteUntil(contract.ended_at))}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Akhiri hubungan kerja pada kontrak yang sudah ditandatangani. Mencatat
+ * alasan, tanggal efektif, dan (resign) tanggal pemberitahuan tertulis;
+ * menampilkan hitungan denda (resign < 30 hari = 1x upah) dan batas larangan
+ * usaha sejenis (12 bulan) sesuai Pasal 12 dan 15. Penagihan denda dilakukan
+ * di luar sistem — di sini hanya dicatat.
+ */
+function EndContractModal({
+  contract,
+  onClose,
+}: {
+  contract: ContractListRow;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [reason, setReason] = useState<EndReason>("resign");
+  const [endedAt, setEndedAt] = useState("");
+  const [noticeAt, setNoticeAt] = useState("");
+  const [note, setNote] = useState("");
+
+  const gaji = parseRupiah(contract.fields?.gaji_nominal);
+  const hasFineClause = bodyHasResignFine(contract.body_markdown);
+  const fine = hasFineClause && resignFineApplies(reason, noticeAt, endedAt);
+  const noticeDays =
+    reason === "resign" && isIsoDate(noticeAt) && isIsoDate(endedAt)
+      ? daysBetween(noticeAt, endedAt)
+      : null;
+  const nonCompete =
+    bodyHasNonCompete(contract.body_markdown) && isIsoDate(endedAt)
+      ? nonCompeteUntil(endedAt)
+      : null;
+
+  const submit = () => {
+    if (!isIsoDate(endedAt)) return void toast.error("Isi tanggal berakhir");
+    if (reason === "resign" && !isIsoDate(noticeAt))
+      return void toast.error("Isi tanggal pemberitahuan resign");
+    if (
+      !confirm(
+        `Akhiri hubungan kerja ${contract.employee_name} per ${fmtIsoDate(endedAt)}? Kontrak berstatus Diakhiri dan tidak bisa diaktifkan lagi dari sini.`
+      )
+    )
+      return;
+    startTransition(async () => {
+      const res = await endEmploymentContract({
+        id: contract.id,
+        reason,
+        endedAt,
+        resignNoticeAt: reason === "resign" ? noticeAt : null,
+        note,
+      });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success("Hubungan kerja diakhiri");
+      router.refresh();
+      onClose();
+    });
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4">
+      <div className="w-full max-w-lg rounded-2xl border-2 border-foreground bg-card shadow-hard my-8">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="font-display font-bold">
+            Akhiri hubungan kerja — {contract.employee_name}
+          </h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <Field label="Alasan">
+            <select
+              value={reason}
+              onChange={(e) => setReason(e.target.value as EndReason)}
+              className={INPUT}
+            >
+              {(Object.keys(END_REASON_LABELS) as EndReason[]).map((r) => (
+                <option key={r} value={r}>
+                  {END_REASON_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {reason === "resign" && (
+              <Field label="Tanggal pemberitahuan tertulis resign">
+                <input
+                  type="date"
+                  value={noticeAt}
+                  onChange={(e) => setNoticeAt(e.target.value)}
+                  className={INPUT}
+                />
+              </Field>
+            )}
+            <Field label="Tanggal efektif berakhir">
+              <input
+                type="date"
+                value={endedAt}
+                onChange={(e) => setEndedAt(e.target.value)}
+                className={INPUT}
+              />
+            </Field>
+          </div>
+          <Field label="Catatan (opsional)">
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              className={INPUT}
+            />
+          </Field>
+
+          {(noticeDays !== null || nonCompete) && (
+            <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1">
+              {noticeDays !== null && (
+                <p>
+                  Pemberitahuan resign {noticeDays} hari sebelum berakhir (minimal{" "}
+                  {RESIGN_NOTICE_DAYS} hari).
+                </p>
+              )}
+              {fine && (
+                <p className="font-semibold text-destructive">
+                  Kurang dari {RESIGN_NOTICE_DAYS} hari: denda 1 kali upah = Rp{" "}
+                  {gaji.toLocaleString("id-ID")} (hanya dicatat; penagihan di luar
+                  sistem).
+                </p>
+              )}
+              {nonCompete && (
+                <p>Larangan usaha sejenis berlaku sampai {fmtIsoDate(nonCompete)}.</p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+          <button onClick={onClose} className={BTN_OUTLINE}>
+            Batal
+          </button>
+          <button onClick={submit} disabled={pending} className={BTN_PRIMARY}>
+            <UserX size={15} /> Akhiri hubungan kerja
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Revise modal ──────────────────────────────────────────────────────
 
 /**
@@ -1129,9 +1387,14 @@ function ContractFormModal({
  */
 function ReviseContractModal({
   contract,
+  rolesByBu,
+  templateBodies,
   onClose,
 }: {
   contract: ContractListRow;
+  rolesByBu: Record<string, string[]>;
+  /** Badan template per unit — untuk menyembunyikan isian yang tak dipakai kontrak ini. */
+  templateBodies: Record<string, string>;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -1139,16 +1402,33 @@ function ReviseContractModal({
   const [note, setNote] = useState("");
   const [refresh, setRefresh] = useState(true);
   const [notify, setNotify] = useState(true);
+  // Perubahan isian (opsional): hanya yang berbeda dari isian saat ini yang dikirim.
+  const cur = contract.fields ?? {};
+  const [jabatan, setJabatan] = useState(cur.jabatan ?? "");
+  const [cabang, setCabang] = useState(cur.cabang ?? "");
+  const [gaji, setGaji] = useState((cur.gaji_nominal ?? "").replace(/[^\d]/g, ""));
+  const [tglBayar, setTglBayar] = useState(cur.tgl_bayar ?? "");
   const nextVersion = (contract.version ?? 1) + 1;
+  // Isian yang kontraknya sendiri tidak pakai (badan kontrak yang akan berlaku).
+  const effectiveBody = refresh
+    ? (templateBodies[contract.business_unit] ?? contract.body_markdown)
+    : contract.body_markdown;
+  const uses = (key: string) => effectiveBody.includes(`{${key}}`);
 
   const submit = () => {
     if (!note.trim()) return void toast.error("Tulis ringkasan perubahan");
+    const fieldsPatch: Record<string, string> = {};
+    if (jabatan.trim() && jabatan !== (cur.jabatan ?? "")) fieldsPatch.jabatan = jabatan.trim();
+    if (cabang.trim() && cabang !== (cur.cabang ?? "")) fieldsPatch.cabang = cabang.trim();
+    if (gaji && gaji !== (cur.gaji_nominal ?? "").replace(/[^\d]/g, "")) fieldsPatch.gaji_nominal = gaji;
+    if (tglBayar.trim() && tglBayar !== (cur.tgl_bayar ?? "")) fieldsPatch.tgl_bayar = tglBayar.trim();
     startTransition(async () => {
       const res = await reviseEmploymentContract({
         id: contract.id,
         note,
         refreshFromTemplate: refresh,
         notify,
+        fieldsPatch: Object.keys(fieldsPatch).length > 0 ? fieldsPatch : undefined,
       });
       if (!res.ok) return void toast.error(res.error);
       toast.success(`Revisi v${res.data?.version ?? nextVersion} diterbitkan`);
@@ -1185,6 +1465,63 @@ function ReviseContractModal({
               placeholder="mis. Pasal 5 ayat 7 ditambah: ketentuan THR"
             />
           </Field>
+          <details className="rounded-lg border border-border px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+              Ubah isian karyawan (opsional: gaji naik, pindah cabang, dll.)
+            </summary>
+            <div className="mt-3 grid sm:grid-cols-2 gap-3">
+              {uses("jabatan") && (
+                <Field label="Jabatan/posisi">
+                  <SelectOrText
+                    value={jabatan}
+                    onChange={setJabatan}
+                    options={rolesByBu[contract.business_unit] ?? []}
+                    placeholder="Ketik jabatan"
+                  />
+                </Field>
+              )}
+              {uses("cabang") && (
+                <Field label="Cabang penempatan">
+                  <SelectOrText
+                    value={cabang}
+                    onChange={setCabang}
+                    options={BRANCH_OPTIONS[contract.business_unit] ?? []}
+                    placeholder="Ketik cabang"
+                  />
+                </Field>
+              )}
+              {uses("gaji_nominal") && (
+                <Field label="Nominal gaji (angka, tanpa titik)">
+                  <input
+                    inputMode="numeric"
+                    value={gaji}
+                    onChange={(e) => setGaji(e.target.value.replace(/[^\d]/g, ""))}
+                    className={INPUT}
+                  />
+                  {gaji && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Rp {Number(gaji).toLocaleString("id-ID")} · {terbilang(gaji)} rupiah
+                    </p>
+                  )}
+                </Field>
+              )}
+              {uses("tgl_bayar") && (
+                <Field label="Tanggal bayar upah">
+                  <input
+                    value={tglBayar}
+                    onChange={(e) => setTglBayar(e.target.value)}
+                    className={INPUT}
+                    placeholder="mis. 5 (lima)"
+                  />
+                </Field>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Identitas pribadi dan nomor surat tidak bisa diubah di sini. Tulis
+              perubahan ini juga di ringkasan di atas supaya karyawan tahu apa yang
+              berubah.
+            </p>
+          </details>
           <label className="flex items-start gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
@@ -1324,7 +1661,7 @@ function BatchIssueModal({
         common,
         lampiran,
         rows: valid,
-        notifyWhatsApp: true,
+        notifyPush: true,
       });
       if (!res.ok) return void toast.error(res.error);
       toast.success(`${res.data?.issued ?? valid.length} kontrak diterbitkan`);

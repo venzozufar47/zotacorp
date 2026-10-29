@@ -32,7 +32,7 @@ export default async function EmployeeContractPage() {
       </Link>
       <PageHeader
         title="Kontrak Kerja"
-        subtitle="Perjanjian Kerja kamu. Slip gaji terbuka setelah kontrak ditandatangani."
+        subtitle="Perjanjian Kerja kamu."
       />
       {!contract ? (
         <Card>
