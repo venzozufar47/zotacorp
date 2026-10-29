@@ -419,7 +419,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 ## Pasal 15: Berakhirnya Hubungan Kerja
 
-(1) Pengunduran diri: Karyawan yang mengundurkan diri atas kemauan sendiri menyampaikan pemberitahuan tertulis paling lambat 30 (tiga puluh) hari sebelum tanggal pengunduran diri dan tetap melaksanakan tugas sampai tanggal tersebut. Karyawan yang mengundurkan diri tidak berhak atas uang pesangon, uang penghargaan masa kerja, uang penggantian hak, maupun uang pisah, kecuali bila peraturan perundang-undangan menentukan lain. Upah yang sudah menjadi hak Karyawan atas pekerjaan yang telah dilakukan tetap dibayarkan.
+(1) Pengunduran diri: Karyawan yang mengundurkan diri atas kemauan sendiri menyampaikan pemberitahuan tertulis paling lambat 30 (tiga puluh) hari sebelum tanggal pengunduran diri dan tetap melaksanakan tugas sampai tanggal tersebut. Upah yang sudah menjadi hak Karyawan atas pekerjaan yang telah dilakukan tetap dibayarkan.
 
 (2) Karyawan yang mengundurkan diri dengan pemberitahuan kurang dari 30 (tiga puluh) hari dikenai denda sebesar 1 (satu) kali upah bulanan.
 
