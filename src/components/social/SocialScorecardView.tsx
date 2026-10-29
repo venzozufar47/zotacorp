@@ -131,7 +131,7 @@ function MetricCard({ m, months, compact = false, className }: { m: BrandMetricV
             {METRIC_STATUS_LABEL[m.status]}
           </span>
           <span className="text-[11px] leading-snug">
-            {m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
+            {m.targetHidden ? "dari target bulan ini" : m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
             {m.score != null && !m.valueAsScore ? ` · ${nf0.format(m.score)}% dari target` : ""}
           </span>
         </div>

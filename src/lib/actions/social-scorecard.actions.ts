@@ -70,6 +70,8 @@ export interface BrandMetricView extends ScoredMetric {
   inputs: Record<string, unknown>;
   /** Tampilan karyawan: nilai ditampilkan sebagai % pencapaian terhadap target (angka rupiah aktual tidak dikirim). */
   valueAsScore?: boolean;
+  /** Tampilan karyawan: nominal target tidak dikirim/ditampilkan (hanya % pencapaian). */
+  targetHidden?: boolean;
 }
 
 export interface ConfigHistoryRow {
@@ -341,6 +343,8 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
         return {
           ...scored,
           ...(hideRupiah ? { actual: null, valueAsScore: true } : {}),
+          // Yeobo: nominal target omset juga tidak ditampilkan ke karyawan (hanya % pencapaian).
+          ...(hideRupiah && spec?.kind === "yeobo" ? { target: null, targetHidden: true } : {}),
           label: def.label,
           kind: def.kind,
           note: def.note,
