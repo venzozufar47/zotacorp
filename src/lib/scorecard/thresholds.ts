@@ -22,7 +22,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export function wasteRanges(): BandRange[] {
   return [
     { band: "green", text: `≤ ${WASTE_GREEN_MAX}%` },
-    { band: "yellow", text: `> ${WASTE_GREEN_MAX}% sampai ${WASTE_YELLOW_MAX}%` },
+    { band: "yellow", text: `> ${WASTE_GREEN_MAX}% - ${WASTE_YELLOW_MAX}%` },
     { band: "red", text: `> ${WASTE_YELLOW_MAX}%` },
   ];
 }
@@ -30,7 +30,7 @@ export function wasteRanges(): BandRange[] {
 export function omzetRanges(): BandRange[] {
   return [
     { band: "green", text: `≥ ${OMZET_GREEN_MIN}% dari target berjalan` },
-    { band: "yellow", text: `${OMZET_YELLOW_MIN}% sampai < ${OMZET_GREEN_MIN}%` },
+    { band: "yellow", text: `${OMZET_YELLOW_MIN}% - < ${OMZET_GREEN_MIN}%` },
     { band: "red", text: `< ${OMZET_YELLOW_MIN}%` },
   ];
 }
@@ -38,7 +38,7 @@ export function omzetRanges(): BandRange[] {
 export function serviceLevelRanges(): BandRange[] {
   return [
     { band: "green", text: `≥ ${pct(SERVICE_LEVEL_GREEN_MIN)}` },
-    { band: "yellow", text: `${pct(SERVICE_LEVEL_YELLOW_MIN)} sampai < ${pct(SERVICE_LEVEL_GREEN_MIN)}` },
+    { band: "yellow", text: `${pct(SERVICE_LEVEL_YELLOW_MIN)} - < ${pct(SERVICE_LEVEL_GREEN_MIN)}` },
     { band: "red", text: `< ${pct(SERVICE_LEVEL_YELLOW_MIN)}` },
   ];
 }
