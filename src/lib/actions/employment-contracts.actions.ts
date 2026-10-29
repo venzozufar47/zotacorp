@@ -10,6 +10,7 @@ import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { sendPushToUser } from "@/lib/push/web-push";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
+import { isValidTanggalLahir } from "@/lib/employment-contracts/birth";
 import {
   BRANCH_OPTIONS,
   emptyLampiran,
@@ -1023,6 +1024,12 @@ export async function signEmploymentContract(input: {
   for (const k of Object.keys(id) as (keyof typeof id)[]) {
     if (!id[k]) return { ok: false, error: `${LABELS[k]} wajib diisi` };
   }
+  // Format seragam di dokumen: "20 September 1999".
+  if (!isValidTanggalLahir(id.tgl_lahir))
+    return {
+      ok: false,
+      error: "Tanggal lahir tidak valid — pilih tanggal, bulan, dan tahun",
+    };
 
   const db = adminClient();
   const { data: cRaw } = await db

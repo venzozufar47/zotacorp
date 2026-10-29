@@ -21,6 +21,16 @@ import {
   type ContractSignerIdentity,
 } from "@/lib/employment-contracts/types";
 import { SignaturePad } from "./SignaturePad";
+import { BirthDatePicker, BirthPlacePicker } from "./BirthFields";
+import {
+  formatTanggalLahir,
+  parseTanggalLahir,
+} from "@/lib/employment-contracts/birth";
+
+function normalizeBirthDate(text: string | null | undefined): string {
+  const b = parseTanggalLahir(text ?? "");
+  return b ? formatTanggalLahir(b) : "";
+}
 
 /**
  * Perkecil foto KTP dari kamera HP (sering 4-8 MB) ke sisi terpanjang 1600px
@@ -74,7 +84,9 @@ export function ContractSignClient({
     nama: contract.fields?.nama || signerPrefill.nama,
     nik: contract.fields?.nik || signerPrefill.nik,
     tempat_lahir: contract.fields?.tempat_lahir || signerPrefill.tempat_lahir,
-    tgl_lahir: contract.fields?.tgl_lahir || signerPrefill.tgl_lahir,
+    // Hanya format baku yang dipakai ("20 September 1999"); tanggal dari
+    // profil/isian lama yang formatnya lain dikosongkan agar dipilih ulang.
+    tgl_lahir: normalizeBirthDate(contract.fields?.tgl_lahir || signerPrefill.tgl_lahir),
     alamat: contract.fields?.alamat || signerPrefill.alamat,
   }));
   const [consent, setConsent] = useState(false);
@@ -250,24 +262,51 @@ export function ContractSignClient({
             Meterai Rp10.000 dibubuhkan terpisah oleh perusahaan.
           </p>
           <div className="grid sm:grid-cols-2 gap-3">
-            {IDENTITY_FIELDS.map((f) => (
-              <label
-                key={f.key}
-                className={`block space-y-1 ${f.full ? "sm:col-span-2" : ""}`}
-              >
+            {IDENTITY_FIELDS.map((f) => {
+              const label = (
                 <span className="text-xs font-medium text-muted-foreground">
                   {f.label} <span className="text-destructive">*</span>
                 </span>
-                <input
-                  value={idf[f.key]}
-                  onChange={(e) =>
-                    setIdf((s) => ({ ...s, [f.key]: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                  required
-                />
-              </label>
-            ))}
+              );
+              // Tempat & tanggal lahir lewat dropdown supaya format seragam
+              // ("Surakarta", "20 September 1999").
+              if (f.key === "tempat_lahir" || f.key === "tgl_lahir") {
+                return (
+                  <div key={f.key} className="space-y-1 sm:col-span-2">
+                    {label}
+                    {f.key === "tempat_lahir" ? (
+                      <BirthPlacePicker
+                        value={idf.tempat_lahir}
+                        onChange={(v) => setIdf((s) => ({ ...s, tempat_lahir: v }))}
+                        disabled={pending}
+                      />
+                    ) : (
+                      <BirthDatePicker
+                        value={idf.tgl_lahir}
+                        onChange={(v) => setIdf((s) => ({ ...s, tgl_lahir: v }))}
+                        disabled={pending}
+                      />
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <label
+                  key={f.key}
+                  className={`block space-y-1 ${f.full ? "sm:col-span-2" : ""}`}
+                >
+                  {label}
+                  <input
+                    value={idf[f.key]}
+                    onChange={(e) =>
+                      setIdf((s) => ({ ...s, [f.key]: e.target.value }))
+                    }
+                    className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+                    required
+                  />
+                </label>
+              );
+            })}
           </div>
           <div className="space-y-2">
             <span className="text-xs font-medium text-muted-foreground">
