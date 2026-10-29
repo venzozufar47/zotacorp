@@ -389,11 +389,13 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 ## Pasal 12: Larangan Usaha Sejenis
 
-(1) Selama masih bekerja pada Pemberi Kerja dan sampai dengan 12 (dua belas) bulan setelah hubungan kerja berakhir, karena alasan apa pun termasuk pengunduran diri, Karyawan dilarang membuka atau menjalankan usaha yang sama atau serupa dengan usaha Pemberi Kerja, yaitu usaha toko kue dan produk bakeri, baik atas nama sendiri maupun bersama atau untuk pihak lain, secara langsung maupun tidak langsung.
+(1) Selama masih bekerja pada Pemberi Kerja dan sampai dengan 12 (dua belas) bulan setelah hubungan kerja berakhir, karena alasan apa pun termasuk pengunduran diri, Karyawan dilarang membuka atau menjalankan usaha yang sama atau serupa dengan usaha Pemberi Kerja, yaitu usaha toko kue dan produk bakeri, yang berlokasi dalam radius 10 (sepuluh) kilometer dari lokasi Haengbocake {cabang} tempat Karyawan ditempatkan, baik atas nama sendiri maupun bersama atau untuk pihak lain, secara langsung maupun tidak langsung.
 
-(2) Larangan ini berlaku tanpa mengurangi kewajiban menjaga kerahasiaan dalam Pasal 11.
+(2) Radius sebagaimana dimaksud pada ayat (1) diukur dalam garis lurus dari lokasi Haengbocake {cabang} tempat Karyawan ditempatkan sampai ke tempat usaha atau tempat produksi usaha tersebut, termasuk usaha yang dijalankan dari rumah.
 
-(3) Dalam hal Karyawan melanggar larangan ini, Pemberi Kerja berhak menuntut penghentian kegiatan usaha tersebut dan menempuh upaya hukum lain sesuai peraturan perundang-undangan.
+(3) Larangan ini berlaku tanpa mengurangi kewajiban menjaga kerahasiaan dalam Pasal 11.
+
+(4) Dalam hal Karyawan melanggar larangan ini, Pemberi Kerja berhak menuntut penghentian kegiatan usaha tersebut dan menempuh upaya hukum lain sesuai peraturan perundang-undangan.
 
 ## Pasal 13: Pemrosesan Data Pribadi
 
