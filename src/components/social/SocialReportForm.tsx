@@ -352,6 +352,8 @@ function Num({
 
 /** Berapa minggu ke belakang yang bisa diisi/dilengkapi (±6 bulan). */
 export const REPORT_WEEKS_BACK = 26;
+/** Senin pertama yang masuk daftar: minggu sebelum ini tidak diisi/ditampilkan (batas bawah tambahan di atas 26 minggu). */
+export const REPORT_FIRST_WEEK = "2026-08-03";
 
 /**
  * Ruang kerja laporan mingguan: daftar minggu di sisi kiri, form minggu terpilih di kanan (di HP: daftar di atas, form
@@ -367,7 +369,8 @@ export function SocialReportWorkspace({ page, basePath, weeks = REPORT_WEEKS_BAC
     const week = addDays(page.latestWeekStart, -7 * i);
     const flags = accounts.map((a) => done.has(`${a.id}|${week}`));
     return { week, flags, count: flags.filter(Boolean).length };
-  });
+  }).filter((r) => r.week >= REPORT_FIRST_WEEK);
+  const totalWeeks = rows.length;
   const pending = rows.filter((r) => r.count < total);
   const archived = rows.filter((r) => r.count >= total);
   const go = (week: string) => router.push(`${basePath}?week=${week}`);
@@ -388,12 +391,12 @@ export function SocialReportWorkspace({ page, basePath, weeks = REPORT_WEEKS_BAC
         <div>
           <div className="mb-1 flex items-center justify-between text-[11.5px] text-muted-foreground">
             <span>
-              {archived.length} dari {weeks} minggu lengkap
+              {archived.length} dari {totalWeeks} minggu lengkap
             </span>
             {pending.length === 0 && <span className="font-semibold text-success">Semua lengkap ✓</span>}
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={archived.length} aria-valuemin={0} aria-valuemax={weeks}>
-            <div className="h-full rounded-full bg-success transition-all" style={{ width: `${(archived.length / weeks) * 100}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={archived.length} aria-valuemin={0} aria-valuemax={totalWeeks}>
+            <div className="h-full rounded-full bg-success transition-all" style={{ width: `${totalWeeks ? (archived.length / totalWeeks) * 100 : 0}%` }} />
           </div>
         </div>
 
@@ -401,7 +404,7 @@ export function SocialReportWorkspace({ page, basePath, weeks = REPORT_WEEKS_BAC
           <h3 className="font-display text-[13px] font-bold">Perlu diisi ({pending.length} minggu)</h3>
           {pending.length === 0 ? (
             <p className="rounded-2xl border-2 border-dashed border-border px-3 py-4 text-center text-[12.5px] text-muted-foreground">
-              Semua minggu ({weeks} terakhir) sudah lengkap.
+              Semua minggu ({totalWeeks} terakhir) sudah lengkap.
             </p>
           ) : (
             <div className="max-h-72 overflow-y-auto overscroll-contain rounded-2xl border-2 border-foreground bg-card">
