@@ -8,6 +8,8 @@ import { fetchYeoboPnL, type YeoboPnLMonth } from "@/lib/cashflow/pnl-yeobo";
 import { classifyCategories, usesPosRegime, type CategoryRow } from "@/lib/unit-scorecard/finance";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sumCakeRevenue } from "@/lib/scorecard/cake-revenue";
+import { workingDaysBetween, workingDaysInMonth } from "@/lib/scorecard/working-days";
+import { addDays, dm } from "@/lib/social/week-label";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { editorBrandIds } from "@/lib/social/access";
 import {
@@ -16,6 +18,7 @@ import {
   engagementOf,
   followersGrowthOf,
   lastMonths,
+  mondayOf,
   monthRange,
   pickConfig,
   reachOf,
@@ -267,6 +270,13 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
       yeoboDataUntil = ((last.data ?? []) as unknown as { transaction_date: string }[])[0]?.transaction_date ?? null;
     }
 
+    // Tampilan karyawan: Reach, Followers growth, dan Engagement memakai 28 HARI TERAKHIR (4 minggu selesai terakhir), bukan
+    // bulan kalender, supaya tidak kosong tiap awal bulan. Target bulanan disetarakan ke 4 minggu (4 ÷ 52/12 ≈ 0,92).
+    const latestWeek = addDays(mondayOf(today), -7);
+    const rollFrom = addDays(latestWeek, -21);
+    const rollTo = addDays(latestWeek, 6);
+    const FOUR_WEEK_SCALE = 4 / (52 / 12);
+
     const out: SocialBrandCard[] = [];
     for (const b of brands) {
       const brandAccounts = accounts.filter((a) => a.brand_id === b.id).map((a) => a.id as string);
@@ -301,11 +311,33 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
           engagement: engagementOf(rs),
         } satisfies Record<SocialMetricCode, number | null>;
       });
-      const cur = valuesByMonth[valuesByMonth.length - 1];
       const curRevenue = revenues[revenues.length - 1];
-      const curReports = reportsInMonth(brandReports, month);
+      const curReports = opts.employeeView
+        ? brandReports.filter((r) => r.weekStart >= rollFrom && r.weekStart <= latestWeek)
+        : reportsInMonth(brandReports, month);
+      const lastMonthValues = valuesByMonth[valuesByMonth.length - 1];
+      const cur: Record<SocialMetricCode, number | null> = opts.employeeView
+        ? { ...lastMonthValues, reach: reachOf(curReports), followers_growth: followersGrowthOf(curReports), engagement: engagementOf(curReports) }
+        : lastMonthValues;
       const accountsReporting = new Set(curReports.map((r) => r.accountId)).size;
       const weeksReported = new Set(curReports.map((r) => r.weekStart)).size;
+
+      // Omset karyawan dinilai terhadap target SAMPAI TANGGAL INI (sebanding hari berjalan), bukan target bulan penuh, supaya awal
+      // bulan tidak otomatis merah. Haengbocake: hari kerja Senin–Sabtu; Yeobo: hari kalender sampai tanggal data kas terakhir.
+      let omsetPace: { fraction: number; until: string; elapsed: number; total: number; unit: string } | null = null;
+      if (opts.employeeView && monthInProgress && spec) {
+        const [yy, mm] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
+        const daysInMonth = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+        if (spec.kind === "yeobo") {
+          const until = yeoboDataUntil ?? today;
+          const elapsed = until >= month ? Number(until.slice(8, 10)) : 0;
+          omsetPace = { fraction: elapsed / daysInMonth, until, elapsed, total: daysInMonth, unit: "hari" };
+        } else {
+          const elapsed = workingDaysBetween(month, today);
+          const total = workingDaysInMonth(month);
+          omsetPace = { fraction: total > 0 ? elapsed / total : 0, until: today, elapsed, total, unit: "hari kerja" };
+        }
+      }
 
       const metrics: BrandMetricView[] = SOCIAL_METRICS.map((def) => {
         let cfg = cfgFor(def.code, month);
@@ -320,7 +352,22 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
             createdAt: cfg?.createdAt ?? "",
           };
         }
+        if (opts.employeeView && cfg?.targetValue != null) {
+          if (def.code === "omset" && omsetPace) cfg = { ...cfg, targetValue: cfg.targetValue * omsetPace.fraction };
+          else if (def.code === "reach" || def.code === "followers_growth") cfg = { ...cfg, targetValue: cfg.targetValue * FOUR_WEEK_SCALE };
+        }
         const scored = scoreMetric(cur[def.code], cfg, def.code);
+        // Keterangan tambahan untuk ikon ⓘ (karyawan): padat, satu baris per butir.
+        const infoLines: string[] = [];
+        if (opts.employeeView) {
+          if (def.code === "omset") {
+            if (omsetPace) infoLines.push(omsetPace.elapsed > 0 ? `Target sampai ${dm(omsetPace.until)} (${omsetPace.elapsed}/${omsetPace.total} ${omsetPace.unit})` : "Belum ada data bulan ini");
+          } else {
+            infoLines.push(`28 hari terakhir: ${dm(rollFrom)} – ${dm(rollTo)}`);
+            if (weeksReported < 4) infoLines.push(`Baru ${weeksReported} dari 4 minggu terisi`);
+            if (def.code !== "engagement") infoLines.push("Target bulanan disetarakan ke 4 minggu");
+          }
+        }
         const inputs: Record<string, unknown> =
           def.code === "omset"
             ? revFail.msg
@@ -351,7 +398,10 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
           greenBound: cfg?.greenBound ?? null,
           redBound: cfg?.redBound ?? null,
           spark: hideRupiah ? [] : valuesByMonth.map((v) => v[def.code]),
-          inputs: hideRupiah ? Object.fromEntries(Object.entries(inputs).filter(([k]) => k !== "rincian_cabang")) : inputs,
+          inputs: {
+            ...(hideRupiah ? Object.fromEntries(Object.entries(inputs).filter(([k]) => k !== "rincian_cabang")) : inputs),
+            ...(infoLines.length > 0 ? { info_lines: infoLines } : {}),
+          },
         };
       });
 
@@ -377,7 +427,7 @@ async function computeSocialScorecard(monthIso: string | null | undefined, opts:
           })),
       });
     }
-    return { ok: true, data: { month, monthLabel: monthLabel(month), trendMonths: months, brands: out } };
+    return { ok: true, data: { month, monthLabel: opts.employeeView ? "28 hari terakhir" : monthLabel(month), trendMonths: months, brands: out } };
   } catch (e) {
     return fail(errMsg(e));
   }

@@ -107,7 +107,7 @@ export function SocialBrandTiles({ brand }: { brand: SocialBrandCard }) {
 function MetricCard({ m, months, compact = false, className }: { m: BrandMetricView; months: string[]; compact?: boolean; className?: string }) {
   const style = TILE_STYLE[TONE_OF[m.status]];
   const Icon = style.Icon;
-  const lines = omsetLines(m);
+  const lines = Array.isArray(m.inputs.info_lines) ? (m.inputs.info_lines as string[]) : omsetLines(m);
   const isNumber = m.actual != null;
   return (
     <div className={cn("relative rounded-3xl border border-border/60 bg-card has-[button[aria-expanded=true]]:z-30", className)}>
@@ -131,7 +131,7 @@ function MetricCard({ m, months, compact = false, className }: { m: BrandMetricV
             {METRIC_STATUS_LABEL[m.status]}
           </span>
           <span className="text-[11px] leading-snug">
-            {m.targetHidden ? "dari target bulan ini" : m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
+            {m.targetHidden ? "vs target sampai hari ini" : m.target != null ? `target ${fmtShort(m.target, m.kind)}` : "target belum diisi"}
             {m.score != null && !m.valueAsScore ? ` · ${nf0.format(m.score)}% dari target` : ""}
           </span>
         </div>
