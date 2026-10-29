@@ -120,6 +120,16 @@ export function emptyLampiran(): ContractLampiran {
   };
 }
 
+/**
+ * Pilihan cabang penempatan per business unit (dropdown di form kontrak).
+ * Profil karyawan tidak punya kolom cabang, jadi daftar ini yang jadi acuan;
+ * unit yang tidak terdaftar di sini tetap bisa mengetik cabang sendiri.
+ */
+export const BRANCH_OPTIONS: Record<string, string[]> = {
+  Haengbocake: ["Pare", "Semarang"],
+  "Yeobo Space": ["Tlogosari", "Tembalang", "Jebres"],
+};
+
 /** True bila Lampiran 1 punya isi minimal satu butir. */
 export function lampiranHasContent(l: ContractLampiran | null | undefined): boolean {
   if (!l) return false;

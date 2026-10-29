@@ -11,6 +11,7 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import { sendPushToUser } from "@/lib/push/web-push";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
 import {
+  BRANCH_OPTIONS,
   emptyLampiran,
   contractNeedsSignature,
 } from "@/lib/employment-contracts/types";
@@ -58,6 +59,66 @@ function inferBranchFromText(text: string): string {
     new RegExp(`\\b${b}\\b`, "i").test(text)
   );
   return hit.length === 1 ? hit[0] : "";
+}
+
+/** Nama lokasi absen → nama cabang kontrak ("Haengbocorner Pare" → "Pare"). */
+function branchFromLocationName(name: string): string {
+  if (/pare/i.test(name)) return "Pare";
+  // Mamaya House dikelola bersama staf Semarang (gaji & pembukuan ikut Semarang).
+  if (/semarang|mamaya/i.test(name)) return "Semarang";
+  if (/tlogosari/i.test(name)) return "Tlogosari";
+  if (/tembalang/i.test(name)) return "Tembalang";
+  if (/jebres/i.test(name)) return "Jebres";
+  return "";
+}
+
+/**
+ * Cabang yang paling sering dipakai karyawan untuk absen dalam 60 hari
+ * terakhir — satu-satunya data yang mengaitkan karyawan dengan cabang.
+ * Hanya cabang yang valid untuk business unit-nya (BRANCH_OPTIONS) yang
+ * dihitung, supaya mis. staf Haengbocake yang kadang absen di studio Yeobo
+ * tidak jadi "Tlogosari". Tanpa data absen → "" (admin memilih manual).
+ */
+async function inferBranchFromAttendance(
+  db: ReturnType<typeof adminClient>,
+  userId: string,
+  businessUnit: string
+): Promise<string> {
+  const allowed = BRANCH_OPTIONS[businessUnit];
+  const since = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
+  const { data: logs } = await db
+    .from("attendance_logs" as never)
+    .select("matched_location_id")
+    .eq("user_id", userId)
+    .gte("created_at", since)
+    .not("matched_location_id", "is", null)
+    .limit(500);
+  const ids = Array.from(
+    new Set(
+      ((logs ?? []) as unknown as { matched_location_id: string }[]).map(
+        (l) => l.matched_location_id
+      )
+    )
+  );
+  if (ids.length === 0) return "";
+  const { data: locs } = await db
+    .from("attendance_locations" as never)
+    .select("id, name")
+    .in("id", ids);
+  const branchByLoc = new Map(
+    ((locs ?? []) as unknown as { id: string; name: string }[]).map((l) => [
+      l.id,
+      branchFromLocationName(l.name),
+    ])
+  );
+  const count = new Map<string, number>();
+  for (const l of (logs ?? []) as unknown as { matched_location_id: string }[]) {
+    const b = branchByLoc.get(l.matched_location_id);
+    if (!b || (allowed && !allowed.includes(b))) continue;
+    count.set(b, (count.get(b) ?? 0) + 1);
+  }
+  const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
+  return top ? top[0] : "";
 }
 
 // ── Templates (admin) ─────────────────────────────────────────────────
@@ -200,7 +261,9 @@ export async function prefillContractFields(
   // Profil tidak punya kolom cabang. Cabang ditebak dari nama jabatan bila
   // menyebut cabang; selain itu dikosongkan agar admin memilih (jangan isi
   // nama unit, nanti kalimat kontrak jadi "Haengbocake Haengbocake").
-  const cabang = inferBranchFromText(`${p.position ?? ""} ${p.job_role ?? ""}`);
+  const cabang =
+    inferBranchFromText(`${p.position ?? ""} ${p.job_role ?? ""}`) ||
+    (await inferBranchFromAttendance(db, userId, bu));
   const fields: ContractFields = {
     nomor,
     hari: wib({ weekday: "long" }),
@@ -495,7 +558,7 @@ export async function bulkIssueEmploymentContracts(input: {
   const ids = rows.map((r) => r.userId);
   const { data: profsRaw } = await db
     .from("profiles" as never)
-    .select("id, full_name, whatsapp_number, first_day_of_work")
+    .select("id, full_name, whatsapp_number, first_day_of_work, job_role, position")
     .in("id", ids);
   const profById = new Map(
     ((profsRaw ?? []) as unknown as {
@@ -503,6 +566,8 @@ export async function bulkIssueEmploymentContracts(input: {
       full_name: string | null;
       whatsapp_number: string | null;
       first_day_of_work: string | null;
+      job_role: string | null;
+      position: string | null;
     }[]).map((p) => [p.id, p])
   );
 
@@ -522,7 +587,12 @@ export async function bulkIssueEmploymentContracts(input: {
       tempat_lahir: "",
       tgl_lahir: "",
       alamat: "",
-      jabatan: common.jabatan?.trim() || "",
+      // Kosong di form = jabatan di profil masing-masing (job_role dulu).
+      jabatan:
+        common.jabatan?.trim() ||
+        profById.get(r.userId)?.job_role ||
+        profById.get(r.userId)?.position ||
+        "",
       cabang: r.cabang.trim(),
       // Kosong di form = pakai tanggal mulai kerja di akun masing-masing.
       tgl_mulai:

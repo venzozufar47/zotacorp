@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
+import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import {
   getEmployerSignatureStatus,
   listContractTemplates,
@@ -24,11 +25,12 @@ export default async function AdminEmploymentContractsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [templates, contracts, employerSignatures, { data: empRaw }] =
+  const [templates, contracts, employerSignatures, businessUnits, { data: empRaw }] =
     await Promise.all([
       listContractTemplates(),
       listEmploymentContracts(),
       getEmployerSignatureStatus(),
+      listBusinessUnits(),
       supabase
         .from("profiles")
         .select("id, full_name, business_unit, role, is_active")
@@ -72,6 +74,7 @@ export default async function AdminEmploymentContractsPage() {
         contracts={contracts}
         employees={employees}
         businessUnits={buNames}
+        rolesByBu={Object.fromEntries(businessUnits.map((b) => [b.name, b.roles]))}
         employerSignatures={employerSignatures}
       />
     </div>

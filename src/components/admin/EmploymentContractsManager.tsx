@@ -42,6 +42,7 @@ import {
 } from "@/lib/actions/employment-contracts.actions";
 import { contractNomorSurat } from "@/lib/employment-contracts/markdown";
 import {
+  BRANCH_OPTIONS,
   CONTRACT_FIELD_DEFS,
   CONTRACT_STATUS_LABELS,
   contractNeedsSignature,
@@ -77,12 +78,15 @@ export function EmploymentContractsManager({
   contracts,
   employees,
   businessUnits,
+  rolesByBu,
   employerSignatures,
 }: {
   templates: EmploymentContractTemplate[];
   contracts: ContractListRow[];
   employees: ContractEmployee[];
   businessUnits: string[];
+  /** Daftar jabatan per business unit (untuk dropdown Jabatan). */
+  rolesByBu: Record<string, string[]>;
   employerSignatures: Record<string, EmployerSignatureStatus>;
 }) {
   const [tab, setTab] = useState<"templates" | "contracts" | "archive">("contracts");
@@ -124,6 +128,7 @@ export function EmploymentContractsManager({
         <ContractsTab
           archivedView
           templates={templates}
+          rolesByBu={rolesByBu}
           contracts={archivedContracts}
           employees={employees}
           businessUnits={businessUnits}
@@ -132,6 +137,7 @@ export function EmploymentContractsManager({
       ) : (
         <ContractsTab
           templates={templates}
+          rolesByBu={rolesByBu}
           contracts={activeContracts}
           employees={employees}
           businessUnits={businessUnits}
@@ -371,6 +377,7 @@ function TemplatesTab({
 
 function ContractsTab({
   templates,
+  rolesByBu,
   contracts,
   employees,
   businessUnits,
@@ -378,6 +385,7 @@ function ContractsTab({
   archivedView = false,
 }: {
   templates: EmploymentContractTemplate[];
+  rolesByBu: Record<string, string[]>;
   contracts: ContractListRow[];
   employees: ContractEmployee[];
   businessUnits: string[];
@@ -630,6 +638,8 @@ function ContractsTab({
         <ContractFormModal
           mode="issue"
           employees={employees}
+          templates={templates}
+          rolesByBu={rolesByBu}
           onClose={() => setIssuing(false)}
         />
       )}
@@ -637,6 +647,8 @@ function ContractsTab({
         <ContractFormModal
           mode="edit"
           contract={editing}
+          templates={templates}
+          rolesByBu={rolesByBu}
           onClose={() => setEditing(null)}
         />
       )}
@@ -645,6 +657,7 @@ function ContractsTab({
           employees={employees}
           businessUnits={businessUnits}
           templates={templates}
+          rolesByBu={rolesByBu}
           onClose={() => setBatching(false)}
         />
       )}
@@ -658,6 +671,8 @@ function ContractsTab({
         <ContractFormModal
           mode="issue"
           employees={employees}
+          templates={templates}
+          rolesByBu={rolesByBu}
           seed={{
             // Salin isian sumber (nomor + identitas dikosongkan; nomor
             // di-isi ulang otomatis — preview saat modal terbuka).
@@ -713,15 +728,72 @@ function StatusBadge({
 
 // ── Issue / edit modal ────────────────────────────────────────────────
 
+/**
+ * Dropdown dengan opsi "Lainnya…" untuk mengetik sendiri. Nilai di luar daftar
+ * (mis. jabatan gabungan dari profil, "Baker & Kepala Produksi") otomatis
+ * tampil sebagai isian teks agar tidak hilang.
+ */
+function SelectOrText({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+}) {
+  const opts = Array.from(new Set(options.map((o) => o.trim()).filter(Boolean)));
+  const [custom, setCustom] = useState(false);
+  const showText = custom || (value.trim() !== "" && !opts.includes(value));
+  return (
+    <div className="space-y-1">
+      <select
+        value={showText ? "__custom" : value}
+        onChange={(e) => {
+          if (e.target.value === "__custom") {
+            setCustom(true);
+            return;
+          }
+          setCustom(false);
+          onChange(e.target.value);
+        }}
+        className={INPUT}
+      >
+        <option value="">— pilih —</option>
+        {opts.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+        <option value="__custom">Lainnya (ketik sendiri)…</option>
+      </select>
+      {showText && (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={INPUT}
+          placeholder={placeholder}
+        />
+      )}
+    </div>
+  );
+}
+
 function ContractFormModal({
   mode,
   employees,
+  templates,
+  rolesByBu,
   contract,
   seed,
   onClose,
 }: {
   mode: "issue" | "edit";
   employees?: ContractEmployee[];
+  templates: EmploymentContractTemplate[];
+  rolesByBu: Record<string, string[]>;
   contract?: ContractListRow;
   /** Saat duplikat: pra-isi fields + lampiran dari kontrak sumber. */
   seed?: {
@@ -833,15 +905,24 @@ function ContractFormModal({
     });
   };
 
+  // Unit bisnis kontrak ini: dari karyawan yang dipilih / kontrak yang diedit.
+  const formBu = pickedBu || contract?.business_unit || seed?.businessUnit || "";
+  // Tanggal berakhir hanya relevan untuk template berjangka (PKWT) yang
+  // memakai {tgl_berakhir}; PKWTT (Haengbocake) menyembunyikannya.
+  const needsEndDate = (
+    templates.find((t) => t.business_unit === formBu)?.body_markdown ?? ""
+  ).includes("{tgl_berakhir}");
+
   const groups = useMemo(() => {
     const m = new Map<string, typeof CONTRACT_FIELD_DEFS>();
     for (const d of CONTRACT_FIELD_DEFS) {
+      if (d.key === "tgl_berakhir" && !needsEndDate) continue;
       const arr = m.get(d.group) ?? [];
       arr.push(d);
       m.set(d.group, arr);
     }
     return Array.from(m.entries());
-  }, []);
+  }, [needsEndDate]);
 
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -935,6 +1016,28 @@ function ContractFormModal({
                               value={fields.gaji_terbilang ?? ""}
                               readOnly
                               className={`${INPUT} bg-muted/40 text-muted-foreground`}
+                            />
+                          </Field>
+                        );
+                      }
+                      // Jabatan & cabang: dropdown (terisi otomatis dari profil /
+                      // lokasi absen, bisa diganti).
+                      if (d.key === "jabatan" || d.key === "cabang") {
+                        return (
+                          <Field key={d.key} label={d.label}>
+                            <SelectOrText
+                              value={fields[d.key] ?? ""}
+                              onChange={(v) =>
+                                setFields((f) => ({ ...f, [d.key]: v }))
+                              }
+                              options={
+                                d.key === "jabatan"
+                                  ? (rolesByBu[formBu] ?? [])
+                                  : (BRANCH_OPTIONS[formBu] ?? [])
+                              }
+                              placeholder={
+                                d.key === "jabatan" ? "Ketik jabatan" : "Ketik cabang"
+                              }
                             />
                           </Field>
                         );
@@ -1129,11 +1232,13 @@ function BatchIssueModal({
   employees,
   businessUnits,
   templates,
+  rolesByBu,
   onClose,
 }: {
   employees: ContractEmployee[];
   businessUnits: string[];
   templates: EmploymentContractTemplate[];
+  rolesByBu: Record<string, string[]>;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -1245,11 +1350,12 @@ function BatchIssueModal({
               Data umum (sama untuk semua)
             </h4>
             <div className="grid sm:grid-cols-2 gap-2">
-              <Field label="Jabatan/posisi">
-                <input
+              <Field label="Jabatan/posisi (kosong = jabatan di profil masing-masing)">
+                <SelectOrText
                   value={common.jabatan}
-                  onChange={(e) => setCommon((c) => ({ ...c, jabatan: e.target.value }))}
-                  className={INPUT}
+                  onChange={(v) => setCommon((c) => ({ ...c, jabatan: v }))}
+                  options={rolesByBu[bu] ?? []}
+                  placeholder="Ketik jabatan"
                 />
               </Field>
               <Field label="Tanggal mulai (kosong = tanggal mulai kerja di akun masing-masing)">
@@ -1324,11 +1430,6 @@ function BatchIssueModal({
             <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
               Karyawan (berbeda tiap baris)
             </h4>
-            <datalist id="contract-branch-options">
-              {["Pare", "Semarang", "Tlogosari", "Tembalang", "Jebres"].map((b) => (
-                <option key={b} value={b} />
-              ))}
-            </datalist>
             <div className="space-y-2">
               {rows.map((r, i) => {
                 const tb = terbilang((r.gaji || "").replace(/[^\d]/g, ""));
@@ -1349,12 +1450,11 @@ function BatchIssueModal({
                         </option>
                       ))}
                     </select>
-                    <input
+                    <SelectOrText
                       value={r.cabang}
-                      onChange={(e) => setRow(i, { cabang: e.target.value })}
-                      className={INPUT}
+                      onChange={(v) => setRow(i, { cabang: v })}
+                      options={BRANCH_OPTIONS[bu] ?? []}
                       placeholder="Cabang"
-                      list="contract-branch-options"
                     />
                     <div>
                       <input
