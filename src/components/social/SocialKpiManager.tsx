@@ -5,7 +5,7 @@ import { ClipboardList, LineChart as LineChartIcon, Target, Users } from "lucide
 import { cn } from "@/lib/utils";
 import type { ReportEditorsData, SocialReportPage } from "@/lib/actions/social-report.actions";
 import type { SocialBrandCard } from "@/lib/actions/social-scorecard.actions";
-import { SocialCompletenessGrid, SocialReportForm } from "./SocialReportForm";
+import { SocialReportWorkspace } from "./SocialReportForm";
 import { SocialWeeklyChartsLazy } from "./SocialWeeklyChartsLazy";
 import { SocialTargetsEditor } from "./SocialTargetsEditor";
 import { SocialEditorsPanel } from "./SocialEditorsPanel";
@@ -52,15 +52,7 @@ export function SocialKpiManager({
         ))}
       </div>
 
-      {tab === "input" && (
-        <div className="space-y-6">
-          <SocialReportForm page={page} basePath="/admin/social" />
-          <div className="space-y-2">
-            <h3 className="font-display text-[14px] font-bold">Kelengkapan 8 minggu terakhir</h3>
-            <SocialCompletenessGrid page={page} basePath="/admin/social" />
-          </div>
-        </div>
-      )}
+      {tab === "input" && <SocialReportWorkspace page={page} basePath="/admin/social" />}
       {tab === "bagan" && <SocialWeeklyChartsLazy page={page} />}
       {tab === "target" &&
         (targets ? <SocialTargetsEditor brands={targets.brands} month={targets.month} /> : <p className="text-sm text-destructive">Data target tidak tersedia.</p>)}

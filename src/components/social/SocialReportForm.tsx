@@ -350,49 +350,135 @@ function Num({
   );
 }
 
-/** Kisi kelengkapan: minggu terakhir × akun, ✓ = sudah ada laporan. Klik sel untuk melompat ke minggu itu. Kolom minggu menempel saat digulir. */
-export function SocialCompletenessGrid({ page, basePath, weeks = 8 }: { page: SocialReportPage; basePath: string; weeks?: number }) {
+/** Berapa minggu ke belakang yang bisa diisi/dilengkapi (±6 bulan). */
+export const REPORT_WEEKS_BACK = 26;
+
+/**
+ * Ruang kerja laporan mingguan: daftar minggu di sisi kiri, form minggu terpilih di kanan (di HP: daftar di atas, form
+ * di bawah). Minggu yang BELUM lengkap ada di kotak yang bisa digulir; yang sudah lengkap diarsipkan (terlipat) supaya
+ * halaman tidak memanjang. Tiap baris menunjukkan titik status per akun dan jumlah akun yang sudah terisi.
+ */
+export function SocialReportWorkspace({ page, basePath, weeks = REPORT_WEEKS_BACK }: { page: SocialReportPage; basePath: string; weeks?: number }) {
   const router = useRouter();
   const accounts = page.brands.flatMap((b) => b.accounts.map((a) => ({ ...a, brand: b.label })));
+  const total = accounts.length;
   const done = new Set(page.history.map((h) => `${h.accountId}|${h.weekStart}`));
-  const list = Array.from({ length: weeks }, (_, i) => addDays(page.latestWeekStart, -7 * i));
+  const rows = Array.from({ length: weeks }, (_, i) => {
+    const week = addDays(page.latestWeekStart, -7 * i);
+    const flags = accounts.map((a) => done.has(`${a.id}|${week}`));
+    return { week, flags, count: flags.filter(Boolean).length };
+  });
+  const pending = rows.filter((r) => r.count < total);
+  const archived = rows.filter((r) => r.count >= total);
+  const go = (week: string) => router.push(`${basePath}?week=${week}`);
+  // Minggu kosong berikutnya: yang lebih lama dari minggu terpilih, atau yang terbaru bila sudah di ujung.
+  const nextPending = pending.find((r) => r.week < page.weekStart) ?? pending.find((r) => r.week !== page.weekStart);
+
+  const rowProps = (r: (typeof rows)[number]) => ({
+    row: r,
+    total,
+    selected: r.week === page.weekStart,
+    labels: accounts.map((a) => `${a.brand} ${PLATFORM_SHORT[a.platform]}`),
+    onPick: () => go(r.week),
+  });
+
   return (
-    <div className="overflow-x-auto rounded-2xl border-2 border-foreground bg-card">
-      <table className="w-full min-w-[480px] text-[12px]">
-        <thead>
-          <tr className="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground">
-            <th className="sticky left-0 z-10 bg-card px-3 py-2 font-semibold">Minggu</th>
-            {accounts.map((a) => (
-              <th key={a.id} className="px-1 py-2 text-center font-semibold" title={`${a.brand} · @${a.handle}`}>
-                <div className="max-w-[64px] truncate">{a.brand}</div>
-                <div className="font-normal normal-case">{PLATFORM_SHORT[a.platform]}</div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((w) => (
-            <tr key={w} className="border-b border-border/60 last:border-0">
-              <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-3 py-1 font-medium">{weekLabel(w).replace(/ \d{4}$/, "")}</td>
-              {accounts.map((a) => {
-                const ok = done.has(`${a.id}|${w}`);
-                return (
-                  <td key={a.id} className="px-1 py-1 text-center">
-                    <button
-                      type="button"
-                      onClick={() => router.push(`${basePath}?week=${w}`)}
-                      className={cn("size-9 rounded-lg text-[13px] font-bold", ok ? "bg-success/15 text-success" : "bg-warning/15 text-warning")}
-                      aria-label={`${a.brand} ${PLATFORM_LABEL[a.platform]} ${weekLabel(w)}: ${ok ? "terisi" : "belum"}`}
-                    >
-                      {ok ? "✓" : "–"}
-                    </button>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:items-start">
+      <aside className="space-y-3 lg:sticky lg:top-4">
+        <div>
+          <div className="mb-1 flex items-center justify-between text-[11.5px] text-muted-foreground">
+            <span>
+              {archived.length} dari {weeks} minggu lengkap
+            </span>
+            {pending.length === 0 && <span className="font-semibold text-success">Semua lengkap ✓</span>}
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={archived.length} aria-valuemin={0} aria-valuemax={weeks}>
+            <div className="h-full rounded-full bg-success transition-all" style={{ width: `${(archived.length / weeks) * 100}%` }} />
+          </div>
+        </div>
+
+        <section className="space-y-1.5">
+          <h3 className="font-display text-[13px] font-bold">Perlu diisi ({pending.length} minggu)</h3>
+          {pending.length === 0 ? (
+            <p className="rounded-2xl border-2 border-dashed border-border px-3 py-4 text-center text-[12.5px] text-muted-foreground">
+              Semua minggu ({weeks} terakhir) sudah lengkap.
+            </p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto overscroll-contain rounded-2xl border-2 border-foreground bg-card">
+              <ul className="divide-y divide-border/60">
+                {pending.map((r) => (
+                  <li key={r.week}>
+                    <WeekRow {...rowProps(r)} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        {archived.length > 0 && (
+          <details className="group rounded-2xl border border-border bg-card">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-[12.5px] font-semibold">
+              <span>Arsip · {archived.length} minggu lengkap</span>
+              <ChevronDown size={15} className="text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="max-h-60 overflow-y-auto overscroll-contain border-t border-border/60">
+              <ul className="divide-y divide-border/60">
+                {archived.map((r) => (
+                  <li key={r.week}>
+                    <WeekRow {...rowProps(r)} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        )}
+      </aside>
+
+      <div className="min-w-0 space-y-3">
+        {nextPending && (
+          <button type="button" onClick={() => go(nextPending.week)} className="text-[12.5px] font-semibold text-primary hover:underline">
+            Lanjut ke minggu kosong berikutnya ({dm(nextPending.week)}) →
+          </button>
+        )}
+        <SocialReportForm page={page} basePath={basePath} />
+      </div>
     </div>
+  );
+}
+
+function WeekRow({
+  row,
+  total,
+  selected,
+  labels,
+  onPick,
+}: {
+  row: { week: string; flags: boolean[]; count: number };
+  total: number;
+  selected: boolean;
+  labels: string[];
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      aria-current={selected || undefined}
+      className={cn("flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] transition", selected ? "bg-primary/10" : "hover:bg-muted/60")}
+    >
+      <span className={cn("min-w-0 flex-1 truncate", selected ? "font-bold" : "font-medium")}>{weekLabel(row.week).replace(/ \d{4}$/, "")}</span>
+      <span className="flex items-center gap-1" aria-hidden>
+        {row.flags.map((ok, i) => (
+          <span key={i} title={`${labels[i]}: ${ok ? "terisi" : "belum"}`} className={cn("size-2.5 rounded-full", ok ? "bg-success" : "bg-warning")} />
+        ))}
+      </span>
+      <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+        {row.count}/{total}
+      </span>
+      <span className="sr-only">
+        {row.count >= total ? "lengkap" : "belum lengkap"}
+      </span>
+    </button>
   );
 }
