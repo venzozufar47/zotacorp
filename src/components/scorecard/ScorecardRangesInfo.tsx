@@ -22,12 +22,15 @@ export function ScorecardRangesInfo({
   ranges,
   note,
   settings,
+  onSolid,
 }: {
   label: string;
   ranges?: { band: ScorecardBand; text: string }[];
   note?: string;
   /** Pintasan ke halaman tempat target ini diatur (hanya diberikan di halaman owner). */
   settings?: { href: string; label: string };
+  /** Tombol berada di atas ubin berwarna penuh: ikut warna teks ubin, bukan abu-abu. */
+  onSolid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
@@ -62,7 +65,11 @@ export function ScorecardRangesInfo({
         aria-expanded={open}
         // Mouse: hover sudah membuka, klik jangan menutupnya lagi. Sentuh/keyboard: ketuk membuka-menutup.
         onClick={(e) => setOpen((o) => ((e.nativeEvent as PointerEvent).pointerType === "mouse" ? true : !o))}
-        className="grid size-6 place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        className={
+          onSolid
+            ? "grid size-6 place-items-center rounded-full text-current opacity-80 transition hover:bg-black/15 hover:opacity-100"
+            : "grid size-6 place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        }
       >
         <Info size={15} />
       </button>
