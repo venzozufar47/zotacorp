@@ -495,6 +495,8 @@ export interface BulkContractRow {
   tglBerakhir: string;
   /** Waktu kerja / shift — berbeda tiap karyawan (override lampiran.shift). */
   shift?: string;
+  /** Jabatan per karyawan. Kosong → jabatan umum batch → jabatan di profil. */
+  jabatan?: string;
 }
 
 /**
@@ -588,8 +590,9 @@ export async function bulkIssueEmploymentContracts(input: {
       tempat_lahir: "",
       tgl_lahir: "",
       alamat: "",
-      // Kosong di form = jabatan di profil masing-masing (job_role dulu).
+      // Urutan: jabatan di baris → jabatan umum batch → profil (job_role dulu).
       jabatan:
+        r.jabatan?.trim() ||
         common.jabatan?.trim() ||
         profById.get(r.userId)?.job_role ||
         profById.get(r.userId)?.position ||

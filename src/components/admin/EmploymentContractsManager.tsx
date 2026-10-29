@@ -907,22 +907,26 @@ function ContractFormModal({
 
   // Unit bisnis kontrak ini: dari karyawan yang dipilih / kontrak yang diedit.
   const formBu = pickedBu || contract?.business_unit || seed?.businessUnit || "";
-  // Tanggal berakhir hanya relevan untuk template berjangka (PKWT) yang
-  // memakai {tgl_berakhir}; PKWTT (Haengbocake) menyembunyikannya.
-  const needsEndDate = (
-    templates.find((t) => t.business_unit === formBu)?.body_markdown ?? ""
-  ).includes("{tgl_berakhir}");
+  // Hanya tampilkan isian yang benar-benar dipakai badan kontrak ({token} ada
+  // di teksnya): mis. tanggal berakhir hanya untuk PKWT, cara bayar hanya bila
+  // template tidak menuliskannya langsung. Edit memakai badan kontrak yang
+  // sudah terbit; penerbitan baru memakai template unitnya. Tanpa template
+  // (belum diketahui) semua isian tampil.
+  const templateBody =
+    contract?.body_markdown ??
+    templates.find((t) => t.business_unit === formBu)?.body_markdown ??
+    "";
 
   const groups = useMemo(() => {
     const m = new Map<string, typeof CONTRACT_FIELD_DEFS>();
     for (const d of CONTRACT_FIELD_DEFS) {
-      if (d.key === "tgl_berakhir" && !needsEndDate) continue;
+      if (templateBody && !templateBody.includes(`{${d.key}}`)) continue;
       const arr = m.get(d.group) ?? [];
       arr.push(d);
       m.set(d.group, arr);
     }
     return Array.from(m.entries());
-  }, [needsEndDate]);
+  }, [templateBody]);
 
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -1248,13 +1252,28 @@ function BatchIssueModal({
   );
   // Tanggal berakhir hanya relevan untuk template berjangka (PKWT) yang
   // memakai {tgl_berakhir}; template PKWTT (Haengbocake) tidak memakainya.
-  const needsEndDate = useMemo(
-    () =>
-      (templates.find((t) => t.business_unit === bu)?.body_markdown ?? "").includes(
-        "{tgl_berakhir}"
-      ),
+  const tplBody = useMemo(
+    () => templates.find((t) => t.business_unit === bu)?.body_markdown ?? "",
     [templates, bu]
   );
+  const needsEndDate = tplBody.includes("{tgl_berakhir}");
+  // Isian data umum hanya tampil bila dipakai template unit ini (tanpa
+  // template: semua tampil).
+  const uses = (key: string) => !tplBody || tplBody.includes(`{${key}}`);
+  // Lampiran 1 (dan shift per karyawan) hanya untuk template yang merujuknya
+  // (Yeobo). Template tanpa lampiran (Haengbocake) tidak menampilkannya.
+  const usesLampiran = !tplBody || /Lampiran\s+1/i.test(tplBody);
+  // Kolom tabel karyawan menyesuaikan: karyawan, jabatan, cabang, gaji,
+  // [tgl berakhir], [shift], hapus.
+  const rowGrid = [
+    "1.3fr",
+    "1.2fr",
+    "0.9fr",
+    "0.9fr",
+    ...(needsEndDate ? ["0.9fr"] : []),
+    ...(usesLampiran ? ["1.1fr"] : []),
+    "28px",
+  ].join(" ");
   const [common, setCommon] = useState<BatchCommon>({
     jabatan: "",
     tgl_mulai: "",
@@ -1264,7 +1283,7 @@ function BatchIssueModal({
     cara_bayar: "transfer ke rekening Karyawan",
   });
   const [rows, setRows] = useState<BulkContractRow[]>([
-    { userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "" },
+    { userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "", jabatan: "" },
   ]);
   // Lampiran 1 (jobdesc) bersama untuk semua kontrak di batch ini.
   const [lampiran, setLampiran] = useState<ContractLampiran>(emptyLampiran());
@@ -1279,6 +1298,8 @@ function BatchIssueModal({
       const res = await prefillContractFields(userId);
       if (res.ok && res.data) {
         setRow(i, {
+          // Jabatan umum batch (bila diisi) menang; selain itu dari profil.
+          jabatan: common.jabatan.trim() || (res.data.fields.jabatan ?? ""),
           cabang: res.data.fields.cabang ?? "",
           gaji: (res.data.fields.gaji_nominal ?? "").replace(/[^\d]/g, ""),
         });
@@ -1324,17 +1345,24 @@ function BatchIssueModal({
         </div>
         <div className="p-4 space-y-4 max-h-[72vh] overflow-y-auto">
           <p className="text-xs text-muted-foreground">
-            Nomor kontrak otomatis berurutan. Yang berbeda tiap karyawan: cabang,
-            gaji (terbilang otomatis){needsEndDate ? ", tanggal berakhir" : ""}.
-            Sisanya di bawah ini berlaku untuk semua. Identitas pribadi dan foto
-            KTP diisi karyawan saat menandatangani.
+            Nomor kontrak otomatis berurutan. Yang berbeda tiap karyawan: jabatan
+            (terisi dari profil), cabang (terisi dari lokasi absen), gaji (terbilang
+            otomatis){needsEndDate ? ", tanggal berakhir" : ""}
+            {usesLampiran ? ", shift" : ""}. Sisanya di bawah ini berlaku untuk
+            semua. Identitas pribadi dan foto KTP diisi karyawan saat menandatangani.
           </p>
 
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium">Business Unit:</label>
             <select
               value={bu}
-              onChange={(e) => setBu(e.target.value)}
+              onChange={(e) => {
+                setBu(e.target.value);
+                // Daftar karyawan, jabatan, dan cabang bergantung pada unit —
+                // baris lama (unit sebelumnya) dikosongkan agar tidak tercampur.
+                setRows([{ userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "", jabatan: "" }]);
+                setCommon((c) => ({ ...c, jabatan: "" }));
+              }}
               className={`${INPUT} w-auto`}
             >
               {businessUnits.map((b) => (
@@ -1350,10 +1378,15 @@ function BatchIssueModal({
               Data umum (sama untuk semua)
             </h4>
             <div className="grid sm:grid-cols-2 gap-2">
-              <Field label="Jabatan/posisi (kosong = jabatan di profil masing-masing)">
+              <Field label="Samakan jabatan semua baris (opsional; kosong = jabatan tiap karyawan dari profil)">
                 <SelectOrText
                   value={common.jabatan}
-                  onChange={(v) => setCommon((c) => ({ ...c, jabatan: v }))}
+                  onChange={(v) => {
+                    setCommon((c) => ({ ...c, jabatan: v }));
+                    // Memilih jabatan umum menyeragamkan semua baris; masih
+                    // bisa diubah per baris di tabel bawah.
+                    if (v) setRows((rs) => rs.map((r) => ({ ...r, jabatan: v })));
+                  }}
                   options={rolesByBu[bu] ?? []}
                   placeholder="Ketik jabatan"
                 />
@@ -1373,33 +1406,40 @@ function BatchIssueModal({
                   className={INPUT}
                 />
               </Field>
-              <Field label="Komponen upah">
-                <input
-                  value={common.komponen_upah}
-                  onChange={(e) => setCommon((c) => ({ ...c, komponen_upah: e.target.value }))}
-                  className={INPUT}
-                />
-              </Field>
-              <Field label="Periode bayar">
-                <input
-                  value={common.periode_bayar}
-                  onChange={(e) => setCommon((c) => ({ ...c, periode_bayar: e.target.value }))}
-                  className={INPUT}
-                />
-              </Field>
-              <Field label="Cara bayar">
-                <input
-                  value={common.cara_bayar}
-                  onChange={(e) => setCommon((c) => ({ ...c, cara_bayar: e.target.value }))}
-                  className={INPUT}
-                />
-              </Field>
+              {uses("komponen_upah") && (
+                <Field label="Komponen upah">
+                  <input
+                    value={common.komponen_upah}
+                    onChange={(e) => setCommon((c) => ({ ...c, komponen_upah: e.target.value }))}
+                    className={INPUT}
+                  />
+                </Field>
+              )}
+              {uses("periode_bayar") && (
+                <Field label="Periode bayar">
+                  <input
+                    value={common.periode_bayar}
+                    onChange={(e) => setCommon((c) => ({ ...c, periode_bayar: e.target.value }))}
+                    className={INPUT}
+                  />
+                </Field>
+              )}
+              {uses("cara_bayar") && (
+                <Field label="Cara bayar">
+                  <input
+                    value={common.cara_bayar}
+                    onChange={(e) => setCommon((c) => ({ ...c, cara_bayar: e.target.value }))}
+                    className={INPUT}
+                  />
+                </Field>
+              )}
             </div>
           </div>
 
+          {usesLampiran && (
           <details className="space-y-3 border-t border-border pt-3">
             <summary className="cursor-pointer text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              Lampiran 1 — Deskripsi Pekerjaan (opsional; kosongkan bila kontrak tanpa lampiran)
+              Lampiran 1 — Deskripsi Pekerjaan (sama untuk semua)
             </summary>
             <ListEditor
               label="B. Tujuan Posisi"
@@ -1425,18 +1465,32 @@ function BatchIssueModal({
               F. Waktu Kerja / Shift diisi per karyawan di tabel bawah.
             </p>
           </details>
+          )}
 
           <div className="border-t border-border pt-3">
             <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
               Karyawan (berbeda tiap baris)
             </h4>
             <div className="space-y-2">
+              <div
+                className="grid gap-1.5 px-0.5 text-[11px] font-semibold text-muted-foreground"
+                style={{ gridTemplateColumns: rowGrid }}
+              >
+                <span>Karyawan</span>
+                <span>Jabatan</span>
+                <span>Cabang</span>
+                <span>Gaji (Rp)</span>
+                {needsEndDate && <span>Tgl berakhir</span>}
+                {usesLampiran && <span>Shift / waktu kerja</span>}
+                <span />
+              </div>
               {rows.map((r, i) => {
                 const tb = terbilang((r.gaji || "").replace(/[^\d]/g, ""));
                 return (
                   <div
                     key={i}
-                    className="grid grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_1.1fr_28px] gap-1.5 items-start"
+                    className="grid gap-1.5 items-start"
+                    style={{ gridTemplateColumns: rowGrid }}
                   >
                     <select
                       value={r.userId}
@@ -1444,12 +1498,20 @@ function BatchIssueModal({
                       className={INPUT}
                     >
                       <option value="">— karyawan —</option>
-                      {employees.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.full_name}
-                        </option>
-                      ))}
+                      {employees
+                        .filter((e) => !bu || e.business_unit === bu)
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.full_name}
+                          </option>
+                        ))}
                     </select>
+                    <SelectOrText
+                      value={r.jabatan ?? ""}
+                      onChange={(v) => setRow(i, { jabatan: v })}
+                      options={rolesByBu[bu] ?? []}
+                      placeholder="Jabatan"
+                    />
                     <SelectOrText
                       value={r.cabang}
                       onChange={(v) => setRow(i, { cabang: v })}
@@ -1472,19 +1534,22 @@ function BatchIssueModal({
                         </span>
                       )}
                     </div>
-                    <input
-                      value={r.tglBerakhir}
-                      onChange={(e) => setRow(i, { tglBerakhir: e.target.value })}
-                      className={INPUT}
-                      placeholder={needsEndDate ? "Tgl berakhir" : "Tgl berakhir (tidak dipakai)"}
-                      disabled={!needsEndDate}
-                    />
-                    <input
-                      value={r.shift ?? ""}
-                      onChange={(e) => setRow(i, { shift: e.target.value })}
-                      className={INPUT}
-                      placeholder="Shift / waktu kerja"
-                    />
+                    {needsEndDate && (
+                      <input
+                        value={r.tglBerakhir}
+                        onChange={(e) => setRow(i, { tglBerakhir: e.target.value })}
+                        className={INPUT}
+                        placeholder="Tgl berakhir"
+                      />
+                    )}
+                    {usesLampiran && (
+                      <input
+                        value={r.shift ?? ""}
+                        onChange={(e) => setRow(i, { shift: e.target.value })}
+                        className={INPUT}
+                        placeholder="Shift / waktu kerja"
+                      />
+                    )}
                     <button
                       type="button"
                       onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}
@@ -1500,7 +1565,7 @@ function BatchIssueModal({
             <button
               type="button"
               onClick={() =>
-                setRows((rs) => [...rs, { userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "" }])
+                setRows((rs) => [...rs, { userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "", jabatan: common.jabatan }])
               }
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
