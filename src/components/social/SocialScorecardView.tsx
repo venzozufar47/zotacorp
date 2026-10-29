@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { TrendChart } from "@/components/admin/scorecard/ScorecardBits";
 import { METRIC_STATUS_LABEL, STATUS_ICON, STATUS_TEXT, STATUS_TONE } from "@/components/admin/scorecard/format";
 import type { BrandMetricView, SocialScorecardData } from "@/lib/actions/social-scorecard.actions";
+import { formatDateID } from "@/lib/utils/date-formats";
 
 const nf0 = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
 const nf1 = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -76,6 +77,24 @@ export function SocialScorecardView({ data, monthOptions }: { data: SocialScorec
   );
 }
 
+/** Keterangan di bawah angka Omset: rincian per cabang (gabungan) dan penanda bulan yang belum selesai. */
+function OmsetDetail({ m }: { m: BrandMetricView }) {
+  const rincian = m.inputs.rincian_cabang as { cabang: string; rp: number }[] | undefined;
+  const berjalan = m.inputs.bulan_berjalan === true;
+  const sampai = typeof m.inputs.data_sampai === "string" ? (m.inputs.data_sampai as string) : null;
+  if (!rincian?.length && !berjalan) return null;
+  return (
+    <div className="mt-1 space-y-0.5 text-[10.5px] leading-snug text-muted-foreground">
+      {rincian && rincian.length > 0 && (
+        <p>
+          Gabungan {rincian.length} cabang: {rincian.map((r) => `${r.cabang} ${fmtShort(r.rp, "rupiah")}`).join(" · ")}
+        </p>
+      )}
+      {berjalan && <p className="font-semibold text-warning-foreground">Bulan belum selesai{sampai ? `, data sampai ${formatDateID(sampai).replace(/ \d{4}$/, "")}` : ""}</p>}
+    </div>
+  );
+}
+
 function MetricCard({ m, months }: { m: BrandMetricView; months: string[] }) {
   return (
     <div className="rounded-xl border border-border/70 bg-card p-3">
@@ -96,6 +115,7 @@ function MetricCard({ m, months }: { m: BrandMetricView; months: string[] }) {
       <div className="mt-1.5">
         <span className={cn("font-display text-[24px] font-extrabold leading-none tabular-nums", STATUS_TEXT[m.status])}>{fmt(m.actual, m.kind)}</span>
       </div>
+      <OmsetDetail m={m} />
       {m.note && m.status === "incomplete" && <div className="mt-1 text-[10.5px] text-muted-foreground">{m.note}</div>}
       <div className="mt-2">
         <TrendChart values={m.spark} months={months} status={m.status} green={null} red={null} />

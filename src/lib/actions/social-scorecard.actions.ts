@@ -125,6 +125,14 @@ function yeoboMonthRevenue(m: YeoboPnLMonth | undefined): number | null {
   return total;
 }
 
+/** Rincian omset per cabang Yeobo (urut nama) untuk satu bulan. */
+function yeoboBranchRevenue(m: YeoboPnLMonth | undefined): { cabang: string; rp: number }[] {
+  if (!m) return [];
+  return Object.entries(m.byBranch)
+    .map(([cabang, br]) => ({ cabang, rp: Math.round(classifyCategories(categoryRows(br.byCategory)).pnlRevenue) }))
+    .sort((a, b) => a.cabang.localeCompare(b.cabang));
+}
+
 // ───────────────────────────── Pembacaan ─────────────────────────────
 
 interface ConfigRow {
@@ -193,6 +201,21 @@ export async function getSocialScorecard(monthIso?: string | null): Promise<Acti
       needsYeobo ? fetchYeoboPnL(db, ym(first), ym(month)) : Promise.resolve(null),
     ]);
 
+    // Bulan berjalan: omset baru lengkap sampai tanggal data pendapatan terakhir yang masuk ke buku kas.
+    const monthInProgress = month === `${today.slice(0, 7)}-01`;
+    let yeoboDataUntil: string | null = null;
+    if (needsYeobo && monthInProgress) {
+      const last = await db
+        .from("cashflow_transactions" as never)
+        .select("transaction_date, cashflow_statements!inner(bank_accounts!inner(business_unit))")
+        .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
+        .in("category", ["Revenue", "Sales", "Other Revenue"])
+        .gt("credit", 0)
+        .order("transaction_date", { ascending: false })
+        .limit(1);
+      yeoboDataUntil = ((last.data ?? []) as unknown as { transaction_date: string }[])[0]?.transaction_date ?? null;
+    }
+
     const out: SocialBrandCard[] = [];
     for (const b of brands) {
       const brandAccounts = accounts.filter((a) => a.brand_id === b.id).map((a) => a.id as string);
@@ -242,7 +265,11 @@ export async function getSocialScorecard(monthIso?: string | null): Promise<Acti
           def.code === "omset"
             ? revFail.msg
               ? { catatan: `Omset belum bisa dihitung: ${revFail.msg}` }
-              : { sumber: spec?.kind === "yeobo" ? "Laporan laba-rugi Yeobo Space (semua cabang)" : usesPosRegime(month) ? `POS + custom cake (${spec && spec.kind === "haeng" ? spec.branch : "-"})` : "Laporan laba-rugi" }
+              : {
+                  sumber: spec?.kind === "yeobo" ? "Laporan laba-rugi Yeobo Space (semua cabang)" : usesPosRegime(month) ? `POS + custom cake (${spec && spec.kind === "haeng" ? spec.branch : "-"})` : "Laporan laba-rugi",
+                  ...(spec?.kind === "yeobo" ? { rincian_cabang: yeoboBranchRevenue(yeoboPnl?.months.find((x) => x.year === ym(month).year && x.month === ym(month).month)) } : {}),
+                  ...(monthInProgress ? { bulan_berjalan: true, ...(spec?.kind === "yeobo" && yeoboDataUntil ? { data_sampai: yeoboDataUntil } : {}) } : {}),
+                }
             : { minggu_terisi: weeksReported, akun_terisi: `${accountsReporting}/${brandAccounts.length}` };
         return {
           ...scored,
