@@ -46,7 +46,7 @@ export function ScorecardView({
           <div className="min-w-0">
             <p className="text-[13px] font-semibold text-destructive">Merah 2 minggu berturut-turut</p>
             <p className="text-[11.5px] leading-snug text-muted-foreground">
-              {scorecard.twoWeeksRedLabels.join(", ")}. Bawa rencana perbaikan satu halaman ke rapat mingguan.
+              {scorecard.twoWeeksRedLabels.join(", ")}. Bawa rencana perbaikan ke rapat harian/mingguan.
             </p>
           </div>
         </div>
