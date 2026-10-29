@@ -288,6 +288,12 @@ export default async function DashboardPage() {
         />
       )}
 
+      {/* Scorecard cabang — hal yang paling penting dilihat tiap hari, jadi tepat di bawah sapaan (di atas semua kartu lain).
+          Dihitung di luar jalur kritis lewat Suspense; skeleton menjaga tinggi supaya halaman tidak melompat. */}
+      <Suspense fallback={<ScorecardSectionSkeleton />}>
+        <ScorecardSection />
+      </Suspense>
+
       <ProfileCompletionCard missingSections={missingSections} />
 
       {/* Pengingat opname harian — hanya muncul untuk petugas pengadaan cabang yang memakai ritme harian. */}
@@ -717,11 +723,6 @@ export default async function DashboardPage() {
           {FEATURES.izin && <LeaveRequestDialog />}
         </div>
       </section>
-
-      {/* Scorecard cabang — selalu tampil, sesuai cabang masing-masing; dihitung di luar jalur kritis. */}
-      <Suspense fallback={<ScorecardSectionSkeleton />}>
-        <ScorecardSection />
-      </Suspense>
 
       <FloorTodayCard people={floorToday} />
     </div>

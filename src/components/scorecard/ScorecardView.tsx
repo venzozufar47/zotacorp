@@ -35,11 +35,11 @@ export function ScorecardView({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         {scorecard.metrics.map((m) => {
           const meta = BAND_META[m.band];
           return (
-            <Card key={m.key} className="relative overflow-visible">
+            <Card key={m.key} size="sm" className="relative overflow-visible">
               <CardHeader>
                 <CardTitle className="flex items-start justify-between gap-1 text-xs font-semibold text-muted-foreground">
                   <span>{m.label}</span>
