@@ -1502,11 +1502,26 @@ export async function findPosAccountForCurrentUser(): Promise<
 
 /** Rekening POS yang di-resolve dari cabang. `ledgerAccountId` ≠ null = rekening "wadah" (Mamaya): uang & shift
  *  dibukukan ke rekening itu (Semarang), bukan ke rekening ini. Pakai `ledgerAccountId ?? id` untuk gerbang shift. */
+async function ledgerName(id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const { data } = await createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+    .from("bank_accounts")
+    .select("account_name")
+    .eq("id", id)
+    .maybeSingle();
+  return data?.account_name ?? null;
+}
+
 export type PosAccountRef = {
   id: string;
   accountName: string;
   branch: string | null;
   ledgerAccountId: string | null;
+  /** Nama rekening induk (label UI shift: shift Mamaya = shift Semarang). */
+  ledgerAccountName: string | null;
 };
 
 /**
@@ -1537,6 +1552,7 @@ export async function findPosAccount(
     accountName: data[0].account_name,
     branch: data[0].default_branch ?? null,
     ledgerAccountId: data[0].ledger_account_id ?? null,
+    ledgerAccountName: await ledgerName(data[0].ledger_account_id),
   };
 }
 
@@ -1573,6 +1589,7 @@ export async function findPosAccountForInsights(
     accountName: data[0].account_name,
     branch: data[0].default_branch ?? null,
     ledgerAccountId: data[0].ledger_account_id ?? null,
+    ledgerAccountName: await ledgerName(data[0].ledger_account_id),
   };
 }
 

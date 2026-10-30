@@ -32,7 +32,7 @@ export default async function PosStockPage({
 
   const view = await resolvePosShiftView({
     bankAccountId: account.ledgerAccountId ?? account.id,
-    accountName: account.accountName,
+    accountName: account.ledgerAccountName ?? account.accountName,
     basePath,
     userId: user.id,
     isAdmin: (await getCurrentRole()) === "admin",
@@ -73,7 +73,9 @@ export default async function PosStockPage({
       authorizers={authorizers}
       isAdmin={role === "admin"}
       shiftSlot={view.shiftSlot}
-      shiftMode={view.gate.mode !== "off"}
+      // Rekening POS Mamaya tidak ikut opname buka/tutup shift (itu hanya stok Semarang), jadi opname Mamaya
+      // tetap lewat tombol "Opname Baru" walau shift Semarang menyala.
+      shiftMode={account.ledgerAccountId ? false : view.gate.mode !== "off"}
     />
   );
 }

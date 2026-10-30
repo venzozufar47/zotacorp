@@ -112,6 +112,9 @@ export interface PusatBreakdownRow {
    */
   autoDeductPare: number;
   autoDeductSemarang: number;
+  /** POS QRIS Mamaya House: ditulis di rekening Cash Semarang (satu laci) tapi bertag cabang Mamaya, dipotong
+   *  setelah Pare & Semarang. */
+  autoDeductMamaya: number;
   /**
    * Jumlah yang admin perlu alokasikan = `pusatTotal − autoDeductPare
    * − autoDeductSemarang`. UI allocator pakai ini, bukan `pusatTotal`,
@@ -456,6 +459,9 @@ export async function fetchPnL(
   // Pare, bukan cuma Pare.
   const qrisSemarangPerMonth = new Map<string, number>();
   const posCashSemarangPerMonth = new Map<string, number>();
+  // POS Mamaya House dibukukan di rekening Cash Semarang (satu laci) tetapi bertag cabang "Mamaya". Dihitung
+  // terpisah — kalau tidak, QRIS Mamaya ikut mengalir ke cabang Semarang lewat auto-deduct Pusat.
+  const qrisMamayaPerMonth = new Map<string, number>();
   // Company-wide Investment/Dividend totals (owner-POV), keyed by
   // monthKey → { "Investment"|"Dividend" → { credit, debit } }. These
   // categories are NEVER routed to branch/pusat buckets; branch tag on
@@ -512,8 +518,21 @@ export async function fetchPnL(
         (posCashParePerMonth.get(monthKey) ?? 0) + creditNum
       );
     }
+    const isMamayaTag = (t.branch ?? "").trim() === "Mamaya";
     if (
       accountName === "Cash Haengbocake Semarang" &&
+      isMamayaTag &&
+      rawCategory === "QRIS (non-operasional)" &&
+      creditNum > 0
+    ) {
+      qrisMamayaPerMonth.set(
+        monthKey,
+        (qrisMamayaPerMonth.get(monthKey) ?? 0) + creditNum
+      );
+    }
+    if (
+      accountName === "Cash Haengbocake Semarang" &&
+      !isMamayaTag &&
       rawCategory === "QRIS (non-operasional)" &&
       creditNum > 0
     ) {
@@ -524,6 +543,7 @@ export async function fetchPnL(
     }
     if (
       accountName === "Cash Haengbocake Semarang" &&
+      !isMamayaTag &&
       rawCategory === "Sales" &&
       creditNum > 0
     ) {
@@ -651,10 +671,10 @@ export async function fetchPnL(
     type BranchBag = Map<string, { credit: number; debit: number }>;
     const newBag = (): BranchBag => new Map();
     // Mamaya key ada di keempat Record supaya `addToBranch`/`buildBranch`
-    // tetap satu fungsi generik untuk ketiga cabang — tapi di praktiknya
-    // branchPusatAgg.Mamaya dan branchPosQrisAgg.Mamaya SELALU kosong:
-    // Mamaya tidak pernah lewat alokasi Pusat atau POS QRIS pass-through,
-    // cuma direct attribution (loop 1 di bawah).
+    // tetap satu fungsi generik untuk ketiga cabang. branchPusatAgg.Mamaya
+    // SELALU kosong (Mamaya tidak ikut alokasi manual Pusat). branchPosQrisAgg.Mamaya
+    // terisi sejak POS Mamaya House (/posmamaya): QRIS-nya dipotong otomatis dari
+    // Sales Pusat seperti Pare/Semarang (lihat autoDeductMamaya di bawah).
     const branchAgg: Record<"Semarang" | "Pare" | "Mamaya", BranchBag> = {
       Semarang: newBag(),
       Pare: newBag(),
@@ -734,6 +754,9 @@ export async function fetchPnL(
     const posQrisSemarangThisMonth = Math.round(
       qrisSemarangPerMonth.get(monthKey) ?? 0
     );
+    const posQrisMamayaThisMonth = Math.round(
+      qrisMamayaPerMonth.get(monthKey) ?? 0
+    );
     for (const [k, amount] of bucket) {
       const [branch, category, side] = k.split("|") as [
         BranchName,
@@ -775,7 +798,16 @@ export async function fetchPnL(
       const autoDeductSemarang = isSalesCredit
         ? Math.min(posQrisSemarangThisMonth, pusatTotal - autoDeductPare)
         : 0;
-      const netForAllocation = pusatTotal - autoDeductPare - autoDeductSemarang;
+      // Mamaya terakhir: urutan Pare → Semarang → Mamaya harus sama persis dengan
+      // `saveAllocation` di cashflow.actions.ts supaya net yang divalidasi tidak beda dari editor.
+      const autoDeductMamaya = isSalesCredit
+        ? Math.min(
+            posQrisMamayaThisMonth,
+            pusatTotal - autoDeductPare - autoDeductSemarang
+          )
+        : 0;
+      const netForAllocation =
+        pusatTotal - autoDeductPare - autoDeductSemarang - autoDeductMamaya;
       const semarangAlloc = alloc ? Math.round(alloc.semarang) : 0;
       const pareAlloc = alloc ? Math.round(alloc.pare) : 0;
       const sum = semarangAlloc + pareAlloc;
@@ -835,6 +867,7 @@ export async function fetchPnL(
         pusatTotal,
         autoDeductPare,
         autoDeductSemarang,
+        autoDeductMamaya,
         netForAllocation,
         semarangAlloc: effSemarang,
         pareAlloc: effPare,
@@ -853,6 +886,9 @@ export async function fetchPnL(
       }
       if (autoDeductSemarang > 0) {
         addToBranch("Semarang", "posQris", category, autoDeductSemarang, 0);
+      }
+      if (autoDeductMamaya > 0) {
+        addToBranch("Mamaya", "posQris", category, autoDeductMamaya, 0);
       }
 
       if (balanced || auto) {

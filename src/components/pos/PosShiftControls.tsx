@@ -90,7 +90,7 @@ export function PosShiftControls({
       </span>
       {/* Pengeluaran uang laci: dicatat di Pengadaan & Pengeluaran (sumber uang: laci kasir). */}
       <Link
-        href={`/pengadaan?tab=catat&bu=${encodeURIComponent(`Haengbocake ${accountName.includes("Semarang") ? "Semarang" : "Pare"}`)}`}
+        href={`/pengadaan?tab=catat&bu=${encodeURIComponent(`Haengbocake ${accountName.includes("Semarang") || basePath === "/posmamaya" ? "Semarang" : "Pare"}`)}`}
         prefetch={false}
         className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground hover:bg-muted"
       >

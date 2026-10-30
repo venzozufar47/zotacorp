@@ -33,7 +33,7 @@ export function posSwitchTarget(
   if (param === "semarang")
     return { label: "Mamaya House", shortLabel: "Mamaya", href: "/posmamaya" };
   if (param === "mamaya")
-    return { label: "Haengbocake Semarang", shortLabel: "Semarang", href: "/possemarang" };
+    return { label: "Haengbo Smg", shortLabel: "Haengbo Smg", href: "/possemarang" };
   return null;
 }
 

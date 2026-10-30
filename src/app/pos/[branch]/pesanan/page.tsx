@@ -35,7 +35,7 @@ export default async function PesananPage({
 
   const view = await resolvePosShiftView({
     bankAccountId: account.ledgerAccountId ?? account.id,
-    accountName: account.accountName,
+    accountName: account.ledgerAccountName ?? account.accountName,
     basePath,
     userId: user.id,
     isAdmin: (await getCurrentRole()) === "admin",

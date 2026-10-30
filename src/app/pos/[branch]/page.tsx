@@ -51,7 +51,7 @@ export default async function PosPage({
   // Shift & laci satu dengan rekening induk (Mamaya → Semarang); rekening biasa = dirinya.
   const view = await resolvePosShiftView({
     bankAccountId: account.ledgerAccountId ?? account.id,
-    accountName: account.accountName,
+    accountName: account.ledgerAccountName ?? account.accountName,
     basePath,
     userId: user.id,
     isAdmin: (await getCurrentRole()) === "admin",

@@ -813,11 +813,24 @@ function CategoryGroup({
                   </span>
                 </span>
               ) : null}
+              {r.category === "Sales" && r.side === "credit" && r.autoDeductMamaya > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 mt-0.5 text-[9px] font-mono tabular-nums border border-pop-emerald/60 bg-pop-emerald/10 text-foreground"
+                  title="POS QRIS Mamaya House sudah otomatis dipotong dari total Pusat dan diatribusikan ke cabang Mamaya — angka di kolom 'Untuk dialokasikan' sudah bersih."
+                >
+                  <span className="uppercase tracking-wider font-semibold">
+                    − POS QRIS Mamaya
+                  </span>
+                  <span>
+                    Rp {r.autoDeductMamaya.toLocaleString("id-ID")}
+                  </span>
+                </span>
+              ) : null}
               </div>
             </td>
             <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
               <div>{r.netForAllocation.toLocaleString("id-ID")}</div>
-              {r.autoDeductPare > 0 || r.autoDeductSemarang > 0 ? (
+              {r.autoDeductPare > 0 || r.autoDeductSemarang > 0 || r.autoDeductMamaya > 0 ? (
                 <div className="text-[9px] text-muted-foreground/70 leading-tight pt-0.5">
                   dari raw Rp {r.pusatTotal.toLocaleString("id-ID")}
                 </div>

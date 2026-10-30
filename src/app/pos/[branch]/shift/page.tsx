@@ -39,7 +39,7 @@ export default async function PosShiftPage({
   // tombol "Tutup shift" dan menambah riwayat shift (admin & assignee penuh).
   const view = await resolvePosShiftView({
     bankAccountId: shiftAccountId,
-    accountName: account.accountName,
+    accountName: account.ledgerAccountName ?? account.accountName,
     basePath,
     userId: user.id,
     isAdmin: role === "admin",
@@ -48,7 +48,7 @@ export default async function PosShiftPage({
 
   return (
     <PosShiftClient
-      accountName={account.accountName}
+      accountName={account.ledgerAccountName ?? account.accountName}
       basePath={basePath}
       summary={result.data}
       isAdmin={role === "admin"}

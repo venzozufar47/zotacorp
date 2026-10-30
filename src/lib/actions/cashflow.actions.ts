@@ -2032,7 +2032,12 @@ export async function savePusatAllocation(input: {
   // bulan tsb. Validator harus pakai angka yang SAMA dengan editor UI,
   // kalau tidak admin yang sudah input total sesuai net editor akan
   // ditolak.
-  const qrisTotalFor = async (accountName: string): Promise<number> => {
+  // POS Mamaya House dibukukan di rekening Cash Semarang tapi bertag cabang "Mamaya" — dihitung terpisah
+  // (`mamaya: "only"`), dan dikeluarkan dari hitungan Semarang (`"exclude"`), persis seperti fetchPnL.
+  const qrisTotalFor = async (
+    accountName: string,
+    mamaya: "any" | "only" | "exclude" = "any"
+  ): Promise<number> => {
     if (
       input.businessUnit !== "Haengbocake" ||
       input.side !== "credit" ||
@@ -2046,6 +2051,7 @@ export async function savePusatAllocation(input: {
     const periodEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
     type QRow = {
       credit: number | string | null;
+      branch: string | null;
       transaction_date: string;
       effective_period_year: number | null;
       effective_period_month: number | null;
@@ -2060,7 +2066,7 @@ export async function savePusatAllocation(input: {
       const { data: page, error: qrisErr } = await supabase
         .from("cashflow_transactions")
         .select(
-          "credit, transaction_date, effective_period_year, effective_period_month, cashflow_statements!inner(bank_accounts!inner(business_unit, account_name))"
+          "credit, branch, transaction_date, effective_period_year, effective_period_month, cashflow_statements!inner(bank_accounts!inner(business_unit, account_name))"
         )
         .eq("cashflow_statements.bank_accounts.business_unit", "Haengbocake")
         .eq("cashflow_statements.bank_accounts.account_name", accountName)
@@ -2076,6 +2082,9 @@ export async function savePusatAllocation(input: {
     }
     let total = 0;
     for (const r of qrisRows) {
+      const isMamaya = (r.branch ?? "").trim() === "Mamaya";
+      if (mamaya === "only" && !isMamaya) continue;
+      if (mamaya === "exclude" && isMamaya) continue;
       // Hormati effective_period_year/month override sama persis
       // dengan fetchPnL — kalau set, override date-based bucket.
       let y: number;
@@ -2098,10 +2107,12 @@ export async function savePusatAllocation(input: {
   };
   let qrisPareThisMonth = 0;
   let qrisSemarangThisMonth = 0;
+  let qrisMamayaThisMonth = 0;
   try {
-    [qrisPareThisMonth, qrisSemarangThisMonth] = await Promise.all([
+    [qrisPareThisMonth, qrisSemarangThisMonth, qrisMamayaThisMonth] = await Promise.all([
       qrisTotalFor("Cash Haengbocake Pare"),
-      qrisTotalFor("Cash Haengbocake Semarang"),
+      qrisTotalFor("Cash Haengbocake Semarang", "exclude"),
+      qrisTotalFor("Cash Haengbocake Semarang", "only"),
     ]);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -2114,7 +2125,12 @@ export async function savePusatAllocation(input: {
     Math.round(qrisSemarangThisMonth),
     roundedPusat - autoDeductPare
   );
-  const netForAllocation = roundedPusat - autoDeductPare - autoDeductSemarang;
+  const autoDeductMamaya = Math.min(
+    Math.round(qrisMamayaThisMonth),
+    roundedPusat - autoDeductPare - autoDeductSemarang
+  );
+  const netForAllocation =
+    roundedPusat - autoDeductPare - autoDeductSemarang - autoDeductMamaya;
   const sum = Math.round(input.semarangAmount + input.pareAmount);
   if (Math.abs(sum - netForAllocation) > 1) {
     const diff = Math.abs(sum - netForAllocation);
@@ -2126,6 +2142,9 @@ export async function savePusatAllocation(input: {
       deductParts.push(
         `POS QRIS Semarang Rp ${autoDeductSemarang.toLocaleString("id-ID")}`
       );
+    }
+    if (autoDeductMamaya > 0) {
+      deductParts.push(`POS QRIS Mamaya Rp ${autoDeductMamaya.toLocaleString("id-ID")}`);
     }
     const note =
       deductParts.length > 0
