@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { saveBranchOmzetTargets } from "@/lib/actions/scorecard-target.actions";
 import type { OmzetMonth } from "@/lib/actions/scorecard.actions";
+import type { TargetBasisPayload } from "@/lib/scorecard/target-basis";
+import { TargetBasisDialog } from "./TargetBasisDialog";
 
 const rp = (n: number) => `Rp${Math.round(n).toLocaleString("id-ID")}`;
 const fmt = (n: number | null) => (n == null ? "" : n.toLocaleString("id-ID"));
@@ -46,11 +48,14 @@ export function OmzetTargetEditor({
   branch,
   initial,
   history,
+  basis,
 }: {
   branch: "Pare" | "Semarang";
   initial: { pos: number | null; cake: number | null };
   /** Omzet 3 bulan penuh terakhir sebagai acuan menetapkan target. */
   history: OmzetMonth[];
+  /** Dasar hitung target (popup "Dasar target"); null = tidak ada. */
+  basis: TargetBasisPayload | null;
 }) {
   const router = useRouter();
   const [pos, setPos] = useState(fmt(initial.pos));
@@ -94,12 +99,13 @@ export function OmzetTargetEditor({
 
   return (
     <div id={anchor} className="scroll-mt-24 rounded-2xl border border-border bg-card">
+      <div className="flex items-center">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={`${anchor}-isi`}
-        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2 px-3.5 py-2.5 text-left"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-[12.5px] font-semibold">Target omzet bulanan</span>
@@ -115,6 +121,8 @@ export function OmzetTargetEditor({
         <span className="text-[11.5px] font-semibold text-primary">{open ? "Tutup" : "Atur"}</span>
         <ChevronDown size={16} className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
+      <TargetBasisDialog branch={branch} basis={basis} currentTarget={(saved.pos ?? 0) + (saved.cake ?? 0)} />
+      </div>
       {open && (
         <div id={`${anchor}-isi`} className="space-y-3 border-t border-border p-3.5">
       {history.length > 0 && (

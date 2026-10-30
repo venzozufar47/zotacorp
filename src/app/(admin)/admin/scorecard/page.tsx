@@ -8,6 +8,8 @@ import { OmzetTargetEditor } from "@/components/scorecard/OmzetTargetEditor";
 import { ScorecardThresholdsCard } from "@/components/admin/ScorecardThresholdsCard";
 import { getScorecardThresholds } from "@/lib/actions/scorecard-threshold.actions";
 import { DEFAULT_THRESHOLDS } from "@/lib/scorecard/thresholds";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { parseTargetBasis, type TargetBasisPayload } from "@/lib/scorecard/target-basis";
 
 const BRANCHES = ["Pare", "Semarang"] as const;
 
@@ -23,11 +25,16 @@ const SETTINGS_LINKS = {
  */
 export default async function AdminScorecardPage() {
   if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
-  const [cards, history, thresholds] = await Promise.all([
+  const [cards, history, thresholds, basisRows] = await Promise.all([
     Promise.all(BRANCHES.map((b) => getBranchScorecard(b))),
     Promise.all(BRANCHES.map((b) => getOmzetHistory(b))),
     getScorecardThresholds(),
+    // Dasar hitung target (rincian gaji): tabel khusus admin, dibaca di server saja.
+    createAdminClient().from("branch_target_basis" as never).select("branch, payload"),
   ]);
+  const basisByBranch = new Map<string, TargetBasisPayload | null>(
+    ((basisRows.data ?? []) as { branch: string; payload: unknown }[]).map((r) => [r.branch, parseTargetBasis(r.payload)])
+  );
 
   return (
     <div className="space-y-6 p-4">
@@ -43,7 +50,7 @@ export default async function AdminScorecardPage() {
             <h2 className="font-display text-base font-bold">Cabang {b}</h2>
             {cards[i] ? (
               <>
-                <OmzetTargetEditor branch={b} initial={cards[i]!.omzetTarget} history={history[i]} />
+                <OmzetTargetEditor branch={b} initial={cards[i]!.omzetTarget} history={history[i]} basis={basisByBranch.get(b) ?? null} />
                 <ScorecardView
                   scorecard={cards[i]!}
                   settingsLinks={{ ...SETTINGS_LINKS, omzet: { href: `#target-omzet-${b}`, label: "Atur target omzet" } }}
