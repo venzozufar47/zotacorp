@@ -297,8 +297,7 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
               }}
               maxLength={COMMENT_MAX}
               rows={2}
-              placeholder="Tulis singkat saja, kak"
-              className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base leading-snug placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-base leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <FieldError id="err-aspects" text={errors.aspects} />
           </fieldset>
