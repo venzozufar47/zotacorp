@@ -5,12 +5,16 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { getBranchScorecard, getOmzetHistory } from "@/lib/actions/scorecard.actions";
 import { ScorecardView } from "@/components/scorecard/ScorecardView";
 import { OmzetTargetEditor } from "@/components/scorecard/OmzetTargetEditor";
+import { ScorecardThresholdsCard } from "@/components/admin/ScorecardThresholdsCard";
+import { getScorecardThresholds } from "@/lib/actions/scorecard-threshold.actions";
+import { DEFAULT_THRESHOLDS } from "@/lib/scorecard/thresholds";
 
 const BRANCHES = ["Pare", "Semarang"] as const;
 
 // Hanya metrik yang punya tempat pengaturan sungguhan. Omzet: editor di halaman ini; Waste & Service level: ambang di halaman Service Level.
 const SETTINGS_LINKS = {
-  service_level: { href: "/admin/service-level#ambang-scorecard", label: "Atur ambang waste & service level" },
+  service_level: { href: "#ambang-scorecard", label: "Atur ambang waste & service level" },
+  feedback: { href: "#ambang-scorecard", label: "Atur ambang feedback" },
 };
 
 /**
@@ -19,9 +23,10 @@ const SETTINGS_LINKS = {
  */
 export default async function AdminScorecardPage() {
   if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
-  const [cards, history] = await Promise.all([
+  const [cards, history, thresholds] = await Promise.all([
     Promise.all(BRANCHES.map((b) => getBranchScorecard(b))),
     Promise.all(BRANCHES.map((b) => getOmzetHistory(b))),
+    getScorecardThresholds(),
   ]);
 
   return (
@@ -29,7 +34,7 @@ export default async function AdminScorecardPage() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Scorecard Cabang</h1>
         <p className="text-sm text-muted-foreground">
-          Waste, selisih kas, omzet, dan keluhan per cabang — dihitung otomatis, tanpa input manual.
+          Waste, service level, omzet, dan feedback customer per cabang — dihitung otomatis, tanpa input manual.
         </p>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -52,6 +57,7 @@ export default async function AdminScorecardPage() {
           </section>
         ))}
       </div>
+      <ScorecardThresholdsCard initial={thresholds.ok && thresholds.data ? thresholds.data : DEFAULT_THRESHOLDS} />
     </div>
   );
 }

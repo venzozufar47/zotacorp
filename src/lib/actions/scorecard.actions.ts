@@ -3,7 +3,6 @@
 import { createAdminClient } from "./_supabase-admin";
 import { getCurrentUser, getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { findPosAccount } from "./pos.actions";
-import { getComplaintCount, getComplaintCountBetween } from "./customer-complaints.actions";
 import { WITHDRAWAL_REASON_META, type WithdrawalReason } from "@/lib/pos/withdrawal-reasons";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { workingDaysBetween, workingDaysInMonth } from "@/lib/scorecard/working-days";
@@ -12,6 +11,7 @@ import { resolveUserBranches } from "@/lib/branches/user-branches";
 import {
   OMZET_GREEN_MIN,
   OMZET_YELLOW_MIN,
+  feedbackRanges,
   omzetRanges,
   serviceLevelBandOf,
   serviceLevelRanges,
@@ -43,7 +43,7 @@ export type ScorecardBranch = "Pare" | "Semarang";
 export type ScorecardBand = "green" | "yellow" | "red" | "measuring" | "unset";
 
 export interface ScorecardMetric {
-  key: "waste" | "service_level" | "omzet" | "complaints";
+  key: "waste" | "service_level" | "omzet" | "feedback";
   label: string;
   value: number;
   displayValue: string;
@@ -57,7 +57,7 @@ export interface ScorecardMetric {
 
 export interface BranchScorecard {
   branch: ScorecardBranch;
-  /** Angka tampilan: waste & service level 30 hari terakhir, omzet & keluhan bulan berjalan. */
+  /** Angka tampilan: waste & service level 30 hari terakhir, omzet bulan berjalan. */
   metrics: ScorecardMetric[];
   /** Nama metrik (ukuran mingguan, sesuai SOP) yang merah 2 minggu berturut-turut. */
   twoWeeksRedLabels: string[];
@@ -66,13 +66,6 @@ export interface BranchScorecard {
   /** Hasil akhir bulan lalu; hanya ada pada tanggal 1–7 supaya bisa dievaluasi dan tidak hilang tiba-tiba saat ganti bulan. */
   prevMonth?: { label: string; metrics: ScorecardMetric[] };
 }
-
-/** Sebelum tanggal ini, metrik keluhan dihitung hijau tanpa syarat (SOP
- *  "selama 30 hari pengukuran pertama, angka keluhan dihitung hijau").
- *  Setelah itu, ambangnya belum ditentukan Owner — SOP sendiri menulis
- *  "[diisi setelah 30 hari pengukuran]", jadi band jadi 'unset' alih-alih
- *  menebak angka yang belum diputuskan. */
-const COMPLAINT_TRACKING_EPOCH = "2026-10-18";
 
 async function canView(): Promise<boolean> {
   const role = await getCurrentRole();
@@ -233,18 +226,12 @@ export async function computeMetricsAsOf(
   const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
   const daysElapsed = Number(asOf.slice(8, 10));
 
-  const [wastePct, serviceLevel, mtd, cakeMtd, complaintCount, txCount30, th] = await Promise.all([
+  const [wastePct, serviceLevel, mtd, cakeMtd, th] = await Promise.all([
     computeWastePercent(bankAccountId, weekStart, weekEnd),
     pooledServiceLevel(bankAccountId, weekStart, weekEnd),
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
     opts ? sumCakeRevenue(branch, monthStart, asOf) : Promise.resolve(0),
-    period === "month"
-      ? getComplaintCountBetween(branch, monthStart, asOf)
-      : getComplaintCount(branch, 30),
-    period === "month"
-      ? sumPaidPosTotal(bankAccountId, monthStart, asOf).then((r) => r.count)
-      : sumPaidPosTotal(bankAccountId, addDays(asOf, -29), asOf).then((r) => r.count),
-    // Ambang Waste/Service level yang diatur owner (halaman Service Level); bawaan bila belum ada.
+    // Ambang Waste/Service level/Feedback yang diatur owner (kartu "Ambang warna Scorecard Cabang"); bawaan bila belum ada.
     loadThresholds(createAdminClient()),
   ]);
 
@@ -271,10 +258,6 @@ export async function computeMetricsAsOf(
   const omzetPct = basis && basis > 0 ? (omzetActual / basis) * 100 : null;
   // Target ada tapi belum ada hari kerja berjalan (laju): belum bisa dinilai, bukan 0%.
   const omzetTooEarly = !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
-  const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
-  const daysSinceEpoch =
-    (new Date(asOf).getTime() - new Date(COMPLAINT_TRACKING_EPOCH).getTime()) / 86_400_000;
-  const complaintsBand: ScorecardBand = daysSinceEpoch < 30 ? "green" : "unset";
 
   return [
     {
@@ -307,13 +290,14 @@ export async function computeMetricsAsOf(
       ranges: omzetRanges(),
     },
     {
-      key: "complaints",
-      label: "Keluhan / 1000 transaksi",
-      value: complaintsPer1000,
-      displayValue: complaintsPer1000.toFixed(1),
-      band: complaintsBand,
-      rangesNote:
-        "Ambang belum ditentukan owner",
+      // Sumber datanya (form feedback di POS) belum ada: kartu menampilkan "Belum ada data" dan netral (tidak memengaruhi poin)
+      // sampai rata-rata bintang tersedia, lalu warnanya mengikuti feedbackBandOf(rata-rata, th).
+      key: "feedback",
+      label: "Rata-rata feedback customer",
+      value: 0,
+      displayValue: "Belum ada data",
+      band: "measuring",
+      ranges: feedbackRanges(th),
     },
   ];
 }

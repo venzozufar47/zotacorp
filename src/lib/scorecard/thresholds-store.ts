@@ -25,11 +25,14 @@ export async function loadThresholds(admin: Admin): Promise<BranchThresholds> {
     const rows = (data ?? []) as { metric: string; green_bound: number | string; yellow_bound: number | string }[];
     const w = rows.find((r) => r.metric === "waste");
     const s = rows.find((r) => r.metric === "service_level");
+    const f = rows.find((r) => r.metric === "feedback");
     const candidate: BranchThresholds = {
       wasteGreen: w ? Number(w.green_bound) : DEFAULT_THRESHOLDS.wasteGreen,
       wasteYellow: w ? Number(w.yellow_bound) : DEFAULT_THRESHOLDS.wasteYellow,
       slGreen: s ? Number(s.green_bound) : DEFAULT_THRESHOLDS.slGreen,
       slYellow: s ? Number(s.yellow_bound) : DEFAULT_THRESHOLDS.slYellow,
+      fbGreen: f ? Number(f.green_bound) : DEFAULT_THRESHOLDS.fbGreen,
+      fbYellow: f ? Number(f.yellow_bound) : DEFAULT_THRESHOLDS.fbYellow,
     };
     if (!validateThresholds(candidate)) value = candidate;
   } catch {

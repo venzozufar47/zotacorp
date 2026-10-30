@@ -80,26 +80,26 @@ export function ScorecardView({
                     />
                   </span>
                 </div>
-                <div className="relative mt-1 grid grid-cols-2 gap-2">
-                  {parts.map((p) => (
-                    <div key={p.id} className="min-w-0">
+                <div className="relative mt-1.5 grid grid-cols-2 divide-x divide-current/25">
+                  {parts.map((p, pi) => (
+                    <div key={p.id} className={cn("min-w-0", pi === 0 ? "pr-3" : "pl-3")}>
+                      <p className="text-[10.5px] leading-tight opacity-90">{p.name}</p>
                       <p
                         className={cn(
-                          "font-display leading-tight tabular-nums",
-                          p.metric.displayValue.length > 7 ? "text-base" : "text-[26px]",
-                          item.driver === p.id ? "font-extrabold" : "font-semibold opacity-80"
+                          "mt-0.5 font-display leading-tight tabular-nums",
+                          p.metric.displayValue.length > 7 ? "text-sm" : "text-[22px]",
+                          item.driver === p.id ? "font-extrabold" : "font-semibold opacity-85"
                         )}
                       >
                         {p.metric.displayValue}
                       </p>
-                      <p className="text-[10.5px] leading-tight">{p.name}</p>
                     </div>
                   ))}
                 </div>
                 <span className={`relative mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}>
                   <Icon aria-hidden size={12} strokeWidth={2.5} />
                   {meta.label}
-                  {item.driver && ` · ikut ${item.driver === "waste" ? "Waste" : "Service level"}`}
+                  {item.driver && ` · ${item.driver === "waste" ? "Waste" : "Service level"}`}
                 </span>
               </div>
             );

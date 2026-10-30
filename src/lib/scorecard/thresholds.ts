@@ -19,6 +19,10 @@ export const OMZET_YELLOW_MIN = 90;
 export const SERVICE_LEVEL_GREEN_MIN = 0.8;
 export const SERVICE_LEVEL_YELLOW_MIN = 0.7;
 
+/** Rata-rata feedback customer (bintang 1-5): hijau ≥ 4,5, kuning ≥ 4, selebihnya merah. Bawaan; owner bisa mengubahnya. */
+export const FEEDBACK_GREEN_MIN = 4.5;
+export const FEEDBACK_YELLOW_MIN = 4;
+
 export type BandRange = { band: "green" | "yellow" | "red"; text: string };
 
 /** Ambang yang berlaku, dalam persen (3 = 3%). Waste: kecil itu baik; Service level: besar itu baik. */
@@ -27,6 +31,9 @@ export interface BranchThresholds {
   wasteYellow: number;
   slGreen: number;
   slYellow: number;
+  /** Rata-rata feedback customer, skala bintang 1-5 (BUKAN persen). Besar itu baik. */
+  fbGreen: number;
+  fbYellow: number;
 }
 
 export const DEFAULT_THRESHOLDS: BranchThresholds = {
@@ -34,6 +41,8 @@ export const DEFAULT_THRESHOLDS: BranchThresholds = {
   wasteYellow: WASTE_YELLOW_MAX,
   slGreen: SERVICE_LEVEL_GREEN_MIN * 100,
   slYellow: SERVICE_LEVEL_YELLOW_MIN * 100,
+  fbGreen: FEEDBACK_GREEN_MIN,
+  fbYellow: FEEDBACK_YELLOW_MIN,
 };
 
 /** Pesan galat bila ambang tidak masuk akal, null bila sah. */
@@ -42,6 +51,8 @@ export function validateThresholds(t: BranchThresholds): string | null {
   if (!all.every((n) => Number.isFinite(n) && n >= 0 && n <= 100)) return "Semua ambang harus berupa angka 0–100.";
   if (!(t.wasteGreen < t.wasteYellow)) return "Waste: batas hijau harus lebih kecil dari batas kuning.";
   if (!(t.slYellow < t.slGreen)) return "Service level: batas kuning harus lebih kecil dari batas hijau.";
+  if (![t.fbGreen, t.fbYellow].every((n) => Number.isFinite(n) && n >= 1 && n <= 5)) return "Feedback customer: ambang harus berupa angka 1–5.";
+  if (!(t.fbYellow < t.fbGreen)) return "Feedback customer: batas kuning harus lebih kecil dari batas hijau.";
   return null;
 }
 
@@ -56,6 +67,13 @@ export function wasteBandOf(pct: number, t: BranchThresholds = DEFAULT_THRESHOLD
 export function serviceLevelBandOf(fraction: number, t: BranchThresholds = DEFAULT_THRESHOLDS): "green" | "yellow" | "red" {
   if (fraction >= t.slGreen / 100) return "green";
   if (fraction >= t.slYellow / 100) return "yellow";
+  return "red";
+}
+
+/** Rata-rata feedback (bintang 1-5): ≥ hijau → hijau, ≥ kuning → kuning, selebihnya merah. */
+export function feedbackBandOf(rating: number, t: BranchThresholds = DEFAULT_THRESHOLDS): "green" | "yellow" | "red" {
+  if (rating >= t.fbGreen) return "green";
+  if (rating >= t.fbYellow) return "yellow";
   return "red";
 }
 
@@ -83,5 +101,13 @@ export function serviceLevelRanges(t: BranchThresholds = DEFAULT_THRESHOLDS): Ba
     { band: "green", text: `≥ ${num(t.slGreen)}%` },
     { band: "yellow", text: `${num(t.slYellow)}% - < ${num(t.slGreen)}%` },
     { band: "red", text: `< ${num(t.slYellow)}%` },
+  ];
+}
+
+export function feedbackRanges(t: BranchThresholds = DEFAULT_THRESHOLDS): BandRange[] {
+  return [
+    { band: "green", text: `≥ ${num(t.fbGreen)}` },
+    { band: "yellow", text: `${num(t.fbYellow)} - < ${num(t.fbGreen)}` },
+    { band: "red", text: `< ${num(t.fbYellow)}` },
   ];
 }

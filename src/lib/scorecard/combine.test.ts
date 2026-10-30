@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { combineWasteService, tileBand, worseBand } from "./combine.ts";
 
 type Band = "green" | "yellow" | "red" | "measuring" | "unset";
-const m = (key: "waste" | "service_level" | "omzet" | "complaints", band: Band) =>
+const m = (key: "waste" | "service_level" | "omzet" | "feedback", band: Band) =>
   ({ key, label: key, value: 0, displayValue: "0", band }) as never;
 
 test("warna kartu gabungan mengikuti yang lebih rendah", () => {
@@ -22,7 +22,7 @@ test("yang belum dinilai tidak menurunkan yang sudah dinilai", () => {
 });
 
 test("waste dan service level jadi satu ubin di posisi pertama; metrik lain tetap", () => {
-  const items = combineWasteService([m("waste", "green"), m("service_level", "red"), m("omzet", "yellow"), m("complaints", "green")]);
+  const items = combineWasteService([m("waste", "green"), m("service_level", "red"), m("omzet", "yellow"), m("feedback", "green")]);
   assert.equal(items.length, 3);
   const combo = items[0];
   assert.equal(combo.kind, "combo");

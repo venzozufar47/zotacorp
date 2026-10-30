@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * Ambang warna Scorecard Cabang untuk Waste dan Service level: dibaca/ditulis owner dari halaman Service Level.
+ * Ambang warna Scorecard Cabang untuk Waste, Service level, dan Rata-rata feedback customer: dibaca/ditulis owner dari halaman Service Level.
  * Ambang yang disimpan dipakai scorecard di beranda karyawan, halaman Scorecard Cabang, dan perhitungan poin bonus.
  */
 
@@ -26,6 +26,8 @@ export async function saveScorecardThresholds(input: BranchThresholds): Promise<
     wasteYellow: Number(input.wasteYellow),
     slGreen: Number(input.slGreen),
     slYellow: Number(input.slYellow),
+    fbGreen: Number(input.fbGreen),
+    fbYellow: Number(input.fbYellow),
   };
   const bad = validateThresholds(next);
   if (bad) return { ok: false, error: bad };
@@ -36,6 +38,7 @@ export async function saveScorecardThresholds(input: BranchThresholds): Promise<
       [
         { metric: "waste", green_bound: next.wasteGreen, yellow_bound: next.wasteYellow, updated_by: gate.userId, updated_at: now },
         { metric: "service_level", green_bound: next.slGreen, yellow_bound: next.slYellow, updated_by: gate.userId, updated_at: now },
+        { metric: "feedback", green_bound: next.fbGreen, yellow_bound: next.fbYellow, updated_by: gate.userId, updated_at: now },
       ] as never,
       { onConflict: "metric" }
     );

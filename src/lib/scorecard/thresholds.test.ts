@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DEFAULT_THRESHOLDS, serviceLevelBandOf, serviceLevelRanges, validateThresholds, wasteBandOf, wasteRanges } from "./thresholds.ts";
 
 test("bawaan sama dengan aturan lama: waste 3/5%, service level 80/70%", () => {
-  assert.deepEqual(DEFAULT_THRESHOLDS, { wasteGreen: 3, wasteYellow: 5, slGreen: 80, slYellow: 70 });
+  assert.deepEqual(DEFAULT_THRESHOLDS, { wasteGreen: 3, wasteYellow: 5, slGreen: 80, slYellow: 70, fbGreen: 4.5, fbYellow: 4 });
   assert.equal(wasteBandOf(3), "green");
   assert.equal(wasteBandOf(3.01), "yellow");
   assert.equal(wasteBandOf(5), "yellow");
@@ -15,7 +15,7 @@ test("bawaan sama dengan aturan lama: waste 3/5%, service level 80/70%", () => {
 });
 
 test("ambang kustom dipakai", () => {
-  const t = { wasteGreen: 2, wasteYellow: 4, slGreen: 90, slYellow: 75 };
+  const t = { wasteGreen: 2, wasteYellow: 4, slGreen: 90, slYellow: 75, fbGreen: 4.5, fbYellow: 4 };
   assert.equal(wasteBandOf(2.5, t), "yellow");
   assert.equal(wasteBandOf(4.5, t), "red");
   assert.equal(serviceLevelBandOf(0.85, t), "yellow");

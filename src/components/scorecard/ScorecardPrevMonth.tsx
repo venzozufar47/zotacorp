@@ -11,7 +11,7 @@ const DOT: Record<ScorecardBand, string> = {
   measuring: "bg-muted-foreground/40",
   unset: "bg-muted-foreground/40",
 };
-const SHORT: Record<ScorecardMetric["key"], string> = { waste: "Waste", service_level: "Service level", omzet: "Omzet", complaints: "Keluhan" };
+const SHORT: Record<ScorecardMetric["key"], string> = { waste: "Waste", service_level: "Service level", omzet: "Omzet", feedback: "Feedback" };
 
 /**
  * Strip "Hasil <bulan lalu>" di bawah scorecard bulan berjalan: terlipat (satu baris), hanya ada pada tanggal 1–7 supaya
