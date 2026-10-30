@@ -196,6 +196,13 @@ function omzetBand(pct: number | null): ScorecardBand {
   return "red";
 }
 
+/** Persen omzet untuk tampilan: dibulatkan, kecuali pembulatan melewati batas warna (99,8% jadi "100%" tetapi berwarna kuning). */
+function omzetPctLabel(pct: number): string {
+  const rounded = Math.round(pct);
+  const crossed = (min: number) => pct < min && rounded >= min;
+  return `${crossed(OMZET_GREEN_MIN) || crossed(OMZET_YELLOW_MIN) ? Math.floor(pct) : rounded}%`;
+}
+
 /** Diekspor untuk dipakai ulang Kalkulator Bonus (PRD-10) — poin
  *  scorecard bulan yang dibayar, dihitung "as of" akhir bulan itu, bukan
  *  hari ini. */
@@ -290,7 +297,7 @@ export async function computeMetricsAsOf(
       key: "omzet",
       label: "Omzet bulan berjalan vs target",
       value: omzetPct ?? 0,
-      displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : omzetTooEarly ? "Belum ada hari kerja" : "Target belum diatur",
+      displayValue: omzetPct !== null ? omzetPctLabel(omzetPct) : omzetTooEarly ? "Belum ada hari kerja" : "Target belum diatur",
       band: omzetTooEarly ? "measuring" : omzetBand(omzetPct),
       note: opts
         ? fullTarget
