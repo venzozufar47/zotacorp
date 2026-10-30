@@ -144,7 +144,6 @@ export function FeedbackAdminClient({ initial }: { initial: FeedbackAdminData | 
   const s = data?.stats;
   const perDayAvg = s ? s.count / days : 0;
   const rows = (data?.rows ?? []).filter((r) => (ratingFilter === "low" ? r.rating <= 3 : true));
-  const maxAspect = s ? Math.max(1, ...Object.values(s.aspectCounts)) : 1;
   const maxDist = s ? Math.max(1, ...s.distribution) : 1;
   const aspectRows = s
     ? FEEDBACK_ASPECTS.map((a) => ({ key: a.key, label: a.label, n: s.aspectCounts[a.key] ?? 0 })).sort((a, b) => b.n - a.n)
@@ -201,12 +200,17 @@ export function FeedbackAdminClient({ initial }: { initial: FeedbackAdminData | 
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
             <Stat label="Rata-rata bintang" value={`${avgText(s.average)} ★`} sub={`${s.count} feedback`} />
             <Stat
               label="Rata-rata per hari"
               value={perDayAvg.toFixed(1).replace(".", ",")}
               sub={`target ${FEEDBACK_DAILY_TARGET} per hari${branch === "all" ? " per cabang" : ""}`}
+            />
+            <Stat
+              label="Tombol dipilih per pelanggan"
+              value={s.avgAspects == null ? "—" : s.avgAspects.toFixed(1).replace(".", ",")}
+              sub="rata-rata; makin kecil, pilihan makin tajam"
             />
             <Stat label="Pelanggan baru" value={`${pct(s.firstCount, s.count)}%`} sub={`${s.firstCount} dari ${s.count}`} />
             <Stat label="Pelanggan lama" value={`${pct(s.returningCount, s.count)}%`} sub={`${s.returningCount} dari ${s.count}`} />
@@ -231,20 +235,48 @@ export function FeedbackAdminClient({ initial }: { initial: FeedbackAdminData | 
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-4">
-              <h2 className="mb-2.5 text-[13px] font-bold">Masukan yang paling sering dipilih</h2>
+              <h2 className="mb-0.5 text-[13px] font-bold">Masukan yang dipilih</h2>
+              <p className="mb-2.5 text-[11.5px] text-muted-foreground">Persen dari seluruh pelanggan pada rentang ini (satu pelanggan bisa memilih beberapa).</p>
               <ul className="space-y-1.5">
                 {aspectRows.map((a) => (
                   <li key={a.key} className="flex items-center gap-2 text-[12.5px]">
                     <span className="w-36 shrink-0 truncate">{a.label}</span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
-                      <span className="block h-full rounded-full bg-primary/70" style={{ width: `${(a.n / maxAspect) * 100}%` }} />
+                      <span className="block h-full rounded-full bg-primary/70" style={{ width: `${pct(a.n, s.count)}%` }} />
                     </span>
-                    <span className="w-8 shrink-0 text-right tabular-nums text-muted-foreground">{a.n}</span>
+                    <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground">
+                      {pct(a.n, s.count)}% ({a.n})
+                    </span>
                   </li>
                 ))}
               </ul>
             </section>
           </div>
+
+          {data && data.position.responses > 0 && (
+            <section className="rounded-2xl border border-border bg-card p-4">
+              <h2 className="mb-0.5 text-[13px] font-bold">Pemeriksaan bias posisi</h2>
+              <p className="mb-2.5 text-[11.5px] text-muted-foreground">
+                Urutan tombol diacak per pelanggan. Tabel ini menunjukkan seberapa sering tombol di tiap posisi dipilih saat ditampilkan. Bila posisi atas
+                konsisten jauh lebih tinggi daripada posisi bawah, ada bias posisi. {data.position.responses < 100
+                  ? `Baru ${data.position.responses} jawaban beracak, belum cukup untuk disimpulkan (butuh sekitar 100 atau lebih).`
+                  : `Dari ${data.position.responses} jawaban beracak.`}
+              </p>
+              <ul className="space-y-1.5">
+                {data.position.slots.map((p, i) => (
+                  <li key={i} className="flex items-center gap-2 text-[12.5px]">
+                    <span className="w-16 shrink-0">Posisi {i + 1}</span>
+                    <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <span className="block h-full rounded-full bg-primary/50" style={{ width: `${pct(p.selected, p.shown)}%` }} />
+                    </span>
+                    <span className="w-24 shrink-0 text-right tabular-nums text-muted-foreground">
+                      {pct(p.selected, p.shown)}% ({p.selected}/{p.shown})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {data && data.wishes.length > 0 && (
             <section className="rounded-2xl border border-border bg-card p-4">

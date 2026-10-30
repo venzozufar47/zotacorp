@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2, Loader2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { submitCustomerFeedback } from "@/lib/actions/feedback.actions";
 import {
   ASPECT_ALL_GOOD,
+  ASPECT_LABEL,
   COMMENT_MAX,
   FEEDBACK_ASPECTS,
   RATING_LABELS,
@@ -14,6 +15,7 @@ import {
   type FeedbackAspectKey,
   type VisitType,
 } from "@/lib/feedback/constants";
+import { shuffledAspectOrder } from "@/lib/feedback/order";
 
 
 const DEVICE_KEY = "zota_fb_device";
@@ -90,6 +92,15 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
   const visitRef = useRef<HTMLFieldSetElement>(null);
   const ratingRef = useRef<HTMLFieldSetElement>(null);
   const aspectsRef = useRef<HTMLFieldSetElement>(null);
+  // Urutan tombol masukan diacak per pelanggan (menghindari bias posisi) dan dicatat bersama jawabannya. Pengacakan hanya
+  // tampil setelah hidrasi supaya HTML server (urutan bawaan, tersembunyi) sama dengan render pertama di klien.
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [order] = useState<FeedbackAspectKey[]>(() => shuffledAspectOrder());
+  const shownOrder: readonly FeedbackAspectKey[] = hydrated ? order : FEEDBACK_ASPECTS.map((a) => a.key);
 
   useEffect(() => {
     deviceId.current = loadDeviceId();
@@ -137,6 +148,7 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
         aspects,
         comment,
         productWish: wish,
+        aspectOrder: order,
         deviceId: deviceId.current,
         website,
       });
@@ -261,8 +273,9 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
             <Legend required hint="Pilih yang sesuai, boleh lebih dari satu.">
               Apakah kakak ada masukan untuk kami?
             </Legend>
-            <div role="group" aria-label="Masukan cepat" aria-describedby={errors.aspects ? "err-aspects" : undefined} className="flex flex-wrap gap-1.5">
-              {FEEDBACK_ASPECTS.map((a) => {
+            <div role="group" aria-label="Masukan cepat" aria-describedby={errors.aspects ? "err-aspects" : undefined} className={cn("flex flex-wrap gap-1.5", !hydrated && "invisible")}>
+              {shownOrder.map((key) => {
+                const a = { key, label: ASPECT_LABEL[key] };
                 const on = aspects.includes(a.key);
                 return (
                   <button

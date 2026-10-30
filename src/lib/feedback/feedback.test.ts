@@ -32,6 +32,13 @@ test("tombol tak dikenal dibuang; 'sudah bagus semua' menggantikan yang lain", (
   assert.equal(r2.ok, false);
 });
 
+test("urutan tampil dibersihkan: kunci tak dikenal dan duplikat dibuang", () => {
+  const r = validateFeedback({ ...ok, aspectOrder: ["harga", "xx", "rasa", "harga", 5] });
+  assert.equal(r.ok && r.data.aspectOrder?.join(","), "harga,rasa");
+  const none = validateFeedback({ ...ok });
+  assert.equal(none.ok && none.data.aspectOrder, null);
+});
+
 test("hari target tidak menghitung hari sebelum feedback pertama", () => {
   assert.equal(targetDays(null, "2026-11-10"), 30);
   assert.equal(targetDays("2026-11-10", "2026-11-10"), 1);
@@ -49,4 +56,15 @@ test("hijau turun ke kuning bila jumlah di bawah target; merah tidak karena juml
   const empty = computeFeedbackStats([], 10, t);
   assert.equal(empty.band, null);
   assert.equal(empty.average, null);
+});
+
+test("urutan acak: semua tombol tepat sekali, 'sudah bagus semua' terakhir", async () => {
+  const { shuffledAspectOrder } = await import("./order.ts");
+  const { FEEDBACK_ASPECTS } = await import("./constants.ts");
+  for (const rand of [() => 0, () => 0.999, Math.random]) {
+    const o = shuffledAspectOrder(rand);
+    assert.equal(o.length, FEEDBACK_ASPECTS.length);
+    assert.equal(new Set(o).size, o.length);
+    assert.equal(o[o.length - 1], "sudah_bagus");
+  }
 });

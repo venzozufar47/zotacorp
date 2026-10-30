@@ -18,6 +18,8 @@ export interface FeedbackInput {
   aspects: unknown;
   comment: unknown;
   productWish: unknown;
+  /** Urutan tombol masukan yang tampil ke pelanggan (diacak); opsional. */
+  aspectOrder?: unknown;
 }
 
 export interface CleanFeedback {
@@ -26,6 +28,8 @@ export interface CleanFeedback {
   aspects: FeedbackAspectKey[];
   comment: string | null;
   productWish: string | null;
+  /** Urutan tampil tombol (kunci dikenal, tanpa duplikat); null bila tidak dikirim. */
+  aspectOrder: FeedbackAspectKey[] | null;
 }
 
 const KNOWN = new Set<string>(FEEDBACK_ASPECTS.map((a) => a.key));
@@ -49,8 +53,18 @@ export function validateFeedback(input: FeedbackInput): { ok: true; data: CleanF
     return { ok: false, error: "Pilih satu atau lebih masukan, atau tulis sendiri ya, kak." };
   }
   const wish = clean(input.productWish, WISH_MAX);
+  const shown = Array.isArray(input.aspectOrder)
+    ? ([...new Set(input.aspectOrder.filter((a): a is string => typeof a === "string" && KNOWN.has(a)))] as FeedbackAspectKey[])
+    : [];
   return {
     ok: true,
-    data: { visitType: input.visitType, rating, aspects, comment: comment || null, productWish: wish || null },
+    data: {
+      visitType: input.visitType,
+      rating,
+      aspects,
+      comment: comment || null,
+      productWish: wish || null,
+      aspectOrder: shown.length > 0 ? shown : null,
+    },
   };
 }

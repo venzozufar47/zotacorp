@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, requireAdminOrPosAssignee, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import { FEEDBACK_DAILY_TARGET, FEEDBACK_SLUGS, type FeedbackBranch } from "@/lib/feedback/constants";
+import { ASPECT_ALL_GOOD, FEEDBACK_DAILY_TARGET, FEEDBACK_SLUGS, type FeedbackBranch } from "@/lib/feedback/constants";
 import { validateFeedback } from "@/lib/feedback/validate";
 import { wibDayStart } from "@/lib/feedback/store";
 
@@ -33,6 +33,8 @@ export interface SubmitFeedbackInput {
   aspects: unknown;
   comment: unknown;
   productWish: unknown;
+  /** Urutan tombol masukan yang tampil (acak per pelanggan). */
+  aspectOrder?: unknown;
   deviceId: unknown;
   /** Kolom jebakan bot: manusia tidak pernah mengisinya. */
   website?: unknown;
@@ -79,6 +81,7 @@ export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promis
     aspects: v.data.aspects,
     comment: v.data.comment,
     product_wish: v.data.productWish,
+    aspect_order: v.data.aspectOrder,
     device_id: deviceId,
     ip_hash: ipHash,
   } as never);
@@ -109,6 +112,8 @@ export interface FeedbackAdminData {
   stats: {
     count: number;
     average: number | null;
+    /** Rata-rata jumlah tombol masukan yang dipilih per pelanggan (tidak menghitung "Sudah bagus semua"). */
+    avgAspects: number | null;
     distribution: [number, number, number, number, number];
     firstCount: number;
     returningCount: number;
@@ -117,6 +122,11 @@ export interface FeedbackAdminData {
     perDay: Record<string, number>;
   };
   wishes: { text: string; branch: FeedbackBranch; createdAt: string }[];
+  /**
+   * Pemeriksaan bias posisi: untuk tiap posisi tampil (1 = paling atas, tombol "Sudah bagus semua" tidak ikut karena selalu
+   * terakhir), berapa kali tombol di posisi itu ditampilkan dan berapa kali dipilih. Hanya jawaban yang mencatat urutan.
+   */
+  position: { responses: number; slots: { shown: number; selected: number }[] };
 }
 
 const LIST_LIMIT = 300;
@@ -138,6 +148,7 @@ export async function getFeedbackAdminData(input: {
     visit_type: "first" | "returning";
     rating: number;
     aspects: string[] | null;
+    aspect_order: string[] | null;
     comment: string | null;
     product_wish: string | null;
     hidden: boolean;
@@ -148,7 +159,7 @@ export async function getFeedbackAdminData(input: {
   for (let offset = 0; ; offset += PAGE) {
     let q = db
       .from("customer_feedback" as never)
-      .select("id, branch, visit_type, rating, aspects, comment, product_wish, hidden, created_at")
+      .select("id, branch, visit_type, rating, aspects, aspect_order, comment, product_wish, hidden, created_at")
       .gte("created_at", startIso)
       .order("created_at", { ascending: false })
       .range(offset, offset + PAGE - 1);
@@ -166,7 +177,21 @@ export async function getFeedbackAdminData(input: {
   const perDay: Record<string, number> = {};
   let sum = 0;
   let firstCount = 0;
+  let aspectTotal = 0;
+  const slots: { shown: number; selected: number }[] = [];
+  let ordered = 0;
   for (const r of visible) {
+    if (r.aspect_order && r.aspect_order.length > 0) {
+      ordered += 1;
+      r.aspect_order
+        .filter((k) => k !== ASPECT_ALL_GOOD)
+        .forEach((k, i) => {
+          slots[i] ??= { shown: 0, selected: 0 };
+          slots[i].shown += 1;
+          if ((r.aspects ?? []).includes(k)) slots[i].selected += 1;
+        });
+    }
+    aspectTotal += (r.aspects ?? []).filter((a) => a !== ASPECT_ALL_GOOD).length;
     distribution[r.rating - 1] += 1;
     sum += r.rating;
     if (r.visit_type === "first") firstCount += 1;
@@ -192,6 +217,7 @@ export async function getFeedbackAdminData(input: {
       stats: {
         count: visible.length,
         average: visible.length ? sum / visible.length : null,
+        avgAspects: visible.length ? aspectTotal / visible.length : null,
         distribution,
         firstCount,
         returningCount: visible.length - firstCount,
@@ -201,6 +227,7 @@ export async function getFeedbackAdminData(input: {
       wishes: visible
         .filter((r) => r.product_wish)
         .map((r) => ({ text: r.product_wish as string, branch: r.branch, createdAt: r.created_at })),
+      position: { responses: ordered, slots },
     },
   };
 }
