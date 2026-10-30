@@ -316,8 +316,7 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
             maxLength={WISH_MAX}
             enterKeyHint="done"
             autoComplete="off"
-            placeholder="Misalnya: roti sobek cokelat"
-            className="mt-2 h-12 w-full rounded-xl border border-border bg-background px-3 text-base placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-2 h-12 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </Card>
 
