@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -36,6 +36,7 @@ import {
   WITHDRAWAL_REASON_META,
 } from "@/lib/pos/withdrawal-reasons";
 import { formatRp } from "@/lib/cashflow/format";
+import { cn } from "@/lib/utils";
 
 interface Outlet {
   id: string;
@@ -108,6 +109,19 @@ export function ServiceLevelAdminClient({
    * SAMA untuk semua outlet, ditentukan picker di page.tsx. */
   rangeLabel: string;
 }) {
+  // Outlet yang rinciannya ditampilkan: bawaan outlet aktif pertama; kartu ringkasan / tab / tautan #outlet-<id> mengubahnya.
+  const [selectedId, setSelectedId] = useState(() => (outlets.find((o) => o.enabled) ?? outlets[0])?.id ?? "");
+
+  useEffect(() => {
+    const fromHash = () => {
+      const id = window.location.hash.replace(/^#outlet-/, "");
+      if (id && outlets.some((o) => o.id === id)) setSelectedId(id);
+    };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    return () => window.removeEventListener("hashchange", fromHash);
+  }, [outlets]);
+
   if (outlets.length === 0) {
     return (
       <div className="panel-sticker p-5 text-sm text-muted-foreground">
@@ -116,106 +130,119 @@ export function ServiceLevelAdminClient({
     );
   }
 
+  const selected = outlets.find((o) => o.id === selectedId) ?? outlets[0];
+
   return (
     <div className="space-y-5">
-      {/* Ringkasan — supaya superadmin tidak perlu membuka layar kasir. */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* Ringkasan — supaya superadmin tidak perlu membuka layar kasir. Ketuk kartu untuk melihat rincian outlet itu. */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {outlets.map((o) => (
-          <div
-            key={o.id}
-            id={`outlet-${o.id}`}
-            className="panel-sticker p-4 scroll-mt-20"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                {o.branch ?? o.accountName}
-              </p>
-              {!o.enabled && (
-                <span className="shrink-0 rounded-full border-2 border-foreground bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                  Nonaktif
-                </span>
-              )}
-            </div>
-
-            {/* Dua angka berdampingan, bukan satu: Service Level sendirian
-                bisa dinaikkan dengan produksi berlebih, dan susut itulah
-                yang menahannya. Dibaca bersama atau tidak berarti. */}
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-2">
-              <div>
-                <p
-                  className={`font-display text-4xl font-extrabold tabular-nums leading-none ${toneOf(
-                    o.summary?.percent ?? null,
-                    o.target
-                  )}`}
-                >
-                  {pctLabel(o.summary?.percent ?? null)}
-                </p>
-                <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Service level
-                </p>
-              </div>
-              <div>
-                <p
-                  className={`font-display text-3xl font-extrabold tabular-nums leading-none ${wasteToneOf(
-                    o.waste?.lossRate ?? null
-                  )}`}
-                >
-                  {pctLabel(o.waste?.lossRate ?? null)}
-                </p>
-                <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Ditarik expired &amp; rusak · target &lt;{(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
-                </p>
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Target {(o.target * 100).toFixed(0)}%
-              {o.summary && o.summary.daysCounted > 0 ? (
-                <>
-                  {" "}
-                  · {o.summary.daysCounted} hari terhitung ·{" "}
-                  {o.summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong
-                </>
-              ) : (
-                " · belum ada data snapshot — cron berjalan tiap 22:30 WIB."
-              )}
-            </p>
-            {o.waste && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {o.waste.producedQty > 0 ? (
-                  <>
-                    {o.waste.expiredQty.toLocaleString("id-ID")} dari{" "}
-                    {o.waste.producedQty.toLocaleString("id-ID")} produksi
-                    terbuang expired · potensi omzet hilang{" "}
-                    {formatRp(o.waste.lostRevenue)}{" "}
-                    <span className="italic">(harga jual)</span>
-                  </>
-                ) : (
-                  `Belum ada produksi tercatat ${rangeLabel} — susut belum bisa dihitung.`
-                )}
-              </p>
-            )}
-            {o.summary?.hasPartialOpname && (
-              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-warning">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                Ada hari dengan opname parsial — SKU yang tidak dihitung saat
-                opname terbaca habis, jadi angkanya bisa tertekan semu.
-              </p>
-            )}
-            {o.summary?.hasBackfill && (
-              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                Sebagian hari dihitung mundur (backfill) — penyebutnya memakai
-                katalog hari ini, jadi tidak sebanding dengan hari terukur.
-              </p>
-            )}
-          </div>
+          <SummaryCard key={o.id} outlet={o} rangeLabel={rangeLabel} selected={o.id === selected.id} onSelect={() => setSelectedId(o.id)} />
         ))}
       </div>
 
-      {outlets.map((o) => (
-        <OutletPanel key={o.id} outlet={o} employees={employees} rangeLabel={rangeLabel} />
-      ))}
+      <OutletPanel key={selected.id} outlet={selected} employees={employees} rangeLabel={rangeLabel} />
     </div>
+  );
+}
+
+/** Satu outlet: dua angka utama + status terhadap target; rincian sekunder ringkas, peringatan jadi lencana. */
+function SummaryCard({
+  outlet: o,
+  rangeLabel,
+  selected,
+  onSelect,
+}: {
+  outlet: Outlet;
+  rangeLabel: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const slTone = serviceLevelTone(o.summary?.percent ?? null, o.target);
+  const status =
+    slTone === "success"
+      ? { text: "Sesuai target", cls: "bg-success/15 text-success" }
+      : slTone === "warning"
+        ? { text: "Mendekati target", cls: "bg-warning/20 text-warning" }
+        : slTone === "destructive"
+          ? { text: "Di bawah target", cls: "bg-destructive/15 text-destructive" }
+          : { text: "Belum ada data", cls: "bg-muted text-muted-foreground" };
+
+  return (
+    <button
+      type="button"
+      id={`outlet-${o.id}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "panel-sticker scroll-mt-20 p-4 text-left transition",
+        selected ? "ring-2 ring-foreground" : "hover:bg-muted/40",
+        !o.enabled && "opacity-70"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate font-display text-base font-bold">{o.branch ?? o.accountName}</span>
+        {o.enabled ? (
+          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", status.cls)}>{status.text}</span>
+        ) : (
+          <span className="shrink-0 rounded-full border-2 border-foreground bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">Nonaktif</span>
+        )}
+      </div>
+
+      {o.enabled ? (
+        <>
+          {/* Dua angka berdampingan, bukan satu: Service Level sendirian bisa dinaikkan dengan produksi berlebih, dan susut
+              itulah yang menahannya. Dibaca bersama atau tidak berarti. */}
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground">Service level</p>
+              <p className={cn("font-display text-3xl font-extrabold leading-tight tabular-nums", toneOf(o.summary?.percent ?? null, o.target))}>
+                {pctLabel(o.summary?.percent ?? null)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">target {(o.target * 100).toFixed(0)}%</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground">Susut (expired &amp; rusak)</p>
+              <p className={cn("font-display text-3xl font-extrabold leading-tight tabular-nums", wasteToneOf(o.waste?.lossRate ?? null))}>
+                {pctLabel(o.waste?.lossRate ?? null)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">target &lt; {(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%</p>
+            </div>
+          </div>
+          <p className="mt-3 text-[11.5px] leading-snug text-muted-foreground">
+            {o.summary && o.summary.daysCounted > 0
+              ? `${o.summary.daysCounted} hari terhitung · ${o.summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong`
+              : "Belum ada data snapshot (dihitung tiap 22:30 WIB)"}
+            <br />
+            {o.waste && o.waste.producedQty > 0
+              ? `${o.waste.expiredQty.toLocaleString("id-ID")} dari ${o.waste.producedQty.toLocaleString("id-ID")} produksi terbuang · potensi omzet hilang ${formatRp(o.waste.lostRevenue)}`
+              : `Belum ada produksi tercatat ${rangeLabel}`}
+          </p>
+          {(o.summary?.hasPartialOpname || o.summary?.hasBackfill) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {o.summary?.hasPartialOpname && (
+                <span
+                  title="Ada hari dengan opname parsial: SKU yang tidak dihitung saat opname terbaca habis, jadi angkanya bisa tertekan semu."
+                  className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 text-[10.5px] font-semibold text-warning"
+                >
+                  <AlertTriangle size={11} /> Opname parsial
+                </span>
+              )}
+              {o.summary?.hasBackfill && (
+                <span
+                  title="Sebagian hari dihitung mundur (backfill): penyebutnya memakai katalog hari ini, jadi tidak sebanding dengan hari terukur."
+                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground"
+                >
+                  <AlertTriangle size={11} /> Sebagian dihitung mundur
+                </span>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="mt-3 text-[11.5px] text-muted-foreground">Metrik belum aktif. Aktifkan di Pengaturan outlet pada rincian.</p>
+      )}
+    </button>
   );
 }
 
@@ -232,10 +259,10 @@ function OutletPanel({
     <div className="panel-sticker p-5 space-y-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-xl font-bold">
-          {outlet.branch ?? outlet.accountName}
+          Rincian {outlet.branch ?? outlet.accountName}
         </h2>
         <span className="text-xs text-muted-foreground">
-          {outlet.skus.length} SKU dilacak
+          {outlet.skus.length} SKU dilacak · {rangeLabel}
         </span>
       </div>
 
@@ -247,9 +274,25 @@ function OutletPanel({
         <WastePanel outlet={outlet} rangeLabel={rangeLabel} />
       </div>
       <DailyBreakdownSection outlet={outlet} rangeLabel={rangeLabel} />
-      <HoursSection outlet={outlet} />
-      <OwnersSection outlet={outlet} employees={employees} />
-      <ExclusionsSection outlet={outlet} />
+
+      {/* Pengaturan jarang dipakai: terlipat. Outlet nonaktif langsung terbuka karena di sinilah ia diaktifkan. */}
+      <details open={!outlet.enabled} className="group rounded-2xl border border-border bg-card">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">Pengaturan outlet</span>
+            <span className="block truncate text-[11.5px] text-muted-foreground">
+              Aktif/nonaktif, jam buka, target · penanggung jawab · SKU dikecualikan
+            </span>
+          </span>
+          <span className="text-xs font-semibold text-primary group-open:hidden">Buka</span>
+          <span className="hidden text-xs font-semibold text-primary group-open:inline">Tutup</span>
+        </summary>
+        <div className="space-y-5 border-t border-border p-4">
+          <HoursSection outlet={outlet} />
+          <OwnersSection outlet={outlet} employees={employees} />
+          <ExclusionsSection outlet={outlet} />
+        </div>
+      </details>
     </div>
   );
 }

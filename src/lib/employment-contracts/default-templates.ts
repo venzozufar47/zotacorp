@@ -328,7 +328,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (9) Jumlah keseluruhan pemotongan upah paling banyak 50% (lima puluh persen) dari setiap pembayaran upah yang diterima Karyawan (Pasal 65 Peraturan Pemerintah Nomor 36 Tahun 2021 tentang Pengupahan).
 
-(10) Karyawan berhak atas Tunjangan Hari Raya (THR) keagamaan yang dibayarkan menjelang hari raya sesuai peraturan perundang-undangan. THR dihitung secara pro-rata berdasarkan jumlah bulan Karyawan aktif bekerja terhadap 12 (dua belas) bulan, paling banyak sebesar 1 (satu) bulan upah.
+(10) Karyawan berhak atas Tunjangan Hari Raya (THR) keagamaan. Untuk keseragaman, THR dibayarkan kepada seluruh Karyawan pada periode Hari Raya Idul Fitri, paling lambat 7 (tujuh) hari sebelum hari raya tersebut, sesuai peraturan perundang-undangan. THR dihitung secara pro-rata berdasarkan jumlah bulan Karyawan aktif bekerja terhadap 12 (dua belas) bulan, paling banyak sebesar 1 (satu) bulan upah.
 
 (11) Bonus atau pembayaran lain di luar upah diatur berdasarkan kebijakan tertulis atau kesepakatan antara Pemberi Kerja dan Karyawan, yang diinformasikan melalui Zota Apps.
 

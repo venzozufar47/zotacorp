@@ -212,17 +212,22 @@ export default async function ServiceLevelAdminPage({
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Service Level"
-        subtitle="Berapa persen produk ready stock, dirata-rata sepanjang jam buka. Target per outlet, lihat kartu masing-masing."
+        subtitle="Ready stock sepanjang jam buka dan susut (ditarik expired & rusak) per outlet. Ketuk kartu outlet untuk rinciannya."
       />
-      <ScorecardThresholdsCard initial={thresholds.ok && thresholds.data ? thresholds.data : DEFAULT_THRESHOLDS} />
-      <ServiceLevelRangePicker
-        mode={range.mode}
-        fromDate={range.fromDate}
-        toDate={range.toDate}
-        today={today}
-        warning={range.warning}
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <ServiceLevelRangePicker
+          mode={range.mode}
+          fromDate={range.fromDate}
+          toDate={range.toDate}
+          today={today}
+          warning={range.warning}
+        />
+        <a href="#ambang-scorecard" className="text-xs font-semibold text-primary hover:underline">
+          Ambang warna scorecard ↓
+        </a>
+      </div>
       <ServiceLevelAdminClient outlets={outlets} employees={employees} rangeLabel={rangeLabel} />
+      <ScorecardThresholdsCard initial={thresholds.ok && thresholds.data ? thresholds.data : DEFAULT_THRESHOLDS} />
     </div>
   );
 }
