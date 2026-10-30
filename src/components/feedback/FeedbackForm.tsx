@@ -207,9 +207,8 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
   return (
     <main className="mx-auto max-w-md px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-6">
       <header className="mb-4">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-primary">Feedback kakak</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-primary">Saran & Masukan</p>
         <h1 className="mt-1 font-display text-[26px] font-bold leading-tight">{brand}</h1>
-        <p className="mt-1 text-[14px] text-muted-foreground">Hanya satu menit. Masukan kakak membuat kami lebih baik.</p>
       </header>
 
       <form id="feedback-form" onSubmit={submit} noValidate className="space-y-3">

@@ -6,8 +6,8 @@ import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 export async function generateMetadata({ params }: { params: Promise<{ branch: string }> }): Promise<Metadata> {
   const target = FEEDBACK_SLUGS[(await params).branch];
   return {
-    title: target ? `Feedback ${target.brand}` : "Feedback",
-    description: "Ceritakan pengalaman kakak, hanya satu menit.",
+    title: target ? `Saran & Masukan ${target.brand}` : "Saran & Masukan",
+    description: "Saran & masukan untuk kami.",
     robots: { index: false, follow: false },
   };
 }
