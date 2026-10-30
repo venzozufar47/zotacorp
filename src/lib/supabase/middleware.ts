@@ -95,6 +95,7 @@ export async function updateSession(request: NextRequest) {
     const publicish =
       pathname === "/" ||
       pathname === "/privacy" ||
+      pathname.startsWith("/feedback/") ||
       pathname === "/set-password" ||
       pathname === "/reset-password" ||
       pathname.startsWith("/login") ||
@@ -128,6 +129,12 @@ export async function updateSession(request: NextRequest) {
   // reachable whether signed-in or not — a logged-in user must NOT be
   // bounced to their role home like other public routes are.
   if (pathname === "/privacy") {
+    return supabaseResponse;
+  }
+
+  // Form feedback pelanggan (/feedback/pare, /feedback/semarang): publik untuk pelanggan toko. Dilewatkan apa pun status
+  // sesinya, supaya staf yang sedang masuk pun tidak dilempar ke beranda saat membuka tautannya (mis. menguji QR).
+  if (pathname.startsWith("/feedback/")) {
     return supabaseResponse;
   }
 

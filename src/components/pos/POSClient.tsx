@@ -61,6 +61,8 @@ import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { DailyRevenueTargetCard } from "@/components/pos/DailyRevenueTargetCard";
+import { FeedbackTargetCard } from "@/components/pos/FeedbackTargetCard";
+import type { PosFeedbackToday } from "@/lib/actions/feedback.actions";
 import type { PosDailyRevenueSummary } from "@/lib/actions/pos.actions";
 import {
   SUGAR_LEVELS,
@@ -93,6 +95,7 @@ interface Props {
   /** Omset hari ini vs target (migrasi 146). null = target belum di-set
    *  admin / gagal dibaca — kartu tidak dirender. */
   dailyRevenue?: PosDailyRevenueSummary | null;
+  feedbackToday?: PosFeedbackToday | null;
   /** Konten struk bersama (server, per rekening). */
   receiptContent: ReceiptContent;
   products: PosProduct[];
@@ -204,6 +207,7 @@ export function POSClient({
   shiftSlot,
   serviceLevel = null,
   dailyRevenue = null,
+  feedbackToday = null,
   receiptContent,
   products,
   isAdmin,
@@ -1251,11 +1255,16 @@ export function POSClient({
       <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
         {/* Strip informasional di atas grid produk — ikut ter-scroll saat
             kasir menelusuri produk, jadi tidak permanen memakan ruang. */}
-        {(dailyRevenue || serviceLevel) && (
+        {(dailyRevenue || serviceLevel || feedbackToday) && (
           <div className="flex items-stretch gap-3 px-3 pt-3">
             {dailyRevenue && (
               <div className="min-w-0 flex-1">
                 <DailyRevenueTargetCard summary={dailyRevenue} />
+              </div>
+            )}
+            {feedbackToday && (
+              <div className="min-w-0 flex-1">
+                <FeedbackTargetCard summary={feedbackToday} />
               </div>
             )}
             {serviceLevel && (

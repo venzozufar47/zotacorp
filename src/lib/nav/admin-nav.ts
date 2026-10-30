@@ -174,7 +174,10 @@ export function buildAdminNav({
           label: "Kinerja Cabang",
           color: "bg-tertiary",
           homeLabel: "Scorecard Cabang",
-          children: [{ href: "/admin/service-level", label: "Service Level" }],
+          children: [
+            { href: "/admin/service-level", label: "Service Level" },
+            { href: "/admin/feedback", label: "Feedback Customer" },
+          ],
         },
       ],
     },

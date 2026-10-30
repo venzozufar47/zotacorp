@@ -15,6 +15,7 @@ import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
 import { listCampaignsForPos } from "@/lib/actions/pos-discount.actions";
 import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
+import { getPosFeedbackToday } from "@/lib/actions/feedback.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
@@ -67,6 +68,7 @@ export default async function PosPage({
     receiptConfig,
     serviceLevelRes,
     dailyRevenueRes,
+    feedbackRes,
   ] = await Promise.all([
       listActivePosProducts(account.id),
       getCurrentRole(),
@@ -84,6 +86,8 @@ export default async function PosPage({
       // murah. Sama alasan .catch(): kartu target tidak boleh
       // menjatuhkan seluruh layar kasir.
       getPosDailyRevenueSummary(account.id).catch(() => null),
+      // Jumlah feedback pelanggan hari ini (Pare/Semarang saja; selain itu null). Gagal tidak boleh menjatuhkan layar kasir.
+      getPosFeedbackToday(account.id).catch(() => null),
     ]);
   const receiptContent =
     receiptConfig ?? defaultReceiptContent(account.accountName);
@@ -110,6 +114,7 @@ export default async function PosPage({
       dailyRevenue={
         dailyRevenueRes && dailyRevenueRes.ok ? dailyRevenueRes.data : null
       }
+      feedbackToday={feedbackRes && feedbackRes.ok ? (feedbackRes.data ?? null) : null}
       cashierName={cashierDisplayName(profile?.nickname, profile?.full_name)}
       fixedCashierName={view.fixedCashierName ?? null}
       shiftSlot={view.shiftSlot}

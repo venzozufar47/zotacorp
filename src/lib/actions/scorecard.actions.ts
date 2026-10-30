@@ -20,6 +20,9 @@ import {
   type BandRange,
 } from "@/lib/scorecard/thresholds";
 import { loadThresholds } from "@/lib/scorecard/thresholds-store";
+import { loadFeedbackWindow } from "@/lib/feedback/store";
+import { computeFeedbackStats, targetDays } from "@/lib/feedback/stats";
+import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "@/lib/feedback/constants";
 
 /**
  * Scorecard Cabang (PRD-2) — 4 angka cabang (Dokumen 4 §6 / Rencana Tim
@@ -226,14 +229,19 @@ export async function computeMetricsAsOf(
   const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
   const daysElapsed = Number(asOf.slice(8, 10));
 
-  const [wastePct, serviceLevel, mtd, cakeMtd, th] = await Promise.all([
+  const [wastePct, serviceLevel, mtd, cakeMtd, th, fbWindow] = await Promise.all([
     computeWastePercent(bankAccountId, weekStart, weekEnd),
     pooledServiceLevel(bankAccountId, weekStart, weekEnd),
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
     opts ? sumCakeRevenue(branch, monthStart, asOf) : Promise.resolve(0),
     // Ambang Waste/Service level/Feedback yang diatur owner (kartu "Ambang warna Scorecard Cabang"); bawaan bila belum ada.
     loadThresholds(createAdminClient()),
+    // Feedback customer: 30 hari bergulir, selalu (juga untuk kalkulator bonus), supaya sama dengan yang dilihat di scorecard.
+    loadFeedbackWindow(createAdminClient(), branch, addDays(asOf, -(FEEDBACK_WINDOW_DAYS - 1)), asOf).catch(() => null),
   ]);
+  const fb = fbWindow
+    ? computeFeedbackStats(fbWindow.ratings, targetDays(fbWindow.firstDate, asOf), th)
+    : null;
 
   const wasteMeasured = wastePct !== null;
   // Target bulanan dibagi per HARI KERJA (Senin–Sabtu; POS tidak aktif Minggu), bukan per hari kalender.
@@ -290,14 +298,20 @@ export async function computeMetricsAsOf(
       ranges: omzetRanges(),
     },
     {
-      // Sumber datanya (form feedback di POS) belum ada: kartu menampilkan "Belum ada data" dan netral (tidak memengaruhi poin)
-      // sampai rata-rata bintang tersedia, lalu warnanya mengikuti feedbackBandOf(rata-rata, th).
+      // Rata-rata bintang feedback customer 30 hari terakhir. Warna dari ambang bintang; hijau turun ke kuning bila jumlah
+      // feedback di bawah target harian (5/hari). Belum ada feedback = "Diukur" (netral, tidak memengaruhi poin).
       key: "feedback",
       label: "Rata-rata feedback customer",
-      value: 0,
-      displayValue: "Belum ada data",
-      band: "measuring",
+      value: fb?.average ?? 0,
+      displayValue: fb?.average != null ? `${fb.average.toFixed(1).replace(".", ",")} ★` : "Belum ada data",
+      band: fb?.band ?? "measuring",
+      note: fb
+        ? `${fb.count} feedback dalam ${FEEDBACK_WINDOW_DAYS} hari terakhir, target ${fb.targetCount} (${FEEDBACK_DAILY_TARGET} per hari).${
+            fb.average != null && !fb.countMet && fb.band === "yellow" && fb.average >= th.fbGreen ? " Jumlah belum tercapai, jadi kuning." : ""
+          }`
+        : undefined,
       ranges: feedbackRanges(th),
+      rangesNote: `Hijau butuh juga jumlah feedback mencapai ${FEEDBACK_DAILY_TARGET} per hari; bila kurang, kartu kuning.`,
     },
   ];
 }
