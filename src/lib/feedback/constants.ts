@@ -17,8 +17,8 @@ export function feedbackSlugOf(branch: FeedbackBranch): string {
 
 export type VisitType = "first" | "returning";
 export const VISIT_OPTIONS: { value: VisitType; label: string }[] = [
-  { value: "first", label: "Baru pertama kali datang" },
   { value: "returning", label: "Sudah pernah datang sebelumnya" },
+  { value: "first", label: "Baru pertama kali datang" },
 ];
 
 /** Tombol cepat untuk pertanyaan "Apakah kakak ada masukan untuk kami?". Urutan = urutan tampil. */

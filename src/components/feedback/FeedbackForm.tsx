@@ -184,8 +184,8 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
       <form id="feedback-form" onSubmit={submit} noValidate className="space-y-3">
         <Card invalid={!!errors.visit}>
           <fieldset ref={visitRef} className="min-w-0">
-            <Legend required>Kunjungan kakak</Legend>
-            <div role="radiogroup" aria-label="Kunjungan kakak" aria-describedby={errors.visit ? "err-visit" : undefined} className="grid grid-cols-2 gap-2">
+            <Legend required>Apakah kakak sudah pernah datang sebelumnya?</Legend>
+            <div role="radiogroup" aria-label="Apakah kakak sudah pernah datang sebelumnya?" aria-describedby={errors.visit ? "err-visit" : undefined} className="grid grid-cols-2 gap-2">
               {VISIT_OPTIONS.map((o) => {
                 const on = visit === o.value;
                 return (
