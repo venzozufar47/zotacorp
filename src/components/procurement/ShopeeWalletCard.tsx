@@ -11,6 +11,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { parseMoneyId } from "@/lib/utils/parse-number";
 import { NumberHint } from "@/components/shared/NumberHint";
 import { addShopeeTopup, deleteShopeeTopup, type ShopeeWallet } from "@/lib/actions/procurement-shopee.actions";
+import { walletLabel, walletName } from "@/lib/procurement/wallet-label";
 
 const dateLabel = (ymd: string) =>
   new Date(`${ymd}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -32,7 +33,7 @@ export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
         toast.error(res.error);
         return;
       }
-      toast.success(`Saldo Shopee bertambah ${formatRp(n)}`);
+      toast.success(`${walletLabel(wallet.businessUnit)} bertambah ${formatRp(n)}`);
       setAmount("");
       setNote("");
       setAdding(false);
@@ -41,7 +42,7 @@ export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
   }
 
   function remove(id: string) {
-    if (!confirm("Hapus tambah saldo ini? Saldo Shopee akan berkurang sebesar nominalnya.")) return;
+    if (!confirm(`Hapus tambah saldo ini? ${walletLabel(wallet.businessUnit)} akan berkurang sebesar nominalnya.`)) return;
     start(async () => {
       const res = await deleteShopeeTopup(id);
       if (!res.ok) {
@@ -58,13 +59,14 @@ export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <ShoppingBag size={12} /> Saldo Shopee
+            <ShoppingBag size={12} /> {walletLabel(wallet.businessUnit)}
           </p>
           <p className={cn("mt-0.5 font-display text-2xl font-extrabold tabular-nums", negative && "text-destructive")}>
             {formatRp(wallet.balance)}
           </p>
           <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
-            Untuk belanja lewat Shopee. Tambah saldo setiap menerima transferan dari owner.
+            {walletName(wallet.businessUnit) === "Seabank" ? "Untuk belanja memakai saldo Seabank." : "Untuk belanja lewat Shopee."} Tambah saldo setiap menerima
+            transferan dari owner.
           </p>
           {negative && (
             <p className="mt-1 text-[11.5px] font-semibold text-destructive">

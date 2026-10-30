@@ -39,6 +39,7 @@ import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { sendPushToAdmins } from "@/lib/push/web-push";
 import { getCashPosition } from "./procurement-wallet.actions";
 import { shopeeBalance } from "@/lib/procurement/shopee-wallet";
+import { walletLabel } from "@/lib/procurement/wallet-label";
 import { isPurchaseUnit } from "@/lib/costing/unit-options";
 import { brandBelongsToMaterial, brandNameError, cleanBrandName, findOrCreateBrand, rebuildBrandUsage } from "@/lib/procurement/brand-store";
 
@@ -228,7 +229,7 @@ async function loadRecentExpenses(admin: Admin, businessUnit: string): Promise<R
     .gte("created_at", sinceIso)
     .limit(100);
   for (const p of (shopee ?? []) as Record<string, unknown>[]) {
-    out.push({ amount: num(p.total), at: String(p.created_at), label: `Nota Saldo Shopee${p.vendor ? ` · ${p.vendor}` : ""}` });
+    out.push({ amount: num(p.total), at: String(p.created_at), label: `Nota ${walletLabel(businessUnit)}${p.vendor ? ` · ${p.vendor}` : ""}` });
   }
   return out;
 }
@@ -1570,7 +1571,7 @@ export async function updatePurchaseMoneySource(input: { id: string; newSource: 
   if (!h) return { ok: false, error: "Nota tidak ditemukan" };
   if (h.money_source === input.newSource) return { ok: true };
   if (h.money_source === "shopee")
-    return { ok: false, error: "Nota Saldo Shopee tidak bisa dipindah sumbernya — hapus lalu catat ulang" };
+    return { ok: false, error: `Nota ${walletLabel(h.business_unit as string)} tidak bisa dipindah sumbernya — hapus lalu catat ulang` };
 
   const access = await authorizePurchaseAccess(h.business_unit as string);
   if (!access.ok) return { ok: false, error: access.error };

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { AlertTriangle, ArrowLeftRight, ChevronDown, ChevronRight, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { PurchaseEditDialog } from "./PurchaseEditDialog";
 import { cn } from "@/lib/utils";
+import { walletLabel } from "@/lib/procurement/wallet-label";
 import { formatRp } from "@/lib/cashflow/format";
 import { categoryLabelFull } from "@/lib/procurement/categories";
 import {
@@ -150,7 +151,7 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
               <span className="ml-2 rounded-full bg-warning/20 px-2 py-0.5 align-middle text-[10px] font-semibold">Uang laci</span>
             )}
             {p.moneySource === "shopee" && (
-              <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 align-middle text-[10px] font-semibold">Saldo Shopee</span>
+              <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 align-middle text-[10px] font-semibold">{walletLabel(p.businessUnit)}</span>
             )}
             {flagged > 0 && <AlertTriangle size={13} className="ml-1.5 inline text-destructive" />}
           </p>

@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { walletLabel, walletName } from "@/lib/procurement/wallet-label";
 import { PURCHASE_UNITS } from "@/lib/costing/unit-options";
 import { parseMoneyId } from "@/lib/utils/parse-number";
 import { NumberHint } from "@/components/shared/NumberHint";
@@ -173,6 +174,8 @@ export function PurchaseForm({
   const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
+  // Foto dari galeri (screenshot) hanya sah untuk belanja online lewat Saldo Shopee/Seabank; sisanya wajib foto langsung dari kamera.
+  const [fromGallery, setFromGallery] = useState(false);
   // Kunci idempotensi: klik ganda / kirim ulang setelah timeout tidak membuat nota kembar. Diganti setelah sukses.
   const clientIdRef = useRef<string>(crypto.randomUUID());
 
@@ -216,8 +219,22 @@ export function PurchaseForm({
         ? "Foto sedang diunggah…"
         : null;
 
-  async function onPickFile(file: File | null) {
+  /** Ganti sumber uang. Foto yang diambil dari galeri hanya berlaku untuk Saldo Shopee/Seabank, jadi dibuang bila sumbernya pindah. */
+  function chooseSource(next: MoneySource) {
+    if (fromGallery && next !== "shopee") {
+      if (receiptPath) void discardPurchaseReceipt({ businessUnit, path: receiptPath });
+      if (receiptPreview?.startsWith("blob:")) URL.revokeObjectURL(receiptPreview);
+      setReceiptPath(null);
+      setReceiptPreview(null);
+      setFromGallery(false);
+      toast.error(`Foto dari galeri hanya untuk ${walletLabel(businessUnit)}. Ambil foto nota langsung dengan kamera.`);
+    }
+    setSource(next);
+  }
+
+  async function onPickFile(file: File | null, viaGallery = false) {
     if (!file) return;
+    if (viaGallery && source !== "shopee") return void toast.error(`Galeri hanya untuk belanja lewat ${walletLabel(businessUnit)}. Ambil foto langsung.`);
     setUploading(true);
     try {
       const small = await compressImageStrict(file, { maxDim: 1600 });
@@ -233,6 +250,7 @@ export function PurchaseForm({
       if (receiptPreview?.startsWith("blob:")) URL.revokeObjectURL(receiptPreview);
       setKeepReceipt(false);
       setReceiptPath(res.data.path);
+      setFromGallery(viaGallery);
       setReceiptPreview(URL.createObjectURL(small));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memproses foto");
@@ -310,6 +328,7 @@ export function PurchaseForm({
       setLines([]);
       setReceiptPath(null);
       setReceiptPreview(null);
+      setFromGallery(false);
       setVendor("");
       setDate(today);
       setComposer(null);
@@ -325,7 +344,7 @@ export function PurchaseForm({
           <p className="text-sm text-muted-foreground">
             {formatRp(done.total)} · {done.lines} baris —{" "}
             {done.source === "shopee"
-              ? "mengurangi Saldo Shopee dan (untuk bahan) menambah stok."
+              ? `mengurangi ${walletLabel(businessUnit)} dan (untuk bahan) menambah stok.`
               : done.source === "laci"
                 ? "sudah masuk buku kas dan mengurangi kas laci shift ini."
                 : "sudah masuk buku kas dan (untuk bahan) stok."}
@@ -362,7 +381,7 @@ export function PurchaseForm({
           }`}
           disabled={!access.pengadaan}
           disabledReason="Hanya untuk petugas pengadaan"
-          onClick={() => setSource("pengadaan")}
+          onClick={() => chooseSource("pengadaan")}
         />
         <SourceCard
           icon={<Landmark size={20} />}
@@ -377,7 +396,7 @@ export function PurchaseForm({
           disabled={!access.laci}
           disabledReason={access.laciReason ?? undefined}
           onClick={() => {
-            setSource("laci");
+            chooseSource("laci");
             // Uang laci selalu hari ini — kecuali mengedit nota laci lama (tanggalnya dipertahankan).
             if (editing?.moneySource !== "laci") {
               setDate(today);
@@ -387,13 +406,13 @@ export function PurchaseForm({
         />
         <SourceCard
           icon={<ShoppingBag size={20} />}
-          title="Saldo Shopee"
-          desc={`Belanja lewat Shopee memakai saldo ShopeePay dari transferan owner.${
+          title={walletLabel(businessUnit)}
+          desc={`${walletName(businessUnit) === "Seabank" ? "Belanja memakai saldo Seabank dari transferan owner." : "Belanja lewat Shopee memakai saldo ShopeePay dari transferan owner."}${
             access.shopeeBalance != null ? ` Saldo ${formatRp(access.shopeeBalance)}.` : ""
           }`}
           disabled={!access.shopee}
           disabledReason="Hanya untuk petugas pengadaan"
-          onClick={() => setSource("shopee")}
+          onClick={() => chooseSource("shopee")}
         />
         <p className="text-[11px] text-muted-foreground">
           Salah memilih membuat kas laci tidak cocok. Ragu? Tanyakan: apakah uangnya diambil dari laci kasir?
@@ -425,7 +444,7 @@ export function PurchaseForm({
       {access.pengadaan && (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
           <span>
-            Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : source === "shopee" ? "Saldo Shopee" : "Uang pengadaan"}</b>
+            Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : source === "shopee" ? walletLabel(businessUnit) : "Uang pengadaan"}</b>
             {source === "pengadaan" && walletAvail != null && <> (saldo {formatRp(walletAvail)})</>}
             {source === "shopee" && shopeeAvail != null && <> (saldo {formatRp(shopeeAvail)})</>}
           </span>
@@ -443,7 +462,7 @@ export function PurchaseForm({
       {/* 1. Foto nota */}
       <section className="space-y-2">
         <StepTitle n={1} title="Foto nota" done={!!receiptPath} />
-        {/* Dua input: kamera langsung, dan galeri (mis. screenshot nota Shopee) tanpa `capture`. */}
+        {/* Dua input: kamera langsung, dan galeri (screenshot nota Shopee/Seabank) tanpa `capture` — galeri hanya untuk Saldo Shopee/Seabank. */}
         <input
           ref={cameraRef}
           type="file"
@@ -457,7 +476,7 @@ export function PurchaseForm({
           type="file"
           accept="image/*"
           className="hidden"
-          onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => void onPickFile(e.target.files?.[0] ?? null, true)}
         />
         {receiptPreview ? (
           <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-2.5">
@@ -476,19 +495,21 @@ export function PurchaseForm({
               >
                 {uploading ? "Mengunggah…" : "Foto ulang"}
               </button>
-              <button
-                type="button"
-                onClick={() => galleryRef.current?.click()}
-                disabled={uploading || saving}
-                className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
-              >
-                Dari galeri
-              </button>
+              {source === "shopee" && (
+                <button
+                  type="button"
+                  onClick={() => galleryRef.current?.click()}
+                  disabled={uploading || saving}
+                  className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                >
+                  Dari galeri
+                </button>
+              )}
             </div>
           </div>
         ) : (
           <div className="space-y-2 rounded-2xl border-2 border-dashed border-foreground/40 bg-card p-3">
-            <div className="grid grid-cols-2 gap-2">
+            <div className={cn("grid gap-2", source === "shopee" ? "grid-cols-2" : "grid-cols-1")}>
               <button
                 type="button"
                 onClick={() => cameraRef.current?.click()}
@@ -498,18 +519,23 @@ export function PurchaseForm({
                 {uploading ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
                 <span className="text-sm font-semibold">{uploading ? "Mengunggah…" : "Ambil foto"}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => galleryRef.current?.click()}
-                disabled={uploading || saving}
-                className="flex flex-col items-center gap-1.5 rounded-xl border border-border px-3 py-4 text-foreground transition hover:bg-muted/50 disabled:opacity-60"
-              >
-                <ImageIcon size={24} />
-                <span className="text-sm font-semibold">Pilih dari galeri</span>
-              </button>
+              {source === "shopee" && (
+                <button
+                  type="button"
+                  onClick={() => galleryRef.current?.click()}
+                  disabled={uploading || saving}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-border px-3 py-4 text-foreground transition hover:bg-muted/50 disabled:opacity-60"
+                >
+                  <ImageIcon size={24} />
+                  <span className="text-sm font-semibold">Pilih dari galeri</span>
+                </button>
+              )}
             </div>
             <p className="text-center text-xs text-muted-foreground">
-              Wajib untuk setiap pengeluaran. Nota Shopee/online: pilih screenshot dari galeri. Tanpa struk? Foto layar aplikasi/ojek.
+              {source === "shopee"
+                ? `Wajib untuk setiap pengeluaran. Nota ${walletName(businessUnit)}/online: pilih screenshot dari galeri.`
+                : `Wajib untuk setiap pengeluaran, difoto langsung dengan kamera. Galeri hanya untuk belanja lewat ${walletLabel(businessUnit)}.`}{" "}
+              Tanpa struk? Foto layar aplikasi/ojek.
             </p>
           </div>
         )}
@@ -684,7 +710,7 @@ export function PurchaseForm({
             )}
             {source === "shopee" && shopeeAvail != null && total > shopeeAvail && (
               <p className="text-[11px] font-semibold text-destructive">
-                Melebihi Saldo Shopee ({formatRp(shopeeAvail)}): saldo jadi −{formatRp(total - shopeeAvail)}. Sudah tambah
+                Melebihi {walletLabel(businessUnit)} ({formatRp(shopeeAvail)}): saldo jadi −{formatRp(total - shopeeAvail)}. Sudah tambah
                 saldo dari transferan owner?
               </p>
             )}
