@@ -7,6 +7,7 @@ import { PosNavLink } from "./PosNavLink";
 import { PosShell } from "./PosShell";
 import { PosLogo } from "./PosLogo";
 import { PosOutletSwitch } from "./PosOutletSwitch";
+import { PosMamayaFlowDialog } from "./PosMamayaFlowDialog";
 import { posPalette } from "@/lib/pos/branch";
 import "./workstation.css";
 import {
@@ -1191,6 +1192,7 @@ export function POSClient({
           </p>
         </div>
         <PosOutletSwitch basePath={basePath} />
+        <PosMamayaFlowDialog basePath={basePath} />
         {shiftSlot === undefined ? (
           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
             <span className="size-1.5 rounded-full bg-success animate-pulse" />

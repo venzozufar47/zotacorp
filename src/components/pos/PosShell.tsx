@@ -12,6 +12,7 @@ import Link from "next/link";
 import { PosNavLink } from "./PosNavLink";
 import { PosLogo } from "./PosLogo";
 import { PosOutletSwitch } from "./PosOutletSwitch";
+import { PosMamayaFlowDialog } from "./PosMamayaFlowDialog";
 import { posPalette } from "@/lib/pos/branch";
 import type { PosNavSection } from "./PosTopNav";
 import "./workstation.css";
@@ -128,6 +129,7 @@ export function PosShell({
           </p>
         </div>
         <PosOutletSwitch basePath={basePath} />
+        <PosMamayaFlowDialog basePath={basePath} />
         {shiftSlot !== undefined
           ? shiftSlot
           : showShiftPill && (
