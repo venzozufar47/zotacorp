@@ -1,4 +1,6 @@
 import { AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { combineWasteService } from "@/lib/scorecard/combine";
 import { TILE_STYLE, type TileTone } from "./tile-styles";
 import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
 import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
@@ -12,6 +14,14 @@ const BAND_META: Record<ScorecardBand, { label: string } & (typeof TILE_STYLE)[T
   unset: { label: "Belum diatur", ...TILE_STYLE.neutral },
 };
 
+const BAND_WORD = { green: "hijau", yellow: "kuning", red: "merah" } as const;
+
+/** Satu baris panduan di ⓘ: "Waste 30 hari terakhir: hijau ≤ 3% · kuning … · merah …". */
+function guideLine(m: ScorecardMetric): string {
+  const r = m.ranges?.map((x) => `${BAND_WORD[x.band]} ${x.text}`).join(" · ");
+  return r ? `${m.label}: ${r}` : m.label;
+}
+
 export function ScorecardView({
   scorecard,
   settingsLinks,
@@ -20,6 +30,9 @@ export function ScorecardView({
   /** Pintasan "atur target" per metrik ke halaman pengaturan aslinya (hanya halaman owner yang mengirim). */
   settingsLinks?: Partial<Record<ScorecardMetric["key"], { href: string; label: string }>>;
 }) {
+  // Waste + Service level tampil sebagai SATU kartu yang warnanya mengikuti yang lebih rendah.
+  const items = combineWasteService(scorecard.metrics);
+  const odd = items.length % 2 === 1;
   return (
     <div className="space-y-2.5">
       {scorecard.twoWeeksRedLabels.length > 0 && (
@@ -34,22 +47,74 @@ export function ScorecardView({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
-        {scorecard.metrics.map((m, i) => {
-          const meta = BAND_META[m.band];
+      <div className={cn("grid grid-cols-2 gap-2 sm:gap-2.5", items.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+        {items.map((item, i) => {
+          const band = item.kind === "combo" ? item.band : item.metric.band;
+          const meta = BAND_META[band];
           const Icon = meta.Icon;
+          const tileCls = cn(
+            "animate-fade-up relative rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 has-[button[aria-expanded=true]]:z-30",
+            meta.tile,
+            // Jumlah ubin ganjil: yang pertama selebar baris di HP supaya tidak menyisakan lubang.
+            odd && i === 0 && "col-span-2 lg:col-span-1"
+          );
+          // Watermark dipotong di pembungkusnya sendiri; ubin tidak boleh overflow-hidden karena panduan ⓘ muncul di dalamnya.
+          const watermark = (
+            <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+              <Icon size={64} strokeWidth={1.5} className="absolute -bottom-3 -right-3 opacity-[0.14]" />
+            </span>
+          );
+
+          if (item.kind === "combo") {
+            const parts = [
+              { metric: item.waste, id: "waste" as const, name: "Waste" },
+              { metric: item.service, id: "service_level" as const, name: "Service level" },
+            ];
+            return (
+              <div key="waste-service" className={tileCls} style={{ animationDelay: `${i * 60}ms` }}>
+                {watermark}
+                <div className="relative flex items-start justify-between gap-1">
+                  <span className="text-[11.5px] font-medium leading-snug">Waste &amp; Service level</span>
+                  <span className="-mr-2 -mt-1.5">
+                    <ScorecardRangesInfo
+                      label="Waste & Service level"
+                      lines={[guideLine(item.waste), guideLine(item.service), "Warna kartu mengikuti yang lebih rendah."]}
+                      settings={settingsLinks?.service_level}
+                      onSolid
+                    />
+                  </span>
+                </div>
+                <div className="relative mt-1 grid grid-cols-2 gap-2">
+                  {parts.map((p) => (
+                    <div key={p.id} className="min-w-0">
+                      <p
+                        className={cn(
+                          "font-display leading-tight tabular-nums",
+                          p.metric.displayValue.length > 7 ? "text-base" : "text-[26px]",
+                          item.driver === p.id ? "font-extrabold" : "font-semibold opacity-80"
+                        )}
+                      >
+                        {p.metric.displayValue}
+                      </p>
+                      <p className="text-[10.5px] leading-tight">{p.name}</p>
+                    </div>
+                  ))}
+                </div>
+                <span className={`relative mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}>
+                  <Icon aria-hidden size={12} strokeWidth={2.5} />
+                  {meta.label}
+                  {item.driver && ` · ikut ${item.driver === "waste" ? "Waste" : "Service level"}`}
+                </span>
+              </div>
+            );
+          }
+
+          const m = item.metric;
           // "Belum ada data" dan sejenisnya bukan angka: tampil lebih kecil supaya tidak meluap.
           const isText = m.displayValue.length > 7;
           return (
-            <div
-              key={m.key}
-              className={`animate-fade-up relative rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 has-[button[aria-expanded=true]]:z-30 ${meta.tile}`}
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              {/* Watermark dipotong di pembungkusnya sendiri; ubin tidak boleh overflow-hidden karena panduan ⓘ muncul di dalamnya. */}
-              <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
-                <Icon size={64} strokeWidth={1.5} className="absolute -bottom-3 -right-3 opacity-[0.14]" />
-              </span>
+            <div key={m.key} className={tileCls} style={{ animationDelay: `${i * 60}ms` }}>
+              {watermark}
               <div className="relative flex items-start justify-between gap-1">
                 <span className="text-[11.5px] font-medium leading-snug">{m.label}</span>
                 <span className="-mr-2 -mt-1.5">

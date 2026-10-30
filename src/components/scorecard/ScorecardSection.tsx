@@ -36,9 +36,9 @@ export function ScorecardSectionSkeleton() {
   return (
     <div className="space-y-2.5" aria-hidden>
       <Skeleton className="h-3 w-40" />
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-28 rounded-2xl" />
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className={i === 0 ? "col-span-2 h-28 rounded-2xl lg:col-span-1" : "h-28 rounded-2xl"} />
         ))}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScorecardView } from "./ScorecardView";
+import { combineWasteService, tileBand } from "@/lib/scorecard/combine";
 import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
 
 const DOT: Record<ScorecardBand, string> = {
@@ -36,8 +37,8 @@ export function ScorecardPrevMonth({ scorecard }: { scorecard: BranchScorecard }
           <span className="flex items-center gap-2 text-[12.5px]">
             <span className="font-semibold">Hasil {prev.label}</span>
             <span className="flex shrink-0 items-center gap-1" aria-hidden>
-              {prev.metrics.map((m) => (
-                <span key={m.key} className={cn("size-2.5 rounded-full", DOT[m.band])} />
+              {combineWasteService(prev.metrics).map((it) => (
+                <span key={it.kind === "combo" ? "waste-service" : it.metric.key} className={cn("size-2.5 rounded-full", DOT[tileBand(it)])} />
               ))}
             </span>
           </span>

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { saveBranchOmzetTargets } from "@/lib/actions/scorecard-target.actions";
 import type { OmzetMonth } from "@/lib/actions/scorecard.actions";
@@ -36,7 +38,10 @@ function MoneyField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
-/** Target omzet bulanan satu cabang, POS dan Custom Cake terpisah. Hanya halaman owner. */
+/**
+ * Target omzet bulanan satu cabang, POS dan Custom Cake terpisah. Hanya halaman owner. Terlipat secara bawaan supaya tidak
+ * memakan tempat (ringkasan target tetap terlihat di kepala kartu); terbuka sendiri bila alamat membawa jangkar kartu ini.
+ */
 export function OmzetTargetEditor({
   branch,
   initial,
@@ -52,6 +57,18 @@ export function OmzetTargetEditor({
   const [cake, setCake] = useState(fmt(initial.cake));
   const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const anchor = `target-omzet-${branch}`;
+
+  // Tautan "atur target" dari kartu scorecard memakai #target-omzet-<cabang>: buka kartunya agar tujuannya terlihat.
+  useEffect(() => {
+    const openIfTargeted = () => {
+      if (window.location.hash === `#${anchor}`) setOpen(true);
+    };
+    openIfTargeted();
+    window.addEventListener("hashchange", openIfTargeted);
+    return () => window.removeEventListener("hashchange", openIfTargeted);
+  }, [anchor]);
 
   const next = { pos: parse(pos), cake: parse(cake) };
   const dirty = next.pos !== saved.pos || next.cake !== saved.cake;
@@ -76,8 +93,30 @@ export function OmzetTargetEditor({
   const total = (next.pos ?? 0) + (next.cake ?? 0);
 
   return (
-    <div id={`target-omzet-${branch}`} className="scroll-mt-24 space-y-3 rounded-2xl border border-border bg-card p-3.5">
-      <p className="text-[12.5px] font-semibold">Target omzet bulanan</p>
+    <div id={anchor} className="scroll-mt-24 rounded-2xl border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={`${anchor}-isi`}
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-semibold">Target omzet bulanan</span>
+          {!open && (
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {saved.pos == null && saved.cake == null
+                ? "Belum diatur"
+                : `POS ${saved.pos == null ? "—" : rp(saved.pos)} · Custom Cake ${saved.cake == null ? "—" : rp(saved.cake)}`}
+              {dirty && " · belum disimpan"}
+            </span>
+          )}
+        </span>
+        <span className="text-[11.5px] font-semibold text-primary">{open ? "Tutup" : "Atur"}</span>
+        <ChevronDown size={16} className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div id={`${anchor}-isi`} className="space-y-3 border-t border-border p-3.5">
       {history.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[26rem] text-[11.5px]">
@@ -118,6 +157,8 @@ export function OmzetTargetEditor({
           {busy ? "Menyimpan…" : "Simpan"}
         </Button>
       </div>
+        </div>
+      )}
     </div>
   );
 }

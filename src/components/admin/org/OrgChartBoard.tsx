@@ -14,7 +14,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { toast } from "sonner";
-import { Crown, GripVertical, Loader2, Users, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Crown, GripVertical, Loader2, Search, Users, X } from "lucide-react";
 import { setMemberLeaders, type OrgChartData, type OrgPerson } from "@/lib/actions/org-structure.actions";
 import {
   childrenIndex,
@@ -37,12 +37,20 @@ const SelectCtx = createContext<{ selectedId: string | null; select: (id: string
   selectedId: null,
   select: () => {},
 });
+/** Lipat/buka cabang pohon, dan hasil pencarian (null = tidak sedang mencari). */
+const ViewCtx = createContext<{ collapsed: Set<string>; toggle: (id: string) => void; matches: Set<string> | null }>({
+  collapsed: new Set(),
+  toggle: () => {},
+  matches: null,
+});
 
 const rootKey = (parentId: string | null) => parentId ?? "root";
 
 function initials(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "?";
 }
+
+const roleLine = (p: OrgPerson) => [p.jobRole, p.businessUnit].filter(Boolean).join(" · ") || "—";
 
 function PersonCard({
   person,
@@ -59,6 +67,7 @@ function PersonCard({
 }) {
   const drag = useContext(DragCtx);
   const { selectedId, select } = useContext(SelectCtx);
+  const { collapsed, toggle, matches } = useContext(ViewCtx);
   const key = `${person.id}@${rootKey(parentId)}`;
   const {
     attributes,
@@ -74,6 +83,8 @@ function PersonCard({
   const dragging = drag !== null;
   const invalid = dragging && (drag.personId === person.id || drag.blocked.has(person.id));
   const hot = dragging && isOver && !invalid;
+  const found = !!matches?.has(person.id);
+  const isCollapsed = !matches && collapsed.has(person.id);
 
   return (
     <div
@@ -85,45 +96,65 @@ function PersonCard({
       {...listeners}
       onClick={() => select(person.id)}
       className={cn(
-        "flex cursor-grab touch-manipulation select-none items-center gap-2 rounded-xl border-2 bg-card px-2.5 py-2 transition active:cursor-grabbing",
-        compact && "py-1.5",
-        selectedId === person.id ? "border-foreground shadow-hard-sm" : "border-border",
+        "flex cursor-grab touch-manipulation select-none items-start gap-2 rounded-xl border-2 bg-card px-2 py-2 transition active:cursor-grabbing",
+        selectedId === person.id ? "border-foreground shadow-hard-sm" : "border-border hover:border-foreground/40",
+        found && "bg-primary/10 ring-2 ring-primary",
         isDragging && "opacity-40",
         hot && "border-primary bg-primary/10",
         dragging && isOver && invalid && "border-destructive bg-destructive/10"
       )}
     >
-      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+      <GripVertical className="mt-2 size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
       <span
         aria-hidden
-        className="grid size-7 shrink-0 place-items-center rounded-full border-2 border-foreground bg-tertiary font-display text-xs font-bold"
+        className="grid size-8 shrink-0 place-items-center rounded-full border-2 border-foreground bg-tertiary font-display text-xs font-bold"
       >
         {initials(person.name)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block break-words text-sm font-semibold leading-tight">{person.name}</span>
-        {!compact && (
-          <span className="block truncate text-[11px] leading-tight text-muted-foreground">
-            {[person.jobRole, person.businessUnit].filter(Boolean).join(" · ") || "—"}
+        <span className="line-clamp-2 break-words text-sm font-semibold leading-tight" title={person.name}>
+          {person.name}
+        </span>
+        {!compact && <span className="mt-0.5 block truncate text-[11px] leading-tight text-muted-foreground">{roleLine(person)}</span>}
+        {(leaderCount > 1 || reportCount > 0) && (
+          <span className="mt-1 flex flex-wrap items-center gap-1">
+            {leaderCount > 1 && (
+              <span
+                title={`${leaderCount} atasan — persetujuan oleh salah satunya`}
+                className="rounded-full bg-warning/40 px-1.5 py-px text-[10px] font-bold"
+              >
+                {leaderCount} atasan
+              </span>
+            )}
+            {reportCount > 0 && (
+              <span
+                title={`${reportCount} bawahan langsung`}
+                className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-px text-[11px] font-semibold"
+              >
+                <Users className="size-3" />
+                {reportCount}
+              </span>
+            )}
           </span>
         )}
       </span>
-      {leaderCount > 1 && (
-        <span
-          title={`${leaderCount} atasan — persetujuan oleh salah satunya`}
-          className="shrink-0 rounded-full bg-warning/40 px-1.5 text-[10px] font-bold"
+      {!compact && reportCount > 0 && (
+        <button
+          type="button"
+          aria-label={isCollapsed ? `Buka bawahan ${person.name}` : `Lipat bawahan ${person.name}`}
+          aria-expanded={!isCollapsed}
+          // Tombol ini tidak boleh memulai seretan atau memilih kartu.
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggle(person.id);
+          }}
+          className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
         >
-          {leaderCount} atasan
-        </span>
-      )}
-      {reportCount > 0 && (
-        <span
-          title={`${reportCount} bawahan langsung`}
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 text-[11px] font-semibold"
-        >
-          <Users className="size-3" />
-          {reportCount}
-        </span>
+          {isCollapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+        </button>
       )}
     </div>
   );
@@ -147,21 +178,24 @@ function TreeNode({
   path: string[];
   tree: TreeModel;
 }) {
+  const { collapsed, matches } = useContext(ViewCtx);
   const person = tree.byId.get(id);
   if (!person) return null;
   const children = (tree.kids.get(id) ?? [])
     .filter((c) => tree.byId.has(c) && !path.includes(c))
     .sort((a, b) => tree.byId.get(a)!.name.localeCompare(tree.byId.get(b)!.name, "id"));
+  // Saat mencari, semua cabang dibuka supaya hasilnya terlihat.
+  const showKids = children.length > 0 && (!!matches || !collapsed.has(id));
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <PersonCard
         person={person}
         parentId={parentId}
         leaderCount={tree.leaderCountOf.get(id) ?? 0}
         reportCount={tree.kids.get(id)?.length ?? 0}
       />
-      {children.length > 0 && (
-        <div className="ml-4 space-y-2 border-l-2 border-border pl-3">
+      {showKids && (
+        <div className="ml-3 space-y-1.5 border-l-2 border-border pl-2.5">
           {children.map((c) => (
             <TreeNode key={`${c}@${id}`} id={c} parentId={id} path={[...path, id]} tree={tree} />
           ))}
@@ -199,6 +233,8 @@ export function OrgChartBoard({ data }: { data: OrgChartData }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const savingRef = useRef(false);
 
   const sensors = useSensors(
@@ -221,6 +257,38 @@ export function OrgChartBoard({ data }: { data: OrgChartData }) {
     .filter((p) => (kids.get(p.id)?.length ?? 0) > 0)
     .sort((a, b) => sizeOf(b.id) - sizeOf(a.id) || a.name.localeCompare(b.name, "id"));
   const loners = roots.filter((p) => !kids.get(p.id)?.length);
+
+  // Pencarian: nama, jabatan, atau unit. Tim tanpa hasil diredupkan; kartu yang cocok disorot.
+  const needle = query.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!needle) return null;
+    return new Set(
+      people
+        .filter((p) => `${p.name} ${p.jobRole ?? ""} ${p.businessUnit ?? ""}`.toLowerCase().includes(needle))
+        .map((p) => p.id)
+    );
+  }, [people, needle]);
+  const teamHasMatch = (rootId: string) => {
+    if (!matches) return true;
+    if (matches.has(rootId)) return true;
+    for (const id of descendantsOf(rootId, links)) if (matches.has(id)) return true;
+    return false;
+  };
+  const withKids = useMemo(() => people.filter((p) => (kids.get(p.id)?.length ?? 0) > 0).map((p) => p.id), [people, kids]);
+  const view = useMemo(
+    () => ({
+      collapsed,
+      matches,
+      toggle: (id: string) =>
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        }),
+    }),
+    [collapsed, matches]
+  );
 
   async function applyLeaders(memberId: string, next: string[]) {
     if (savingRef.current) return;
@@ -297,156 +365,205 @@ export function OrgChartBoard({ data }: { data: OrgChartData }) {
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDrag(null)}>
       <DragCtx.Provider value={drag}>
         <SelectCtx.Provider value={{ selectedId, select: setSelectedId }}>
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Seret kartu ke atasan barunya. Lepas ke kartu <b>Owner</b> untuk mencabut atasan itu.
-                Tahan <kbd className="rounded border px-1 text-xs">Alt</kbd> saat mulai menyeret untuk{" "}
-                <b>menambah</b> atasan tanpa melepas yang lama. Ketuk kartu untuk mengatur lewat panel.
-              </p>
-
-              <OwnerDrop
-                id="owner"
-                className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm transition"
-              >
-                <span className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-foreground bg-primary text-primary-foreground">
-                  <Crown className="size-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-display text-sm font-bold">Owner · {owner.name}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {roots.length} orang langsung di bawah Owner · izin tanpa atasan masuk ke sini
-                  </span>
-                </span>
-                {saving && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-              </OwnerDrop>
-
-              <div className="mx-auto h-5 w-0.5 bg-border" aria-hidden />
-
-              {teamRoots.length > 0 && (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {teamRoots.map((p) => (
-                    <div key={p.id} className="rounded-2xl border-2 border-border bg-muted/30 p-3">
-                      <TreeNode id={p.id} parentId={null} path={[]} tree={tree} />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <OwnerDrop
-                id="owner-lane"
-                className="space-y-2 rounded-2xl border-2 border-dashed border-border p-3 transition"
-              >
-                <p className="text-xs font-semibold text-muted-foreground">
-                  Belum punya atasan · izinnya langsung ke Owner ({loners.length})
+          <ViewCtx.Provider value={view}>
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="min-w-0 space-y-4">
+                {/* Petunjuk singkat di HP/tablet; di desktop petunjuknya ada di panel kanan. */}
+                <p className="text-sm text-muted-foreground lg:hidden">
+                  Seret kartu ke atasan barunya. Lepas ke kartu <b>Owner</b> untuk mencabut atasan itu. Ketuk kartu untuk
+                  mengatur lewat panel.
                 </p>
-                {loners.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Semua karyawan sudah punya atasan.</p>
-                ) : (
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {loners.map((p) => (
-                      <PersonCard
+
+                <OwnerDrop
+                  id="owner"
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm transition"
+                >
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-foreground bg-primary text-primary-foreground">
+                    <Crown className="size-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-sm font-bold">Owner · {owner.name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {roots.length} orang langsung di bawah Owner · izin tanpa atasan masuk ke sini
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] font-semibold">
+                    <span className="rounded-full bg-muted px-2.5 py-1">{people.length} karyawan</span>
+                    <span className="rounded-full bg-muted px-2.5 py-1">{teamRoots.length} tim</span>
+                    {loners.length > 0 && <span className="rounded-full bg-warning/30 px-2.5 py-1">{loners.length} tanpa atasan</span>}
+                  </span>
+                  {saving && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+                </OwnerDrop>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Cari karyawan, jabatan, atau unit…"
+                      className="h-10 w-full rounded-xl border-2 border-border bg-background pl-9 pr-3 text-base outline-none focus:border-foreground md:text-sm"
+                    />
+                  </div>
+                  {matches && (
+                    <span className="text-xs text-muted-foreground">
+                      {matches.size === 0 ? "Tidak ada yang cocok" : `${matches.size} cocok`}
+                    </span>
+                  )}
+                  <div className="ml-auto flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCollapsed(new Set(withKids))}
+                      className="h-9 rounded-lg border border-border px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      Lipat semua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCollapsed(new Set())}
+                      className="h-9 rounded-lg border border-border px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      Buka semua
+                    </button>
+                  </div>
+                </div>
+
+                {teamRoots.length > 0 && (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] items-start gap-3">
+                    {teamRoots.map((p) => (
+                      <div
                         key={p.id}
-                        person={p}
-                        parentId={null}
-                        leaderCount={0}
-                        reportCount={0}
-                        compact
-                      />
+                        className={cn(
+                          "min-w-0 rounded-2xl border-2 border-border bg-muted/30 p-2.5 transition",
+                          !teamHasMatch(p.id) && "opacity-35"
+                        )}
+                      >
+                        <TreeNode id={p.id} parentId={null} path={[]} tree={tree} />
+                      </div>
                     ))}
                   </div>
                 )}
-              </OwnerDrop>
+
+                <OwnerDrop
+                  id="owner-lane"
+                  className="space-y-2 rounded-2xl border-2 border-dashed border-border p-3 transition"
+                >
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Belum punya atasan · izinnya langsung ke Owner ({loners.length})
+                  </p>
+                  {loners.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Semua karyawan sudah punya atasan.</p>
+                  ) : (
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
+                      {loners.map((p) => (
+                        <PersonCard key={p.id} person={p} parentId={null} leaderCount={0} reportCount={0} compact />
+                      ))}
+                    </div>
+                  )}
+                </OwnerDrop>
+              </div>
+
+              <aside className="lg:sticky lg:top-4 lg:self-start">
+                <div className="space-y-3 rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm">
+                  <h2 className="font-display text-sm font-bold">Atur atasan</h2>
+                  {!selected ? (
+                    <div className="space-y-2.5">
+                      <p className="text-sm text-muted-foreground">Ketuk satu kartu karyawan untuk mengatur atasannya.</p>
+                      <ul className="list-disc space-y-1.5 pl-4 text-xs leading-snug text-muted-foreground">
+                        <li>Seret kartu ke atasan barunya.</li>
+                        <li>
+                          Lepas ke kartu <b>Owner</b> untuk mencabut atasan itu.
+                        </li>
+                        <li>
+                          Tahan <kbd className="rounded border px-1 text-[11px]">Alt</kbd> saat mulai menyeret untuk <b>menambah</b>{" "}
+                          atasan tanpa melepas yang lama.
+                        </li>
+                        <li>Panah di kartu melipat atau membuka bawahannya.</li>
+                      </ul>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="text-sm font-semibold">{selected.name}</p>
+                        <p className="text-xs text-muted-foreground">{roleLine(selected)}</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-semibold text-muted-foreground">Atasan saat ini</p>
+                        {selectedLeaders.length === 0 ? (
+                          <p className="text-sm">Langsung ke Owner</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedLeaders.map((id) => (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5 pr-1 text-xs font-medium"
+                              >
+                                {byId.get(id)?.name ?? "—"}
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  aria-label={`Cabut ${byId.get(id)?.name ?? "atasan"}`}
+                                  onClick={() =>
+                                    applyLeaders(
+                                      selected.id,
+                                      selectedLeaders.filter((x) => x !== id)
+                                    )
+                                  }
+                                  className="grid size-5 place-items-center rounded-full hover:bg-foreground/10 disabled:opacity-40"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="add-leader" className="text-xs font-semibold text-muted-foreground">
+                          Tambah atasan
+                        </label>
+                        <select
+                          id="add-leader"
+                          disabled={saving}
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              void applyLeaders(selected.id, [...selectedLeaders, e.target.value]);
+                            }
+                          }}
+                          className="h-10 w-full rounded-xl border-2 border-border bg-background px-3 text-sm"
+                        >
+                          <option value="">Pilih karyawan…</option>
+                          {addable.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                              {p.jobRole ? ` — ${p.jobRole}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-muted-foreground">
+                          Beberapa atasan = pengajuan masuk ke semuanya, siapa pun yang memutuskan lebih
+                          dulu yang berlaku.
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </aside>
             </div>
 
-            <aside className="lg:sticky lg:top-4 lg:self-start">
-              <div className="space-y-3 rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm">
-                <h2 className="font-display text-sm font-bold">Atur atasan</h2>
-                {!selected ? (
-                  <p className="text-sm text-muted-foreground">Ketuk satu kartu karyawan.</p>
-                ) : (
-                  <>
-                    <div>
-                      <p className="text-sm font-semibold">{selected.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {[selected.jobRole, selected.businessUnit].filter(Boolean).join(" · ") || "—"}
-                      </p>
-                    </div>
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-semibold text-muted-foreground">Atasan saat ini</p>
-                      {selectedLeaders.length === 0 ? (
-                        <p className="text-sm">Langsung ke Owner</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedLeaders.map((id) => (
-                            <span
-                              key={id}
-                              className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5 pr-1 text-xs font-medium"
-                            >
-                              {byId.get(id)?.name ?? "—"}
-                              <button
-                                type="button"
-                                disabled={saving}
-                                aria-label={`Cabut ${byId.get(id)?.name ?? "atasan"}`}
-                                onClick={() =>
-                                  applyLeaders(
-                                    selected.id,
-                                    selectedLeaders.filter((x) => x !== id)
-                                  )
-                                }
-                                className="grid size-5 place-items-center rounded-full hover:bg-foreground/10 disabled:opacity-40"
-                              >
-                                <X className="size-3" />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <label htmlFor="add-leader" className="text-xs font-semibold text-muted-foreground">
-                        Tambah atasan
-                      </label>
-                      <select
-                        id="add-leader"
-                        disabled={saving}
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            void applyLeaders(selected.id, [...selectedLeaders, e.target.value]);
-                          }
-                        }}
-                        className="h-10 w-full rounded-xl border-2 border-border bg-background px-3 text-sm"
-                      >
-                        <option value="">Pilih karyawan…</option>
-                        {addable.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                            {p.jobRole ? ` — ${p.jobRole}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[11px] text-muted-foreground">
-                        Beberapa atasan = pengajuan masuk ke semuanya, siapa pun yang memutuskan lebih
-                        dulu yang berlaku.
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </aside>
-          </div>
-
-          <DragOverlay dropAnimation={null}>
-            {draggedPerson && (
-              <div className="flex items-center gap-2 rounded-xl border-2 border-foreground bg-card px-3 py-2 shadow-hard">
-                <span className="grid size-7 place-items-center rounded-full border-2 border-foreground bg-tertiary font-display text-xs font-bold">
-                  {initials(draggedPerson.name)}
-                </span>
-                <span className="text-sm font-semibold">{draggedPerson.name}</span>
-              </div>
-            )}
-          </DragOverlay>
+            <DragOverlay dropAnimation={null}>
+              {draggedPerson && (
+                <div className="flex items-center gap-2 rounded-xl border-2 border-foreground bg-card px-3 py-2 shadow-hard">
+                  <span className="grid size-7 place-items-center rounded-full border-2 border-foreground bg-tertiary font-display text-xs font-bold">
+                    {initials(draggedPerson.name)}
+                  </span>
+                  <span className="text-sm font-semibold">{draggedPerson.name}</span>
+                </div>
+              )}
+            </DragOverlay>
+          </ViewCtx.Provider>
         </SelectCtx.Provider>
       </DragCtx.Provider>
     </DndContext>
