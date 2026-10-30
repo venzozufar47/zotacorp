@@ -41,7 +41,8 @@ export async function saveScorecardThresholds(input: BranchThresholds): Promise<
     );
   if (error) return { ok: false, error: error.message };
   invalidateThresholdsCache();
-  revalidatePath("/admin/service-level");
+  // Halaman Service Level sengaja TIDAK divalidasi ulang (berat; kartu pengaturannya sudah memegang nilai barunya). Scorecard dan
+  // beranda dinamis dan membaca ambang langsung dari DB saat dibuka.
   revalidatePath("/admin/scorecard");
   revalidatePath("/dashboard");
   return { ok: true, data: next };

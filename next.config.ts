@@ -1,6 +1,16 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /**
+   * Kunci root Turbopack ke folder proyek ini. Tanpa ini Next memilih `package-lock.json` TERJAUH di atasnya: pada worktree
+   * (`.claude/worktrees/<nama>`) root jatuh ke checkout utama sehingga seluruh worktree lain, `node_modules`-nya, dan berkas
+   * non-aplikasi ikut dipantau dan di-resolve. Itu menggemukkan memori server dev dan memperlambat tiap kompilasi.
+   * (`process.cwd()` = folder proyek, baik saat `npm run dev` maupun build di Vercel.)
+   */
+  turbopack: {
+    root: path.resolve(process.cwd()),
+  },
   env: {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",

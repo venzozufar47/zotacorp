@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,7 +55,6 @@ function Bar({ order }: { order: ["green" | "yellow" | "red", "green" | "yellow"
  * bonus). Terlipat secara bawaan supaya halaman tidak penuh; terbuka sendiri bila alamat membawa #ambang-scorecard.
  */
 export function ScorecardThresholdsCard({ initial }: { initial: BranchThresholds }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(initial);
   const [f, setF] = useState<Fields>(toFields(initial));
@@ -79,16 +77,22 @@ export function ScorecardThresholdsCard({ initial }: { initial: BranchThresholds
 
   async function save(value: BranchThresholds) {
     setBusy(true);
-    const r = await saveScorecardThresholds(value);
-    setBusy(false);
-    if (!r.ok || !r.data) {
-      toast.error(r.ok ? "Gagal menyimpan" : r.error);
-      return;
+    try {
+      const r = await saveScorecardThresholds(value);
+      if (!r.ok || !r.data) {
+        toast.error(r.ok ? "Gagal menyimpan" : r.error);
+        return;
+      }
+      // Kartu memegang nilainya sendiri, jadi tidak perlu memuat ulang seluruh halaman (halaman ini berat: menghitung tiap outlet).
+      setSaved(r.data);
+      setF(toFields(r.data));
+      toast.success("Ambang scorecard disimpan");
+    } catch {
+      // Jaringan putus / server tidak menjawab: tombol harus kembali aktif dan pengguna diberi tahu.
+      toast.error("Tidak ada jawaban dari server. Coba lagi.");
+    } finally {
+      setBusy(false);
     }
-    setSaved(r.data);
-    setF(toFields(r.data));
-    toast.success("Ambang scorecard disimpan");
-    router.refresh();
   }
 
   return (
