@@ -6,6 +6,9 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ServiceLevelAdminClient } from "@/components/admin/ServiceLevelAdminClient";
 import { ServiceLevelRangePicker } from "@/components/admin/ServiceLevelRangePicker";
+import { ScorecardThresholdsCard } from "@/components/admin/ScorecardThresholdsCard";
+import { getScorecardThresholds } from "@/lib/actions/scorecard-threshold.actions";
+import { DEFAULT_THRESHOLDS } from "@/lib/scorecard/thresholds";
 import {
   getServiceLevel,
   getServiceLevelSummary,
@@ -134,7 +137,7 @@ export default async function ServiceLevelAdminPage({
   const rangeLabel = formatRangeLabel(range, today);
 
   const supabase = await createClient();
-  const [{ data: accounts }, { data: employeeRows }] = await Promise.all([
+  const [{ data: accounts }, { data: employeeRows }, thresholds] = await Promise.all([
     supabase
       .from("bank_accounts")
       .select(
@@ -149,6 +152,7 @@ export default async function ServiceLevelAdminPage({
       .neq("role", "investor")
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
+    getScorecardThresholds(),
   ]);
 
   // Satu putaran per outlet — jumlah outlet POS segelintir, jadi ini
@@ -210,6 +214,7 @@ export default async function ServiceLevelAdminPage({
         title="Service Level"
         subtitle="Berapa persen produk ready stock, dirata-rata sepanjang jam buka. Target per outlet, lihat kartu masing-masing."
       />
+      <ScorecardThresholdsCard initial={thresholds.ok && thresholds.data ? thresholds.data : DEFAULT_THRESHOLDS} />
       <ServiceLevelRangePicker
         mode={range.mode}
         fromDate={range.fromDate}

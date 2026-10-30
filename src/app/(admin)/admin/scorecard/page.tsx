@@ -8,9 +8,9 @@ import { OmzetTargetEditor } from "@/components/scorecard/OmzetTargetEditor";
 
 const BRANCHES = ["Pare", "Semarang"] as const;
 
-// Hanya metrik yang punya tempat pengaturan sungguhan. Omzet: editor di halaman ini; waste: ambang ada di kode.
+// Hanya metrik yang punya tempat pengaturan sungguhan. Omzet: editor di halaman ini; Waste & Service level: ambang di halaman Service Level.
 const SETTINGS_LINKS = {
-  service_level: { href: "/admin/service-level", label: "Atur target service level" },
+  service_level: { href: "/admin/service-level#ambang-scorecard", label: "Atur ambang waste & service level" },
 };
 
 /**

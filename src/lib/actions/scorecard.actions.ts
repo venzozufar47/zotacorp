@@ -10,17 +10,16 @@ import { workingDaysBetween, workingDaysInMonth } from "@/lib/scorecard/working-
 import { sumCakeRevenue as sumCakeRevenueShared } from "@/lib/scorecard/cake-revenue";
 import { resolveUserBranches } from "@/lib/branches/user-branches";
 import {
-  SERVICE_LEVEL_GREEN_MIN,
-  SERVICE_LEVEL_YELLOW_MIN,
   OMZET_GREEN_MIN,
   OMZET_YELLOW_MIN,
-  WASTE_GREEN_MAX,
-  WASTE_YELLOW_MAX,
   omzetRanges,
+  serviceLevelBandOf,
   serviceLevelRanges,
+  wasteBandOf,
   wasteRanges,
   type BandRange,
 } from "@/lib/scorecard/thresholds";
+import { loadThresholds } from "@/lib/scorecard/thresholds-store";
 
 /**
  * Scorecard Cabang (PRD-2) — 4 angka cabang (Dokumen 4 §6 / Rencana Tim
@@ -190,17 +189,6 @@ async function pooledServiceLevel(
   return total > 0 ? ready / total : null;
 }
 
-function wasteBand(pct: number): ScorecardBand {
-  if (pct <= WASTE_GREEN_MAX) return "green";
-  if (pct <= WASTE_YELLOW_MAX) return "yellow";
-  return "red";
-}
-function serviceLevelBand(pct: number | null): ScorecardBand {
-  if (pct === null) return "measuring";
-  if (pct >= SERVICE_LEVEL_GREEN_MIN) return "green";
-  if (pct >= SERVICE_LEVEL_YELLOW_MIN) return "yellow";
-  return "red";
-}
 function omzetBand(pct: number | null): ScorecardBand {
   if (pct === null) return "unset";
   if (pct >= OMZET_GREEN_MIN) return "green";
@@ -238,7 +226,7 @@ export async function computeMetricsAsOf(
   const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
   const daysElapsed = Number(asOf.slice(8, 10));
 
-  const [wastePct, serviceLevel, mtd, cakeMtd, complaintCount, txCount30] = await Promise.all([
+  const [wastePct, serviceLevel, mtd, cakeMtd, complaintCount, txCount30, th] = await Promise.all([
     computeWastePercent(bankAccountId, weekStart, weekEnd),
     pooledServiceLevel(bankAccountId, weekStart, weekEnd),
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
@@ -249,6 +237,8 @@ export async function computeMetricsAsOf(
     period === "month"
       ? sumPaidPosTotal(bankAccountId, monthStart, asOf).then((r) => r.count)
       : sumPaidPosTotal(bankAccountId, addDays(asOf, -29), asOf).then((r) => r.count),
+    // Ambang Waste/Service level yang diatur owner (halaman Service Level); bawaan bila belum ada.
+    loadThresholds(createAdminClient()),
   ]);
 
   const wasteMeasured = wastePct !== null;
@@ -285,16 +275,16 @@ export async function computeMetricsAsOf(
       label: `Waste ${windowName}`,
       value: wastePct ?? 0,
       displayValue: wasteMeasured ? `${wastePct.toFixed(1)}%` : "Belum ada data",
-      band: wasteMeasured ? wasteBand(wastePct) : "measuring",
-      ranges: wasteRanges(),
+      band: wasteMeasured ? wasteBandOf(wastePct, th) : "measuring",
+      ranges: wasteRanges(th),
     },
     {
       key: "service_level",
       label: `Service level ${windowName}`,
       value: serviceLevel ?? 0,
       displayValue: serviceLevel !== null ? `${(serviceLevel * 100).toFixed(0)}%` : "Belum ada data",
-      band: serviceLevelBand(serviceLevel),
-      ranges: serviceLevelRanges(),
+      band: serviceLevel === null ? "measuring" : serviceLevelBandOf(serviceLevel, th),
+      ranges: serviceLevelRanges(th),
     },
     {
       key: "omzet",

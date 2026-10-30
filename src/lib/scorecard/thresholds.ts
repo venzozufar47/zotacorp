@@ -3,7 +3,11 @@
  * yang dibaca staf (ScorecardView), supaya keduanya tidak pernah berbeda. Modul biasa (bukan
  * "use server") agar boleh mengekspor konstanta.
  */
-/** Waste 7 hari: hijau ≤ 3%, kuning ≤ 5%, selebihnya merah. */
+/**
+ * Waste dan Service level: nilai di bawah adalah BAWAAN. Angka yang berlaku dibaca dari tabel
+ * `branch_scorecard_thresholds` (diatur owner di halaman Service Level); bawaan dipakai bila belum ada/gagal dibaca.
+ * Waste: hijau ≤ 3%, kuning ≤ 5%, selebihnya merah.
+ */
 export const WASTE_GREEN_MAX = 3;
 export const WASTE_YELLOW_MAX = 5;
 
@@ -17,13 +21,52 @@ export const SERVICE_LEVEL_YELLOW_MIN = 0.7;
 
 export type BandRange = { band: "green" | "yellow" | "red"; text: string };
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** Ambang yang berlaku, dalam persen (3 = 3%). Waste: kecil itu baik; Service level: besar itu baik. */
+export interface BranchThresholds {
+  wasteGreen: number;
+  wasteYellow: number;
+  slGreen: number;
+  slYellow: number;
+}
 
-export function wasteRanges(): BandRange[] {
+export const DEFAULT_THRESHOLDS: BranchThresholds = {
+  wasteGreen: WASTE_GREEN_MAX,
+  wasteYellow: WASTE_YELLOW_MAX,
+  slGreen: SERVICE_LEVEL_GREEN_MIN * 100,
+  slYellow: SERVICE_LEVEL_YELLOW_MIN * 100,
+};
+
+/** Pesan galat bila ambang tidak masuk akal, null bila sah. */
+export function validateThresholds(t: BranchThresholds): string | null {
+  const all = [t.wasteGreen, t.wasteYellow, t.slGreen, t.slYellow];
+  if (!all.every((n) => Number.isFinite(n) && n >= 0 && n <= 100)) return "Semua ambang harus berupa angka 0–100.";
+  if (!(t.wasteGreen < t.wasteYellow)) return "Waste: batas hijau harus lebih kecil dari batas kuning.";
+  if (!(t.slYellow < t.slGreen)) return "Service level: batas kuning harus lebih kecil dari batas hijau.";
+  return null;
+}
+
+/** Waste (%): ≤ hijau → hijau, ≤ kuning → kuning, selebihnya merah. */
+export function wasteBandOf(pct: number, t: BranchThresholds = DEFAULT_THRESHOLDS): "green" | "yellow" | "red" {
+  if (pct <= t.wasteGreen) return "green";
+  if (pct <= t.wasteYellow) return "yellow";
+  return "red";
+}
+
+/** Service level (pecahan 0–1): ≥ hijau → hijau, ≥ kuning → kuning, selebihnya merah. */
+export function serviceLevelBandOf(fraction: number, t: BranchThresholds = DEFAULT_THRESHOLDS): "green" | "yellow" | "red" {
+  if (fraction >= t.slGreen / 100) return "green";
+  if (fraction >= t.slYellow / 100) return "yellow";
+  return "red";
+}
+
+/** Angka ringkas: 3 → "3", 3.5 → "3,5". */
+const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
+
+export function wasteRanges(t: BranchThresholds = DEFAULT_THRESHOLDS): BandRange[] {
   return [
-    { band: "green", text: `≤ ${WASTE_GREEN_MAX}%` },
-    { band: "yellow", text: `> ${WASTE_GREEN_MAX}% - ${WASTE_YELLOW_MAX}%` },
-    { band: "red", text: `> ${WASTE_YELLOW_MAX}%` },
+    { band: "green", text: `≤ ${num(t.wasteGreen)}%` },
+    { band: "yellow", text: `> ${num(t.wasteGreen)}% - ${num(t.wasteYellow)}%` },
+    { band: "red", text: `> ${num(t.wasteYellow)}%` },
   ];
 }
 
@@ -35,10 +78,10 @@ export function omzetRanges(): BandRange[] {
   ];
 }
 
-export function serviceLevelRanges(): BandRange[] {
+export function serviceLevelRanges(t: BranchThresholds = DEFAULT_THRESHOLDS): BandRange[] {
   return [
-    { band: "green", text: `≥ ${pct(SERVICE_LEVEL_GREEN_MIN)}` },
-    { band: "yellow", text: `${pct(SERVICE_LEVEL_YELLOW_MIN)} - < ${pct(SERVICE_LEVEL_GREEN_MIN)}` },
-    { band: "red", text: `< ${pct(SERVICE_LEVEL_YELLOW_MIN)}` },
+    { band: "green", text: `≥ ${num(t.slGreen)}%` },
+    { band: "yellow", text: `${num(t.slYellow)}% - < ${num(t.slGreen)}%` },
+    { band: "red", text: `< ${num(t.slYellow)}%` },
   ];
 }
