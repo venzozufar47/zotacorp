@@ -14,14 +14,6 @@ const BAND_META: Record<ScorecardBand, { label: string } & (typeof TILE_STYLE)[T
   unset: { label: "Belum diatur", ...TILE_STYLE.neutral },
 };
 
-const BAND_WORD = { green: "hijau", yellow: "kuning", red: "merah" } as const;
-
-/** Satu baris panduan di ⓘ: "Waste 30 hari terakhir: hijau ≤ 3% · kuning … · merah …". */
-function guideLine(m: ScorecardMetric): string {
-  const r = m.ranges?.map((x) => `${BAND_WORD[x.band]} ${x.text}`).join(" · ");
-  return r ? `${m.label}: ${r}` : m.label;
-}
-
 export function ScorecardView({
   scorecard,
   settingsLinks,
@@ -78,7 +70,11 @@ export function ScorecardView({
                   <span className="-mr-2 -mt-1.5">
                     <ScorecardRangesInfo
                       label="Waste & Service level"
-                      lines={[guideLine(item.waste), guideLine(item.service), "Warna kartu mengikuti yang lebih rendah."]}
+                      groups={[
+                        { title: "Waste", ranges: item.waste.ranges ?? [] },
+                        { title: "Service level", ranges: item.service.ranges ?? [] },
+                      ]}
+                      footnote="Warna kartu mengikuti yang lebih rendah."
                       settings={settingsLinks?.service_level}
                       onSolid
                     />
