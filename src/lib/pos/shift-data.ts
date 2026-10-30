@@ -14,6 +14,7 @@ import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { verifyPin } from "@/lib/pos-pin";
 import { isValidPinFormat } from "@/lib/pos-pin-format";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
+import { accountIdsSharingLedger } from "@/lib/pos/ledger";
 import { netCash, type CashMovement, type IncidentalReport } from "@/lib/pos/shift-math";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -166,11 +167,13 @@ export async function cashMovementInWindow(
 
   let lateRefunds = 0;
   if (fromIso) {
+    // Penjualan rekening POS yang menumpang di buku ini (Mamaya) ikut dihitung.
+    const sharing = await accountIdsSharingLedger(admin, bankAccountId);
     const refunded = await fetchAll<{ total: number }>((a, b) =>
       admin
         .from("pos_sales")
         .select("total")
-        .eq("bank_account_id", bankAccountId)
+        .in("bank_account_id", sharing)
         .eq("payment_status", "paid")
         .eq("settled_via", "cash")
         .not("voided_at", "is", null)
@@ -257,6 +260,9 @@ export async function buildIncidentalReport(
   };
   if (!fromIso) return empty;
 
+  // Rekening POS yang menumpang di buku ini (Mamaya) satu laci & shift dengan rekening induknya.
+  const sharing = await accountIdsSharingLedger(admin, bankAccountId);
+
   const sales = await fetchAll<{
     id: string;
     total: number;
@@ -269,7 +275,7 @@ export async function buildIncidentalReport(
     admin
       .from("pos_sales")
       .select("id, total, payment_method, payment_status, voided_at, created_by, cashier_id")
-      .eq("bank_account_id", bankAccountId)
+      .in("bank_account_id", sharing)
       .gt("created_at", fromIso)
       .lte("created_at", toIso)
       .order("id")
@@ -296,7 +302,7 @@ export async function buildIncidentalReport(
     admin
       .from("pos_stock_movements")
       .select("type, qty, product_id, variant_id, created_by")
-      .eq("bank_account_id", bankAccountId)
+      .in("bank_account_id", sharing)
       .gt("created_at", fromIso)
       .lte("created_at", toIso)
       .order("id")

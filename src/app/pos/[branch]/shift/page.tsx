@@ -27,8 +27,10 @@ export default async function PosShiftPage({
   const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
+  // Halaman Saldo = saldo & shift rekening induk (Mamaya berbagi laci dengan Semarang).
+  const shiftAccountId = account.ledgerAccountId ?? account.id;
   const [result, role] = await Promise.all([
-    getPosShiftSummary(account.id),
+    getPosShiftSummary(shiftAccountId),
     getCurrentRole(),
   ]);
   if (!result.ok || !result.data) redirect("/");
@@ -36,13 +38,13 @@ export default async function PosShiftPage({
   // Halaman Saldo tidak dikunci (cek saldo/riwayat shift boleh kapan saja); mode shift hanya mengubah
   // tombol "Tutup shift" dan menambah riwayat shift (admin & assignee penuh).
   const view = await resolvePosShiftView({
-    bankAccountId: account.id,
+    bankAccountId: shiftAccountId,
     accountName: account.accountName,
     basePath,
     userId: user.id,
     isAdmin: role === "admin",
   });
-  const history = view.gate.mode === "off" ? [] : await listRecentShifts(account.id);
+  const history = view.gate.mode === "off" ? [] : await listRecentShifts(shiftAccountId);
 
   return (
     <PosShiftClient

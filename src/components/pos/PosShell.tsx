@@ -11,6 +11,8 @@ import {
 import Link from "next/link";
 import { PosNavLink } from "./PosNavLink";
 import { PosLogo } from "./PosLogo";
+import { PosOutletSwitch } from "./PosOutletSwitch";
+import { posPalette } from "@/lib/pos/branch";
 import type { PosNavSection } from "./PosTopNav";
 import "./workstation.css";
 
@@ -101,7 +103,7 @@ export function PosShell({
   return (
     <div
       data-pos-shell
-      data-pos-palette="pink"
+      data-pos-palette={posPalette(basePath)}
       className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)] md:grid-rows-[56px_minmax(0,1fr)] bg-background"
     >
       {/* Top bar */}
@@ -116,7 +118,7 @@ export function PosShell({
         >
           <ArrowLeft size={16} />
         </Link>
-        <PosLogo size={40} />
+        <PosLogo size={40} palette={posPalette(basePath)} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold leading-none">
             POS
@@ -125,6 +127,7 @@ export function PosShell({
             {outletName}
           </p>
         </div>
+        <PosOutletSwitch basePath={basePath} />
         {shiftSlot !== undefined
           ? shiftSlot
           : showShiftPill && (

@@ -548,14 +548,16 @@ export async function settlePesanan(input: {
 
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("default_branch")
+    .select("default_branch, ledger_account_id")
     .eq("id", sale.bank_account_id)
     .single();
+  // Rekening POS Mamaya membukukan ke buku rekening induknya (Semarang).
+  const ledgerAccountId = account?.ledger_account_id ?? sale.bank_account_id;
 
   const { data: existingStmt } = await supabase
     .from("cashflow_statements")
     .select("id")
-    .eq("bank_account_id", sale.bank_account_id)
+    .eq("bank_account_id", ledgerAccountId)
     .eq("period_year", periodYear)
     .eq("period_month", periodMonth)
     .maybeSingle();
@@ -566,7 +568,7 @@ export async function settlePesanan(input: {
     const { data: newStmt, error: newErr } = await supabase
       .from("cashflow_statements")
       .insert({
-        bank_account_id: sale.bank_account_id,
+        bank_account_id: ledgerAccountId,
         period_month: periodMonth,
         period_year: periodYear,
         opening_balance: 0,

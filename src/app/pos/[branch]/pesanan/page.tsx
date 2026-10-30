@@ -34,7 +34,7 @@ export default async function PesananPage({
   if (!account) redirect("/");
 
   const view = await resolvePosShiftView({
-    bankAccountId: account.id,
+    bankAccountId: account.ledgerAccountId ?? account.id,
     accountName: account.accountName,
     basePath,
     userId: user.id,

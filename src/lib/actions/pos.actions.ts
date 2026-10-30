@@ -22,6 +22,7 @@ import { verifyOperationPin } from "@/lib/pos/authorizers";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { createAdminClient as createShiftAdminClient } from "./_supabase-admin";
 import { saleShiftContext } from "@/lib/pos/shift-data";
+import { resolveLedgerAccountId } from "@/lib/pos/ledger";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -701,10 +702,13 @@ export async function createPosSale(input: {
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  // Mode shift: tempelkan shift berjalan + kasirnya (atau akun login bila insidentil). Null/null bila mati.
-  const shiftCtx = await saleShiftContext(createShiftAdminClient(), input.bankAccountId, gate.userId);
-
   const supabase = await createClient();
+
+  // Rekening POS "wadah" (Mamaya) membukukan uang & shift ke rekening induknya (Semarang); rekening biasa = dirinya.
+  const ledgerAccountId = await resolveLedgerAccountId(supabase, input.bankAccountId);
+
+  // Mode shift: tempelkan shift berjalan + kasirnya (atau akun login bila insidentil). Null/null bila mati.
+  const shiftCtx = await saleShiftContext(createShiftAdminClient(), ledgerAccountId, gate.userId);
 
   // 1. Load produk katalog yang direferensikan (validasi milik rekening
   //    + active + ambil harga resmi). Custom items dilewati.
@@ -1019,7 +1023,7 @@ export async function createPosSale(input: {
   const { data: existingStmt } = await supabase
     .from("cashflow_statements")
     .select("id")
-    .eq("bank_account_id", input.bankAccountId)
+    .eq("bank_account_id", ledgerAccountId)
     .eq("period_year", periodYear)
     .eq("period_month", periodMonth)
     .maybeSingle();
@@ -1031,7 +1035,7 @@ export async function createPosSale(input: {
     const { data: newStmt, error: newErr } = await supabase
       .from("cashflow_statements")
       .insert({
-        bank_account_id: input.bankAccountId,
+        bank_account_id: ledgerAccountId,
         period_month: periodMonth,
         period_year: periodYear,
         opening_balance: 0,
@@ -1496,8 +1500,17 @@ export async function findPosAccountForCurrentUser(): Promise<
   };
 }
 
+/** Rekening POS yang di-resolve dari cabang. `ledgerAccountId` ≠ null = rekening "wadah" (Mamaya): uang & shift
+ *  dibukukan ke rekening itu (Semarang), bukan ke rekening ini. Pakai `ledgerAccountId ?? id` untuk gerbang shift. */
+export type PosAccountRef = {
+  id: string;
+  accountName: string;
+  branch: string | null;
+  ledgerAccountId: string | null;
+};
+
 /**
- * Cari rekening POS Haengbocake untuk cabang tertentu (Pare / Semarang).
+ * Cari rekening POS Haengbocake untuk cabang tertentu (Pare / Semarang / Mamaya).
  * Dipakai route per-cabang `/pospare` & `/possemarang`. RLS tetap scope ke
  * rekening yang boleh dilihat user, jadi kasir cabang lain → null → page
  * redirect. Dipilih by (business_unit + default_branch) supaya deterministik
@@ -1505,13 +1518,13 @@ export async function findPosAccountForCurrentUser(): Promise<
  */
 export async function findPosAccount(
   branch: string
-): Promise<{ id: string; accountName: string; branch: string | null } | null> {
+): Promise<PosAccountRef | null> {
   const user = await getCurrentUser();
   if (!user) return null;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("bank_accounts")
-    .select("id, account_name, default_branch")
+    .select("id, account_name, default_branch, ledger_account_id")
     .eq("business_unit", "Haengbocake")
     .eq("default_branch", branch)
     .eq("pos_enabled", true)
@@ -1523,6 +1536,7 @@ export async function findPosAccount(
     id: data[0].id,
     accountName: data[0].account_name,
     branch: data[0].default_branch ?? null,
+    ledgerAccountId: data[0].ledger_account_id ?? null,
   };
 }
 
@@ -1537,7 +1551,7 @@ export async function findPosAccount(
  */
 export async function findPosAccountForInsights(
   branch: string
-): Promise<{ id: string; accountName: string; branch: string | null } | null> {
+): Promise<PosAccountRef | null> {
   const user = await getCurrentUser();
   if (!user) return null;
   const adminDb = createAdminClient<Database>(
@@ -1546,7 +1560,7 @@ export async function findPosAccountForInsights(
   );
   const { data, error } = await adminDb
     .from("bank_accounts")
-    .select("id, account_name, default_branch")
+    .select("id, account_name, default_branch, ledger_account_id")
     .eq("business_unit", "Haengbocake")
     .eq("default_branch", branch)
     .eq("pos_enabled", true)
@@ -1558,6 +1572,7 @@ export async function findPosAccountForInsights(
     id: data[0].id,
     accountName: data[0].account_name,
     branch: data[0].default_branch ?? null,
+    ledgerAccountId: data[0].ledger_account_id ?? null,
   };
 }
 
@@ -1778,20 +1793,21 @@ export async function getPosDailyRevenueSummary(
   const periodYear = Number(yearStr);
   const periodMonth = Number(monthStr);
 
-  const [{ data: account }, { data: stmt }] = await Promise.all([
-    supabase
-      .from("bank_accounts")
-      .select("daily_revenue_target")
-      .eq("id", bankAccountId)
-      .maybeSingle(),
-    supabase
-      .from("cashflow_statements")
-      .select("id")
-      .eq("bank_account_id", bankAccountId)
-      .eq("period_year", periodYear)
-      .eq("period_month", periodMonth)
-      .maybeSingle(),
-  ]);
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("daily_revenue_target, default_branch, ledger_account_id")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  // Rekening POS Mamaya membukukan ke buku Semarang: omset hari ini = baris buku itu yang bertag cabang Mamaya,
+  // dan POS Semarang tidak ikut menghitung baris Mamaya.
+  const isLedgerLinked = !!account?.ledger_account_id;
+  const { data: stmt } = await supabase
+    .from("cashflow_statements")
+    .select("id")
+    .eq("bank_account_id", account?.ledger_account_id ?? bankAccountId)
+    .eq("period_year", periodYear)
+    .eq("period_month", periodMonth)
+    .maybeSingle();
 
   const target = account?.daily_revenue_target ?? null;
 
@@ -1815,11 +1831,15 @@ export async function getPosDailyRevenueSummary(
   const rows: Row[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase
+    let q = supabase
       .from("cashflow_transactions")
       .select("category, credit, debit")
       .eq("statement_id", stmt.id)
-      .eq("transaction_date", today)
+      .eq("transaction_date", today);
+    q = isLedgerLinked
+      ? q.eq("branch", account?.default_branch ?? "")
+      : q.or("branch.is.null,branch.neq.Mamaya");
+    const { data, error } = await q
       .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) return { ok: false, error: error.message };
@@ -2051,13 +2071,15 @@ export async function voidPosSale(input: {
     const [yy, mm] = today.split("-").map(Number);
     const { data: acct } = await adminDb
       .from("bank_accounts")
-      .select("default_branch")
+      .select("default_branch, ledger_account_id")
       .eq("id", sale.bank_account_id)
       .maybeSingle();
+    // Refund keluar dari laci rekening induk (rekening POS Mamaya → buku Semarang).
+    const ledgerAccountId = acct?.ledger_account_id ?? sale.bank_account_id;
     const { data: stmt } = await adminDb
       .from("cashflow_statements")
       .select("id")
-      .eq("bank_account_id", sale.bank_account_id)
+      .eq("bank_account_id", ledgerAccountId)
       .eq("period_year", yy)
       .eq("period_month", mm)
       .maybeSingle();
@@ -2066,7 +2088,7 @@ export async function voidPosSale(input: {
       const { data: ns } = await adminDb
         .from("cashflow_statements")
         .insert({
-          bank_account_id: sale.bank_account_id,
+          bank_account_id: ledgerAccountId,
           period_month: mm,
           period_year: yy,
           opening_balance: 0,

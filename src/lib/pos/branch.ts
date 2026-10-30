@@ -1,16 +1,41 @@
 /**
- * Helper cabang POS. URL publik `/pospare` & `/possemarang` di-rewrite ke
- * route dinamis internal `/pos/[branch]` (param = "pare" | "semarang").
+ * Helper cabang POS. URL publik `/pospare`, `/possemarang` & `/posmamaya` di-rewrite ke
+ * route dinamis internal `/pos/[branch]` (param = "pare" | "semarang" | "mamaya").
  * Karena "pos" + "pare" = "pospare", basePath cukup `\`/pos${param}\``.
+ *
+ * Mamaya House adalah rekening POS sendiri (katalog/stok terpisah) yang uang & shift-nya
+ * dibukukan ke Semarang (`bank_accounts.ledger_account_id`, migrasi 273).
  */
 
-export type PosBranchParam = "pare" | "semarang";
-export type PosBranchName = "Pare" | "Semarang";
+export type PosBranchParam = "pare" | "semarang" | "mamaya";
+export type PosBranchName = "Pare" | "Semarang" | "Mamaya";
 
 const PARAM_TO_NAME: Record<PosBranchParam, PosBranchName> = {
   pare: "Pare",
   semarang: "Semarang",
+  mamaya: "Mamaya",
 };
+
+/** Palet shell POS (`data-pos-palette`, lihat workstation.css). Mamaya burgundy+krem, sisanya pink. */
+export type PosPalette = "pink" | "mamaya";
+
+export function posPalette(basePath: string): PosPalette {
+  return basePath === "/posmamaya" ? "mamaya" : "pink";
+}
+
+/**
+ * Tombol bolak-balik Semarang ↔ Mamaya di POS (satu laci & shift, dua katalog).
+ * Cabang lain (Pare) tidak punya pasangan → null.
+ */
+export function posSwitchTarget(
+  param: string
+): { label: string; shortLabel: string; href: string } | null {
+  if (param === "semarang")
+    return { label: "Mamaya House", shortLabel: "Mamaya", href: "/posmamaya" };
+  if (param === "mamaya")
+    return { label: "Haengbocake Semarang", shortLabel: "Semarang", href: "/possemarang" };
+  return null;
+}
 
 /** Validasi & normalisasi segmen `[branch]` → nama cabang, atau null. */
 export function posBranchFromParam(param: string): PosBranchName | null {

@@ -37,6 +37,8 @@ export async function getHaengbocakeCashBalances(): Promise<CashBalanceRow[]> {
     .eq("business_unit", "Haengbocake")
     .eq("bank", "cash")
     .eq("is_active", true)
+    // Rekening POS "wadah" (Mamaya) tidak punya laci/saldo sendiri — ikut rekening induk.
+    .is("ledger_account_id", null)
     .order("default_branch", { ascending: true });
 
   const rows: CashBalanceRow[] = [];

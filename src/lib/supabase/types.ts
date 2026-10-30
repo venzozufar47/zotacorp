@@ -1011,6 +1011,7 @@ export type Database = {
           shift_mode_enabled: boolean
           manual_entry_drawer_neutral: boolean
           drawer_float: number
+          ledger_account_id: string | null
           source_sheet: string | null
           source_url: string | null
           token_kwh_critical_threshold: number | null
@@ -1043,6 +1044,7 @@ export type Database = {
           shift_mode_enabled?: boolean
           manual_entry_drawer_neutral?: boolean
           drawer_float?: number
+          ledger_account_id?: string | null
           source_sheet?: string | null
           source_url?: string | null
           token_kwh_critical_threshold?: number | null
@@ -1075,6 +1077,7 @@ export type Database = {
           shift_mode_enabled?: boolean
           manual_entry_drawer_neutral?: boolean
           drawer_float?: number
+          ledger_account_id?: string | null
           source_sheet?: string | null
           source_url?: string | null
           token_kwh_critical_threshold?: number | null

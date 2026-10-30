@@ -179,6 +179,8 @@ export async function listBankAccounts(businessUnit?: string) {
   let query = supabase
     .from("bank_accounts")
     .select("id, business_unit, bank, account_number, account_name, is_active, pos_enabled, default_branch, created_at")
+    // Rekening POS "wadah" (Mamaya) tidak punya saldo/buku sendiri — uangnya di rekening induk.
+    .is("ledger_account_id", null)
     .order("created_at", { ascending: true });
   if (businessUnit) query = query.eq("business_unit", businessUnit);
   const { data, error } = await query;

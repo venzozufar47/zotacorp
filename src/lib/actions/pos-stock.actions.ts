@@ -701,14 +701,16 @@ export async function createStockOpname(input: {
 
     const { data: account } = await supabase
       .from("bank_accounts")
-      .select("default_branch")
+      .select("default_branch, ledger_account_id")
       .eq("id", input.bankAccountId)
       .single();
+    // Rekening POS Mamaya membukukan ke buku rekening induknya (Semarang).
+    const ledgerAccountId = account?.ledger_account_id ?? input.bankAccountId;
 
     const { data: existingStmt } = await supabase
       .from("cashflow_statements")
       .select("id")
-      .eq("bank_account_id", input.bankAccountId)
+      .eq("bank_account_id", ledgerAccountId)
       .eq("period_year", periodYear)
       .eq("period_month", periodMonth)
       .maybeSingle();
@@ -719,7 +721,7 @@ export async function createStockOpname(input: {
       const { data: newStmt } = await supabase
         .from("cashflow_statements")
         .insert({
-          bank_account_id: input.bankAccountId,
+          bank_account_id: ledgerAccountId,
           period_month: periodMonth,
           period_year: periodYear,
           opening_balance: 0,

@@ -35,3 +35,44 @@
      selaras dengan palette. */
   --success: #6BBF8A;
 }
+
+/* ─── POS Mamaya House: burgundy + krem ──────────────────────
+ * Palet logo Mamaya House (burgundy tua + krem hangat), dipasang lewat
+ * `data-pos-palette="mamaya"` (lihat `posPalette()` di lib/pos/branch.ts)
+ * di /posmamaya. Sengaja jauh dari pink Haengbocake supaya kasir tidak
+ * tertukar outlet saat bolak-balik Semarang ↔ Mamaya.
+ *
+ * Menimpa token yang SAMA dengan palet pink (+ permukaan krem), jadi
+ * komponen tidak perlu tahu sedang di outlet mana.
+ * ───────────────────────────────────────────────────────────── */
+[data-pos-shell][data-pos-palette="mamaya"] {
+  /* Brand: burgundy logo */
+  --primary: #7A1230;
+  --primary-light: #A63A57;
+  --primary-dark: #5C0A20;
+  --primary-foreground: #FBEFD9;
+
+  /* Accent / tint: krem hangat */
+  --accent: #F6E3C8;
+  --accent-foreground: #5C0A20;
+  --ring: #7A1230;
+
+  /* Permukaan krem */
+  --background: #FBF3E6;
+  --foreground: #3B0A16;
+  --card: #FFFAF1;
+  --card-foreground: #3B0A16;
+  --popover: #FFFAF1;
+  --secondary: #F3E5CF;
+  --muted: #F3E5CF;
+  --muted-foreground: #7D5B5F;
+  --border: #E5D2B8;
+  --input: #E5D2B8;
+
+  /* Pop colors — turunan burgundy/krem untuk badge/highlight */
+  --pop-pink: #B4506B;
+  --pop-amber: #E9C48E;
+  --pop-emerald: #A9C7A2;
+
+  --success: #4F9A6A;
+}

@@ -6,6 +6,8 @@ import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import { PosShell } from "./PosShell";
 import { PosLogo } from "./PosLogo";
+import { PosOutletSwitch } from "./PosOutletSwitch";
+import { posPalette } from "@/lib/pos/branch";
 import "./workstation.css";
 import {
   BarChart3,
@@ -1164,7 +1166,7 @@ export function POSClient({
   return (
     <div
       data-pos-shell
-      data-pos-palette="pink"
+      data-pos-palette={posPalette(basePath)}
       className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)_360px] md:grid-rows-[56px_minmax(0,1fr)] bg-background"
     >
       {/* ── Top bar ───────────────────────────────────────── */}
@@ -1179,7 +1181,7 @@ export function POSClient({
         >
           <ArrowLeft size={16} />
         </Link>
-        <PosLogo size={40} />
+        <PosLogo size={40} palette={posPalette(basePath)} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold leading-none">
             POS
@@ -1188,6 +1190,7 @@ export function POSClient({
             {accountName}
           </p>
         </div>
+        <PosOutletSwitch basePath={basePath} />
         {shiftSlot === undefined ? (
           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
             <span className="size-1.5 rounded-full bg-success animate-pulse" />

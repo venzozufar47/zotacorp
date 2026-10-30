@@ -16,7 +16,8 @@ kode yang ada, bukan rencana: kalau kode berubah, ubah dokumen ini di commit yan
 | Cakupan | Berlaku di | Sumber | Pemasangan |
 |---|---|---|---|
 | **Oceanic** (default, satu-satunya tema org) | seluruh app | blok `:root` di `src/app/globals.css` | `data-theme="oceanic"` di `<html>` (`src/app/layout.tsx`). Beberapa subtree memasangnya sendiri (halaman kas, dashboard investor) agar override komponen tetap berlaku. |
-| **POS** (pink) | semua halaman `/pos/*` | `src/components/pos/workstation.css` | `data-pos-shell data-pos-palette="pink"` di akar shell POS (`PosShell`, `POSClient`, `PosLockedScreen`). Menimpa token **yang sama** (`--primary`, `--accent`, `--background`, `--ring`, `--pop-*`, `--success`). |
+| **POS** (pink) | `/pospare/*` & `/possemarang/*` | `src/components/pos/workstation.css` | `data-pos-shell data-pos-palette="pink"` di akar shell POS (`PosShell`, `POSClient`, `PosLockedScreen`). Menimpa token **yang sama** (`--primary`, `--accent`, `--background`, `--ring`, `--pop-*`, `--success`). |
+| **POS Mamaya House** (burgundy + krem) | `/posmamaya/*` | `src/components/pos/workstation.css` (blok `data-pos-palette="mamaya"`) | Atribut yang sama dengan POS, nilainya dipilih `posPalette(basePath)` di `src/lib/pos/branch.ts`. Menimpa token POS ditambah permukaan krem (`--card`, `--border`, `--muted`, `--foreground`). Sengaja berbeda dari pink supaya kasir tidak tertukar saat pindah Semarang ↔ Mamaya. Logo sementara lencana "M" (`PosLogo`). |
 | **Custom cake / Haengbocake** (krem + hijau) | semua halaman `/cake-orders/*` | `src/styles/haengbocake.css` | `data-haengbocake` di `src/app/cake-orders/layout.tsx`. Menimpa token standar (`--primary`, `--background`, `--foreground`, `--card`, `--border`, `--accent`, `--ring`, …) seperti POS. `--cake-*` hanya untuk arti domain. |
 
 Tema Playful dan Minimal sudah dihapus. Jangan menghidupkannya lagi; tidak ada pengalih tema.

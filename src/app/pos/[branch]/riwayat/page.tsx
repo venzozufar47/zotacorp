@@ -70,7 +70,7 @@ export default async function PosRiwayatPage({
   const isAdmin = role === "admin";
 
   // Admin boleh memantau riwayat walau POS terkunci.
-  if (!isAdmin && !isPosUsable(await loadPosGate(account.id, user.id))) redirect(basePath);
+  if (!isAdmin && !isPosUsable(await loadPosGate(account.ledgerAccountId ?? account.id, user.id))) redirect(basePath);
 
   const receiptContent =
     (await getPosReceiptConfig(account.id).catch(() => null)) ??

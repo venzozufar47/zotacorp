@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { startIncidentalSession } from "@/lib/actions/pos-shift.actions";
 import { PosLogo } from "./PosLogo";
+import { posPalette } from "@/lib/pos/branch";
 import { ForceCloseDialog } from "./PosShiftControls";
 import { PosShiftWizard } from "./PosShiftWizard";
 import "./workstation.css";
@@ -55,7 +56,7 @@ export function PosLockedScreen({ mode, bankAccountId, accountName, basePath, is
     "inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50";
 
   return (
-    <div data-pos-shell data-pos-palette="pink" className="relative flex min-h-screen flex-col bg-background">
+    <div data-pos-shell data-pos-palette={posPalette(basePath)} className="relative flex min-h-screen flex-col bg-background">
       <Link
         prefetch={false}
         href="/"
@@ -68,7 +69,7 @@ export function PosLockedScreen({ mode, bankAccountId, accountName, basePath, is
 
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10 px-6 py-16 text-center">
         <div className="space-y-5">
-          <PosLogo size={96} className="mx-auto" />
+          <PosLogo size={96} className="mx-auto" palette={posPalette(basePath)} />
           {mode === "stale" && stale ? (
             <div className="space-y-1.5">
               <h1 className="text-2xl font-bold tracking-tight text-foreground">

@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
     ],
   },
   /**
-   * POS per-cabang: URL publik cantik `/pospare` & `/possemarang`
+   * POS per-cabang: URL publik cantik `/pospare`, `/possemarang` & `/posmamaya`
    * di-rewrite (internal, browser tetap menampilkan URL asli) ke satu
    * route dinamis `/pos/[branch]`. Satu basis kode POS dipakai ulang;
    * cabang ditentukan segmen `[branch]`. `:path*` juga menangkap index
@@ -64,6 +64,8 @@ const nextConfig: NextConfig = {
       { source: "/pospare/:path*", destination: "/pos/pare/:path*" },
       { source: "/possemarang", destination: "/pos/semarang" },
       { source: "/possemarang/:path*", destination: "/pos/semarang/:path*" },
+      { source: "/posmamaya", destination: "/pos/mamaya" },
+      { source: "/posmamaya/:path*", destination: "/pos/mamaya/:path*" },
     ];
   },
   /**

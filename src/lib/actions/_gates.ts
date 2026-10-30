@@ -108,12 +108,24 @@ export async function requireAdminOrInvestorForBu(
 const hasAssignment = cache(
   async (bankAccountId: string, userId: string, scopes: string): Promise<boolean> => {
     const supabase = await createClient();
+    // Rekening POS "wadah" (Mamaya) mewarisi penugasan rekening induknya (`ledger_account_id`): kasir Semarang
+    // otomatis boleh memakai POS Mamaya. Cermin fungsi RLS `is_admin_or_pos_assignee` (migrasi 273).
+    const { createAdminClient } = await import("./_supabase-admin");
+    const { data: acct } = await createAdminClient()
+      .from("bank_accounts")
+      .select("ledger_account_id")
+      .eq("id", bankAccountId)
+      .maybeSingle();
+    const accountIds = acct?.ledger_account_id
+      ? [bankAccountId, acct.ledger_account_id]
+      : [bankAccountId];
     const { data } = await supabase
       .from("bank_account_assignees")
       .select("bank_account_id")
-      .eq("bank_account_id", bankAccountId)
+      .in("bank_account_id", accountIds)
       .eq("user_id", userId)
       .in("scope", scopes.split(","))
+      .limit(1)
       .maybeSingle();
     return !!data;
   }

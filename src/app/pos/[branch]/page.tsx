@@ -48,8 +48,9 @@ export default async function PosPage({
   if (!account) redirect("/");
 
   // Gerbang kunci (mode shift): tanpa shift terbuka / sesi insidentil, POS menampilkan layar kunci.
+  // Shift & laci satu dengan rekening induk (Mamaya → Semarang); rekening biasa = dirinya.
   const view = await resolvePosShiftView({
-    bankAccountId: account.id,
+    bankAccountId: account.ledgerAccountId ?? account.id,
     accountName: account.accountName,
     basePath,
     userId: user.id,
