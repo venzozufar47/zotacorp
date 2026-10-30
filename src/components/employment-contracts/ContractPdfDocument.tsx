@@ -113,19 +113,27 @@ const s = StyleSheet.create({
     height: 96,
     width: "100%",
   },
+  // Slot e-Meterai: menempel di sisi kiri tanda tangan Pihak Kedua dan DITIMPA sebagian oleh tanda tangan (kebiasaan meterai:
+  // tanda tangan menyentuh/melewati meterai). Posisi absolut di dalam pita tanda tangan supaya tidak menggeser tata letak.
+  meteraiBand: { position: "relative" },
   meteraiBox: {
-    width: 58,
-    height: 80,
+    position: "absolute",
+    left: 2,
+    top: 12,
+    width: 68,
+    height: 72,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.faint,
     borderStyle: "dashed",
     borderRadius: 3,
     alignItems: "center",
-    justifyContent: "center",
+    // Tulisan di bagian atas kotak: tanda tangan menimpa bagian kanan-bawahnya dan tidak boleh menutupi label.
+    justifyContent: "flex-start",
+    paddingTop: 8,
     backgroundColor: C.box,
-    marginRight: 10,
   },
-  meteraiText: { fontSize: 7, color: C.faint, textAlign: "center" },
+  meteraiTitle: { fontFamily: "Times-Bold", fontSize: 8, color: C.muted, textAlign: "center" },
+  meteraiText: { fontSize: 7, color: C.faint, textAlign: "center", marginTop: 1 },
   sigSlot: { flex: 1, height: 96, alignItems: "center", justifyContent: "center" },
   sigImg: { width: 132, height: 74, objectFit: "contain" },
   sigNameWrap: {
@@ -259,12 +267,12 @@ function SignatureBlock({
       <View style={s.sigCell}>
         <Text style={s.sigCaption}>PIHAK KEDUA</Text>
         <Text style={s.sigSub}>{secondRole}</Text>
-        {/* Meterai = kotak kosong terpisah di samping tanda tangan (tidak
-            menimpa); e-meterai dibubuhkan owner di sini via Peruri. */}
-        <View style={s.sigBand}>
+        {/* Slot e-Meterai di belakang tanda tangan (tanda tangan menyentuh slot); e-Meterai dibubuhkan owner di sini via Peruri. */}
+        <View style={withMeterai ? [s.sigBand, s.meteraiBand] : s.sigBand}>
           {withMeterai ? (
             <View style={s.meteraiBox}>
-              <Text style={s.meteraiText}>Meterai{"\n"}Rp10.000</Text>
+              <Text style={s.meteraiTitle}>e-Meterai</Text>
+              <Text style={s.meteraiText}>Rp10.000</Text>
             </View>
           ) : null}
           <View style={s.sigSlot}>
@@ -406,7 +414,9 @@ export function ContractPdfDocument({
           {signedLabel ? ` pada ${signedLabel}` : ""} dan merupakan alat bukti
           hukum yang sah berdasarkan UU No. 11 Tahun 2008 tentang Informasi dan
           Transaksi Elektronik (sebagaimana diubah dengan UU No. 19 Tahun 2016).
-          Meterai Rp10.000 dibubuhkan secara terpisah pada zona yang tersedia.
+          Kotak e-Meterai Rp10.000 di sisi tanda tangan Pihak Kedua diisi
+          e-Meterai yang dibubuhkan setelah Perjanjian ditandatangani kedua
+          pihak.
         </Text>
 
         <Text
