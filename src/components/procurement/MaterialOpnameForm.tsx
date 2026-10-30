@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 
 export interface CountMeta {
   cls: AbcClass;
+  /** Kelas sementara (bahan baru belum punya data pemakaian). */
+  provisional?: boolean;
   reasons: CountReason[];
   done: boolean;
 }
@@ -195,7 +197,13 @@ export function MaterialOpnameForm({
             <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
               {r.material.name}
               {m && (
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">{m.cls}</span>
+                <span
+                  className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground"
+                  title={m.provisional ? "Kelas sementara: bahan baru, belum ada data pemakaian" : "Kelas otomatis dari biaya pemakaian"}
+                >
+                  {m.cls}
+                  {m.provisional ? "*" : ""}
+                </span>
               )}
               {m?.done && <Check size={14} className="text-success" aria-label="Sudah dihitung hari ini" />}
             </div>

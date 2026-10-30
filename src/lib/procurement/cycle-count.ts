@@ -97,11 +97,16 @@ export function varianceCheck(p: {
  * Kelas ABC dari biaya pemakaian periode. Bahan yang melewati batas 80% tetap kelas A (cumulative SEBELUM dirinya
  * < 80%). Tanpa data pemakaian sama sekali → semua B (jadwal mingguan sebagai titik tengah yang aman).
  */
-export function classifyAbc(costs: Map<string, number>, allIds: string[]): Map<string, AbcClass> {
+export function classifyAbc(
+  costs: Map<string, number>,
+  allIds: string[],
+  /** Kelas sementara bahan baru yang belum punya data pemakaian (lihat `provisionalClass`). */
+  provisional: Map<string, AbcClass> = new Map()
+): Map<string, AbcClass> {
   const out = new Map<string, AbcClass>();
   const positive = allIds.filter((id) => (costs.get(id) ?? 0) > 0).sort((a, b) => (costs.get(b) ?? 0) - (costs.get(a) ?? 0));
   if (positive.length === 0) {
-    for (const id of allIds) out.set(id, "B");
+    for (const id of allIds) out.set(id, provisional.get(id) ?? "B");
     return out;
   }
   const total = positive.reduce((s, id) => s + (costs.get(id) ?? 0), 0);
@@ -111,8 +116,26 @@ export function classifyAbc(costs: Map<string, number>, allIds: string[]): Map<s
     out.set(id, before < 0.8 ? "A" : before < 0.95 ? "B" : "C");
     cum += costs.get(id) ?? 0;
   }
-  for (const id of allIds) if (!out.has(id)) out.set(id, "D");
+  for (const id of allIds) if (!out.has(id)) out.set(id, provisional.get(id) ?? "D");
   return out;
+}
+
+/** Bahan dibuat kurang dari ini (hari) dan belum ada pemakaian → kelas sementara, bukan D. */
+export const NEW_MATERIAL_DAYS = 60;
+
+/**
+ * Kelas sementara untuk bahan BARU tanpa data pemakaian, supaya pengadaan tidak menunggu pemakaian terekam dulu:
+ * kategori cepat rusak (susu & lemak, telur, buah) → A (cek rutin), lainnya → B (mingguan). Begitu ada biaya
+ * pemakaian, kelas ditentukan ABC sungguhan. Bahan lama tanpa pemakaian tetap D (tidak aktif).
+ */
+export function provisionalClass(category: string | null | undefined): AbcClass {
+  return PERISHABLE_CATEGORIES.includes(category?.trim() ?? "") ? "A" : "B";
+}
+
+export function isNewMaterial(createdAtIso: string | null | undefined, nowMs: number): boolean {
+  if (!createdAtIso) return false;
+  const t = Date.parse(createdAtIso);
+  return Number.isFinite(t) && nowMs - t < NEW_MATERIAL_DAYS * 86_400_000;
 }
 
 export type CountReason = "harian" | "hitung_ulang" | "hampir_habis" | "jatuh_tempo" | "belum_pernah";
@@ -130,6 +153,8 @@ export interface PlanMaterial {
   status: ProcurementStatus;
   /** Hitungan terakhir melewati toleransi. */
   lastOutOfTolerance: boolean;
+  /** Kelas masih sementara (bahan baru tanpa data pemakaian). */
+  provisional?: boolean;
 }
 
 export interface PlanItem {
@@ -147,7 +172,10 @@ export function buildTodayPlan(materials: PlanMaterial[], nowMs: number, budget 
 
   const daily = new Set(
     materials
-      .filter((m) => m.cls === "A" && m.usageCost > 0 && PERISHABLE_CATEGORIES.includes(m.category?.trim() ?? ""))
+      .filter(
+        (m) =>
+          m.cls === "A" && (m.usageCost > 0 || m.provisional) && PERISHABLE_CATEGORIES.includes(m.category?.trim() ?? "")
+      )
       .sort((a, b) => b.usageCost - a.usageCost)
       .slice(0, DAILY_SET_SIZE)
       .map((m) => m.id)

@@ -78,6 +78,8 @@ export interface ProcurementRow {
     category: string | null;
     shopee_url: string | null;
     price_updated_at: string;
+    /** Kapan bahan dibuat — dipakai kelas sementara bahan baru (cycle-count). */
+    created_at?: string;
   };
   params: ProcurementParamsRaw & {
     supplier: string | null;
@@ -181,7 +183,7 @@ export async function loadBrandProcurement(
       supabase
         .from("costing_materials" as never)
         .select(
-          "id, name, category, usage_unit, purchase_unit, purchase_price, content_per_purchase, shopee_url, price_updated_at"
+          "id, name, category, usage_unit, purchase_unit, purchase_price, content_per_purchase, shopee_url, price_updated_at, created_at"
         )
         .eq("business_unit", opts.businessUnit)
         .eq("is_active", true)
@@ -300,6 +302,7 @@ export async function loadBrandProcurement(
         category: (m.category as string | null) ?? null,
         shopee_url: (m.shopee_url as string | null) ?? null,
         price_updated_at: m.price_updated_at as string,
+        created_at: (m.created_at as string | undefined) ?? undefined,
       },
       params,
       metrics,

@@ -41,7 +41,7 @@ export default async function OpnameBahanPage({
   const res = plan ? null : await startMaterialOpname(activeBrand);
   const rows = plan ? plan.items.map((i) => i.row) : res && res.ok ? res.data ?? [] : [];
   const meta: Record<string, CountMeta> | undefined = plan
-    ? Object.fromEntries(plan.items.map((i) => [i.row.material.id, { cls: i.cls, reasons: i.reasons, done: i.done }]))
+    ? Object.fromEntries(plan.items.map((i) => [i.row.material.id, { cls: i.cls, provisional: i.provisional, reasons: i.reasons, done: i.done }]))
     : undefined;
   const allHref = `/pengadaan/opname?bu=${encodeURIComponent(activeBrand)}&semua=1`;
   const todayHref = `/pengadaan/opname?bu=${encodeURIComponent(activeBrand)}`;
@@ -67,7 +67,8 @@ export default async function OpnameBahanPage({
 
       {plan && (
         <p className="text-xs text-muted-foreground">
-          Daftar disusun sistem agar semua bahan terhitung tanpa menghitung semuanya tiap hari.{" "}
+          Daftar disusun sistem agar semua bahan terhitung tanpa menghitung semuanya tiap hari, dan tidak berubah
+          sepanjang hari. Kelas A/B/C ditentukan otomatis dari pemakaian (bahan baru diberi kelas sementara).{" "}
           <Link href={allHref} className="font-semibold text-primary hover:underline">
             Pilih sendiri dari semua bahan →
           </Link>
