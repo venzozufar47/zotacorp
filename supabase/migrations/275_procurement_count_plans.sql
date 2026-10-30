@@ -18,4 +18,5 @@ create table if not exists public.procurement_count_plans (
 alter table public.procurement_count_plans enable row level security;
 
 -- Tabel baru tidak lagi otomatis ter-grant ke Data API (berlaku 30 Okt 2026): beri eksplisit.
+revoke all on public.procurement_count_plans from anon, authenticated;
 grant select, insert, delete on public.procurement_count_plans to service_role;
