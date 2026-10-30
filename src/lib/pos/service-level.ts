@@ -7,6 +7,7 @@ import {
   type PosDbClient,
   type SkuKey,
 } from "./stock-engine";
+import { buildServiceLevelUnits } from "./service-level-groups";
 
 /**
  * Metrik Service Level POS — berapa persen produk ready stock,
@@ -288,13 +289,21 @@ export async function computeServiceLevel(
     idxByDate.set(g.date, arr);
   });
 
-  // Berapa kali tiap SKU habis, hanya pada sampel di mana ia dihitung.
-  const outByKey = new Map<SkuKey, number>();
-  const countedByKey = new Map<SkuKey, number>();
-  for (const k of stream.skuKeys) {
-    outByKey.set(k, 0);
-    countedByKey.set(k, 0);
-  }
+  // Unit hitung: SKU biasa satu unit; varian produk yang saling menggantikan (mis. Dubai Chewy Cookies Grade A/B) SATU unit
+  // yang ready bila salah satu variannya ready (lihat service-level-groups.ts).
+  const keyIndex = new Map<SkuKey, number>();
+  stream.skuKeys.forEach((k, j) => keyIndex.set(k, j));
+  const skuByKey = new Map(stream.skus.map((sk) => [skuKey(sk.productId, sk.variantId), sk]));
+  const units = buildServiceLevelUnits(
+    stream.skuKeys.map((k) => {
+      const sk = skuByKey.get(k)!;
+      return { key: k, productId: sk.productId, variantId: sk.variantId, productName: sk.productName, variantName: sk.variantName };
+    })
+  );
+  const unitMembers = units.map((u) => u.members.map((k) => keyIndex.get(k as SkuKey)).filter((j): j is number => j !== undefined));
+  // Berapa kali tiap unit habis, hanya pada sampel di mana ia dihitung.
+  const outByUnit = units.map(() => 0);
+  const countedByUnit = units.map(() => 0);
 
   const days: ServiceLevelDay[] = [];
   const excludedDates: string[] = [];
@@ -308,15 +317,23 @@ export async function computeServiceLevel(
     const dayEndIso = jakartaHourIso(date, closeHour - 1);
 
     const excluded = excludedOn(date);
-    const countedIdx: number[] = [];
-    stream.skuKeys.forEach((k, j) => {
-      if (excluded.has(k)) return;
-      // Belum ada di katalog pada tanggal itu → belum boleh dihitung.
-      const born = bornOn.get(k);
-      if (born && born > date) return;
-      countedIdx.push(j);
+    // Unit yang dihitung hari ini: anggota yang tidak dikecualikan dan sudah ada di katalog pada tanggal itu. Unit tanpa anggota
+    // seperti itu dilewati; unit pengganti tetap dihitung selama minimal satu anggotanya dihitung.
+    const countedUnits: Array<{ u: number; live: number[] }> = [];
+    let rawTracked = 0;
+    unitMembers.forEach((js, u) => {
+      const live = js.filter((j) => {
+        const k = stream.skuKeys[j];
+        if (excluded.has(k)) return false;
+        // Belum ada di katalog pada tanggal itu → belum boleh dihitung.
+        const born = bornOn.get(k);
+        return !(born && born > date);
+      });
+      if (live.length === 0) return;
+      countedUnits.push({ u, live });
+      rawTracked += live.length;
     });
-    const trackedSkus = countedIdx.length;
+    const trackedSkus = countedUnits.length;
 
     // Baseline: ada opname pada atau sebelum jam buka hari itu?
     const hasBaseline =
@@ -331,13 +348,14 @@ export async function computeServiceLevel(
       stream.deltas.some(
         (d) => d.createdAt >= dayOpenIso && d.createdAt <= dayEndIso
       );
-    const partialOpname = opnamesToday.some((o) => o.itemCount < trackedSkus);
+    // Opname menghitung per SKU (varian), jadi dibandingkan dengan jumlah SKU mentah, bukan jumlah unit.
+    const partialOpname = opnamesToday.some((o) => o.itemCount < rawTracked);
 
     let dayReady = 0;
     const hourly: number[] = [];
     for (const i of idxs) {
       let n = 0;
-      for (const j of countedIdx) if (readyMask[i][j]) n += 1;
+      for (const cu of countedUnits) if (cu.live.some((j) => readyMask[i][j])) n += 1;
       hourly.push(n);
       dayReady += n;
     }
@@ -350,10 +368,9 @@ export async function computeServiceLevel(
       totalSkuSamples += trackedSkus * idxs.length;
       totalSamples += idxs.length;
       for (const i of idxs) {
-        for (const j of countedIdx) {
-          const k = stream.skuKeys[j];
-          countedByKey.set(k, (countedByKey.get(k) ?? 0) + 1);
-          if (!readyMask[i][j]) outByKey.set(k, (outByKey.get(k) ?? 0) + 1);
+        for (const cu of countedUnits) {
+          countedByUnit[cu.u] += 1;
+          if (!cu.live.some((j) => readyMask[i][j])) outByUnit[cu.u] += 1;
         }
       }
     } else {
@@ -376,22 +393,14 @@ export async function computeServiceLevel(
     });
   }
 
-  const byKey = new Map(
-    stream.skus.map((s) => [skuKey(s.productId, s.variantId), s])
-  );
-  const worstSkus: ServiceLevelWorstSku[] = stream.skuKeys
-    .map((k) => {
-      const s = byKey.get(k)!;
-      const out = outByKey.get(k) ?? 0;
-      const counted = countedByKey.get(k) ?? 0;
-      return {
-        productId: s.productId,
-        variantId: s.variantId,
-        label: s.productName + (s.variantName ? ` — ${s.variantName}` : ""),
-        unavailableSamples: out,
-        percentOut: counted > 0 ? out / counted : 0,
-      };
-    })
+  const worstSkus: ServiceLevelWorstSku[] = units
+    .map((u, i) => ({
+      productId: u.productId,
+      variantId: u.variantId,
+      label: u.label,
+      unavailableSamples: outByUnit[i],
+      percentOut: countedByUnit[i] > 0 ? outByUnit[i] / countedByUnit[i] : 0,
+    }))
     .filter((w) => w.unavailableSamples > 0)
     .sort((a, b) => b.unavailableSamples - a.unavailableSamples);
 
