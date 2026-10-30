@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Download, Lock, CheckCircle2 } from "lucide-react";
+import { Camera, Download, Lock, CheckCircle2, Image as ImageIcon } from "lucide-react";
 import {
   signEmploymentContract,
   getContractRenderData,
@@ -97,6 +97,9 @@ export function ContractSignClient({
   const [ktpPreview, setKtpPreview] = useState<string | null>(null);
   const hasSavedKtp = !!contract.ktp_photo_path;
 
+  // Dua pintu ke foto KTP: kamera langsung, atau galeri (tanpa `capture` supaya HP menawarkan pilihan dari galeri).
+  const ktpCameraRef = useRef<HTMLInputElement | null>(null);
+  const ktpGalleryRef = useRef<HTMLInputElement | null>(null);
   const pickKtp = (file: File | null) => {
     if (ktpPreview) URL.revokeObjectURL(ktpPreview);
     setKtpFile(file);
@@ -319,13 +322,44 @@ export function ContractSignClient({
                 : "Foto KTP asli kamu (seluruh kartu terlihat jelas, tidak buram). Hanya dilihat admin untuk administrasi kepegawaian dan tidak dimasukkan ke dokumen kontrak."}
             </p>
             <input
+              ref={ktpCameraRef}
               type="file"
               accept="image/jpeg,image/png,image/webp"
               capture="environment"
-              disabled={pending}
-              onChange={(e) => pickKtp(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm file:mr-3 file:rounded-lg file:border-2 file:border-foreground file:bg-card file:px-3 file:py-1.5 file:text-sm file:font-semibold"
+              className="hidden"
+              onChange={(e) => {
+                pickKtp(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
             />
+            <input
+              ref={ktpGalleryRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                pickKtp(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => ktpCameraRef.current?.click()}
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-foreground bg-card px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
+              >
+                <Camera size={16} /> {ktpFile ? "Foto ulang" : "Ambil foto"}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => ktpGalleryRef.current?.click()}
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-foreground bg-card px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
+              >
+                <ImageIcon size={16} /> Pilih dari galeri
+              </button>
+            </div>
             {ktpPreview && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
