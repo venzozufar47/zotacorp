@@ -19,6 +19,28 @@ import { shuffledAspectOrder } from "@/lib/feedback/order";
 
 
 const DEVICE_KEY = "zota_fb_device";
+const FILLED_HOURS = 12;
+const filledKey = (slug: string) => `zota_fb_done_${slug}`;
+/** Mode uji staf: /feedback/pare?uji=1 melewati kunci dan tidak menyimpan apa pun. */
+const isTestMode = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("uji") === "1";
+
+/** Apakah perangkat ini sudah mengisi dalam 12 jam terakhir. */
+function readFilled(slug: string): boolean {
+  if (isTestMode()) return false;
+  try {
+    const at = Number(localStorage.getItem(filledKey(slug)));
+    return Number.isFinite(at) && at > 0 && Date.now() - at < FILLED_HOURS * 3_600_000;
+  } catch {
+    return false;
+  }
+}
+function markFilled(slug: string) {
+  try {
+    localStorage.setItem(filledKey(slug), String(Date.now()));
+  } catch {
+    // Tanpa penyimpanan: kunci tetap dijaga server.
+  }
+}
 
 function loadDeviceId(): string {
   try {
@@ -88,6 +110,12 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<null | { rating: number }>(null);
+  // Sudah mengisi di perangkat ini (dalam 12 jam): tampilkan ucapan terima kasih, bukan formulir.
+  const filled = useSyncExternalStore(
+    () => () => {},
+    () => readFilled(slug),
+    () => false
+  );
   const deviceId = useRef("");
   const visitRef = useRef<HTMLFieldSetElement>(null);
   const ratingRef = useRef<HTMLFieldSetElement>(null);
@@ -151,11 +179,18 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
         aspectOrder: order,
         deviceId: deviceId.current,
         website,
+        dryRun: isTestMode(),
       });
       if (!r.ok) {
+        if (r.limited) {
+          markFilled(slug);
+          setDone({ rating: 0 });
+          return;
+        }
         setErrors({ form: r.error });
         return;
       }
+      if (!isTestMode()) markFilled(slug);
       setDone({ rating });
       window.scrollTo({ top: 0 });
     } catch {
@@ -165,7 +200,8 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
     }
   }
 
-  if (done) {
+  if (done || filled) {
+    const stars = done?.rating ?? 0;
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 text-center">
         <div className="animate-fade-up flex flex-col items-center">
@@ -174,9 +210,11 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
           </span>
           <h1 className="mt-5 font-display text-2xl font-bold">Terima kasih, kak!</h1>
           <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
-            {done.rating >= 4
-              ? `Senang sekali kakak puas. Masukan kakak sangat berarti untuk ${brand}.`
-              : `Maaf kalau belum maksimal. Masukan kakak kami baca dan jadikan bahan berbenah di ${brand}.`}
+            {stars === 0
+              ? `Kakak sudah mengisi, dan masukan kakak sangat berarti untuk ${brand}.`
+              : stars >= 4
+                ? `Senang sekali kakak puas. Masukan kakak sangat berarti untuk ${brand}.`
+                : `Maaf kalau belum maksimal. Masukan kakak kami baca dan jadikan bahan berbenah di ${brand}.`}
           </p>
           <p className="mt-6 text-sm font-semibold text-primary">Sampai jumpa lagi!</p>
         </div>

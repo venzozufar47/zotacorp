@@ -15,7 +15,8 @@ import { wibDayStart } from "@/lib/feedback/store";
  * dengan service-role (tabel tidak punya kebijakan untuk anon). Bagian admin dan POS berada di balik gerbang masing-masing.
  */
 
-const DEVICE_LIMIT = { count: 2, windowMin: 10 };
+// Satu feedback per perangkat per 12 jam (pelanggan langganan boleh mengisi lagi di hari lain).
+const DEVICE_LIMIT = { count: 1, windowMin: 12 * 60 };
 // Pelanggan di toko memakai Wi-Fi yang sama, jadi batas per IP sengaja longgar (hanya menahan banjir otomatis).
 const IP_LIMIT = { count: 40, windowMin: 60 };
 
@@ -38,9 +39,11 @@ export interface SubmitFeedbackInput {
   deviceId: unknown;
   /** Kolom jebakan bot: manusia tidak pernah mengisinya. */
   website?: unknown;
+  /** Mode uji staf (?uji=1): divalidasi tetapi TIDAK disimpan dan tidak kena batas perangkat. */
+  dryRun?: unknown;
 }
 
-export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promise<{ ok: true } | { ok: false; error: string; limited?: boolean }> {
   const target = FEEDBACK_SLUGS[String(input.slug)];
   if (!target) return { ok: false, error: "Halaman tidak ditemukan." };
   // Bot yang mengisi kolom jebakan dianggap berhasil supaya tidak mencoba ulang.
@@ -48,6 +51,7 @@ export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promis
 
   const v = validateFeedback(input);
   if (!v.ok) return v;
+  if (input.dryRun === true) return { ok: true };
 
   const deviceId = typeof input.deviceId === "string" && /^[\w-]{8,64}$/.test(input.deviceId) ? input.deviceId : null;
   const h = await headers();
@@ -56,7 +60,7 @@ export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promis
 
   const db = createAdminClient();
   const since = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-  const tooMany = { ok: false as const, error: "Terima kasih, kak! Masukan kakak sudah kami terima. Coba lagi sebentar lagi ya." };
+  const tooMany = { ok: false as const, limited: true, error: "Terima kasih, kak! Kakak sudah mengisi, masukan kakak sudah kami terima." };
   if (deviceId) {
     const { count } = await db
       .from("customer_feedback" as never)
