@@ -300,21 +300,37 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 ## Pasal 5: Upah dan Cara Pembayaran
 
-(1) Karyawan berhak atas upah sebesar Rp {gaji_nominal} ({gaji_terbilang} rupiah) per bulan.
+(1) Karyawan berhak atas upah dengan besaran Rp {gaji_nominal} ({gaji_terbilang} rupiah) per bulan, yang dibayarkan menurut sistem upah sebagaimana dimaksud pada ayat (4).
 
 (2) Komponen upah sebagaimana dimaksud pada ayat (1) terdiri atas {komponen_upah}.
 
 (3) Karena Pemberi Kerja tergolong usaha mikro atau kecil, besaran upah ditetapkan berdasarkan kesepakatan Para Pihak dengan tetap memenuhi batas minimal yang diatur peraturan perundang-undangan bagi usaha mikro dan kecil. Bila Pemberi Kerja tidak lagi tergolong usaha mikro atau kecil, ketentuan upah minimum yang berlaku wajib diikuti.
 
-(4) Upah dibayarkan secara {periode_bayar} paling lambat tanggal {tgl_bayar} bulan berikutnya, melalui transfer ke rekening Karyawan atau secara tunai.
+(4) Sistem upah Karyawan, yaitu gaji tetap atau bukan gaji tetap, ditetapkan oleh Pemberi Kerja dan tercatat pada pengaturan upah Karyawan di Zota Apps, serta dapat dilihat Karyawan melalui rincian upah. Upah yang diterima Karyawan mengikuti sistem upah tersebut:
 
-(5) Rincian upah setiap bulan disampaikan kepada Karyawan melalui Zota Apps. Karyawan memeriksa rincian tersebut dan dapat menyampaikan keberatan melalui Zota Apps; Pemberi Kerja menanggapi keberatan tersebut secara terbuka.
+- Karyawan dengan sistem bukan gaji tetap menerima upah secara pro-rata berdasarkan jumlah hari Karyawan hadir masuk kerja menurut catatan absensi di Zota Apps, dibandingkan dengan jumlah hari kerja yang ditetapkan bagi Karyawan pada bulan yang bersangkutan;
+- Karyawan dengan sistem gaji tetap menerima upah tetap sebesar besaran pada ayat (1) setiap bulan, yang tidak berubah menurut jumlah hari Karyawan hadir masuk kerja, kecuali terjadi pemotongan yang sah sebagaimana diatur pada ayat (7) sampai dengan ayat (9).
 
-(6) Pemotongan atas upah hanya dapat dilakukan sesuai peraturan perundang-undangan atau atas persetujuan Karyawan.
+(5) Upah dibayarkan secara {periode_bayar} paling lambat tanggal {tgl_bayar} bulan berikutnya, melalui transfer ke rekening Karyawan atau secara tunai.
 
-(7) Karyawan berhak atas Tunjangan Hari Raya (THR) keagamaan yang dibayarkan menjelang hari raya sesuai peraturan perundang-undangan. THR dihitung secara pro-rata berdasarkan jumlah bulan Karyawan aktif bekerja terhadap 12 (dua belas) bulan, paling banyak sebesar 1 (satu) bulan upah.
+(6) Rincian upah setiap bulan disampaikan kepada Karyawan melalui Zota Apps. Karyawan memeriksa rincian tersebut dan dapat menyampaikan keberatan melalui Zota Apps; Pemberi Kerja menanggapi keberatan tersebut secara terbuka.
 
-(8) Bonus atau pembayaran lain di luar upah diatur berdasarkan kebijakan tertulis atau kesepakatan antara Pemberi Kerja dan Karyawan, yang diinformasikan melalui Zota Apps.
+(7) Pemotongan atas upah hanya dapat dilakukan sesuai peraturan perundang-undangan (Pasal 63 Peraturan Pemerintah Nomor 36 Tahun 2021 tentang Pengupahan), yaitu untuk:
+
+- denda, akibat pelanggaran yang dilakukan Karyawan;
+- ganti rugi, akibat kerusakan atau kehilangan barang milik Pemberi Kerja;
+- uang muka upah (kasbon) yang telah diterima Karyawan;
+- sewa rumah dan/atau sewa barang milik Pemberi Kerja yang disewakan kepada Karyawan;
+- utang atau cicilan utang Karyawan; dan
+- kelebihan pembayaran upah.
+
+(8) Pemotongan untuk denda, ganti rugi, dan uang muka upah dilakukan sesuai dengan ketentuan dalam Perjanjian ini serta SOP atau peraturan Pemberi Kerja yang berlaku. Pemotongan untuk sewa rumah dan/atau sewa barang serta utang atau cicilan utang hanya dilakukan berdasarkan kesepakatan tertulis antara Para Pihak. Pemberi Kerja menyampaikan rincian dan alasan setiap pemotongan kepada Karyawan melalui Zota Apps sebagaimana dimaksud pada ayat (6).
+
+(9) Jumlah keseluruhan pemotongan upah paling banyak 50% (lima puluh persen) dari setiap pembayaran upah yang diterima Karyawan (Pasal 65 Peraturan Pemerintah Nomor 36 Tahun 2021 tentang Pengupahan).
+
+(10) Karyawan berhak atas Tunjangan Hari Raya (THR) keagamaan yang dibayarkan menjelang hari raya sesuai peraturan perundang-undangan. THR dihitung secara pro-rata berdasarkan jumlah bulan Karyawan aktif bekerja terhadap 12 (dua belas) bulan, paling banyak sebesar 1 (satu) bulan upah.
+
+(11) Bonus atau pembayaran lain di luar upah diatur berdasarkan kebijakan tertulis atau kesepakatan antara Pemberi Kerja dan Karyawan, yang diinformasikan melalui Zota Apps.
 
 ## Pasal 6: Hak dan Kewajiban Karyawan
 
