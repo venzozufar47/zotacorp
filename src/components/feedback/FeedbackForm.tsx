@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCircle2, Loader2, Star } from "lucide-react";
+import { CheckCircle2, Loader2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { submitCustomerFeedback } from "@/lib/actions/feedback.actions";
 import {
@@ -199,12 +199,11 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
                       setErrors((e) => ({ ...e, visit: undefined }));
                     }}
                     className={cn(
-                      "flex min-h-14 items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-center text-[14px] font-medium leading-snug transition active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
+                      "flex min-h-14 items-center justify-center rounded-xl border px-2.5 py-2 text-center text-[14px] font-medium leading-snug transition active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                       on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"
                     )}
                   >
-                    {on && <Check size={16} aria-hidden className="shrink-0" />}
                     {o.label}
                   </button>
                 );
