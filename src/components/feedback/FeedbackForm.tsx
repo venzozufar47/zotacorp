@@ -1,24 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  Armchair,
-  Banknote,
-  Check,
-  CheckCircle2,
-  Gift,
-  HandHeart,
-  LayoutGrid,
-  Leaf,
-  Loader2,
-  PackageCheck,
-  Sparkles,
-  Star,
-  ThumbsUp,
-  Timer,
-  UtensilsCrossed,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, CheckCircle2, Loader2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { submitCustomerFeedback } from "@/lib/actions/feedback.actions";
 import {
@@ -32,19 +15,6 @@ import {
   type VisitType,
 } from "@/lib/feedback/constants";
 
-const ASPECT_ICON: Record<FeedbackAspectKey, LucideIcon> = {
-  kebersihan: Sparkles,
-  rasa: UtensilsCrossed,
-  kesegaran: Leaf,
-  variasi: LayoutGrid,
-  ketersediaan: PackageCheck,
-  harga: Banknote,
-  pelayanan: HandHeart,
-  kecepatan: Timer,
-  kenyamanan: Armchair,
-  tampilan: Gift,
-  sudah_bagus: ThumbsUp,
-};
 
 const DEVICE_KEY = "zota_fb_device";
 
@@ -292,10 +262,9 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
             <Legend required hint="Pilih yang sesuai, boleh lebih dari satu.">
               Apakah kakak ada masukan untuk kami?
             </Legend>
-            <div role="group" aria-label="Masukan cepat" aria-describedby={errors.aspects ? "err-aspects" : undefined} className="flex flex-wrap gap-2">
+            <div role="group" aria-label="Masukan cepat" aria-describedby={errors.aspects ? "err-aspects" : undefined} className="flex flex-wrap gap-1.5">
               {FEEDBACK_ASPECTS.map((a) => {
                 const on = aspects.includes(a.key);
-                const Icon = ASPECT_ICON[a.key];
                 return (
                   <button
                     key={a.key}
@@ -303,16 +272,18 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
                     aria-pressed={on}
                     onClick={() => toggleAspect(a.key)}
                     className={cn(
-                      "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-[14px] font-medium transition active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
+                      "inline-flex min-h-9 grow items-center justify-center rounded-full border px-2.5 text-[13.5px] font-medium transition active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"
+                      on ? "border-primary bg-primary text-primary-foreground ring-2 ring-primary/30" : "border-border bg-background"
                     )}
                   >
-                    {on ? <Check size={16} aria-hidden className="shrink-0" /> : <Icon size={16} aria-hidden className="shrink-0 text-muted-foreground" />}
                     {a.label}
                   </button>
                 );
               })}
+              {/* Pengisi baris terakhir: tombol di baris lain melebar rata kanan-kiri (seperti teks rata kanan-kiri), tetapi
+                  baris terakhir tidak ikut melebar berlebihan. */}
+              <span aria-hidden className="grow-[999] basis-0" />
             </div>
             <label htmlFor="fb-comment" className="mb-1 mt-4 block text-[13px] font-medium text-muted-foreground">
               Ada yang ingin kakak tambahkan? (opsional bila sudah memilih)

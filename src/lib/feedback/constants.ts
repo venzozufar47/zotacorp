@@ -42,7 +42,7 @@ export const ASPECT_ALL_GOOD: FeedbackAspectKey = "sudah_bagus";
 
 export const ASPECT_LABEL: Record<string, string> = Object.fromEntries(FEEDBACK_ASPECTS.map((a) => [a.key, a.label]));
 
-export const RATING_LABELS = ["", "Kurang puas", "Cukup", "Puas", "Sangat puas", "Luar biasa"] as const;
+export const RATING_LABELS = ["", "Tidak puas", "Kurang puas", "Cukup", "Puas", "Sangat puas"] as const;
 
 export const COMMENT_MAX = 500;
 export const WISH_MAX = 200;
