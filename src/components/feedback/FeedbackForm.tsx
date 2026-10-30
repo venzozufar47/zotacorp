@@ -286,7 +286,7 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
               <span aria-hidden className="grow-[999] basis-0" />
             </div>
             <label htmlFor="fb-comment" className="mb-1 mt-4 block text-[13px] font-medium text-muted-foreground">
-              Ada yang ingin kakak tambahkan? (opsional bila sudah memilih)
+              Ada yang ingin kakak tambahkan?
             </label>
             <textarea
               id="fb-comment"
