@@ -208,6 +208,7 @@ export default async function ServiceLevelAdminPage({
       name: e.full_name || e.email,
     }));
 
+  const thresholdValues = thresholds.ok && thresholds.data ? thresholds.data : DEFAULT_THRESHOLDS;
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
@@ -226,8 +227,8 @@ export default async function ServiceLevelAdminPage({
           Ambang warna scorecard ↓
         </a>
       </div>
-      <ServiceLevelAdminClient outlets={outlets} employees={employees} rangeLabel={rangeLabel} />
-      <ScorecardThresholdsCard initial={thresholds.ok && thresholds.data ? thresholds.data : DEFAULT_THRESHOLDS} />
+      <ServiceLevelAdminClient outlets={outlets} employees={employees} rangeLabel={rangeLabel} thresholds={thresholdValues} />
+      <ScorecardThresholdsCard initial={thresholdValues} />
     </div>
   );
 }

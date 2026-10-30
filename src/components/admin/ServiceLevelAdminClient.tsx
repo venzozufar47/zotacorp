@@ -24,10 +24,9 @@ import {
   type ServiceLevelOwnerRow,
   type ServiceLevelSummary,
 } from "@/lib/actions/pos-service-level.actions";
-import { serviceLevelTone, type ServiceLevelResult } from "@/lib/pos/service-level";
+import type { ServiceLevelResult } from "@/lib/pos/service-level";
+import { serviceLevelBandOf, wasteBandOf, type BranchThresholds } from "@/lib/scorecard/thresholds";
 import {
-  wasteTone,
-  WASTE_EXPIRED_TARGET,
   WASTE_QTY_SANITY_CAP,
   type WasteResult,
 } from "@/lib/pos/waste";
@@ -57,33 +56,15 @@ interface Outlet {
   skus: Array<{ productId: string; variantId: string | null; label: string }>;
 }
 
-/** Ambang warna relatif ke target outlet. Token semantik, bukan hex. */
-function toneOf(pct: number | null, target: number): string {
-  switch (serviceLevelTone(pct, target)) {
-    case "success":
-      return "text-success";
-    case "warning":
-      return "text-warning";
-    case "destructive":
-      return "text-destructive";
-    default:
-      return "text-muted-foreground";
-  }
-}
+type Band = "green" | "yellow" | "red" | null;
+const BAND_TEXT: Record<"green" | "yellow" | "red", string> = { green: "text-success", yellow: "text-warning", red: "text-destructive" };
+const bandText = (b: Band) => (b ? BAND_TEXT[b] : "text-muted-foreground");
 
-/** Arah terbalik dari toneOf — untuk susut, kecil itu baik. */
-function wasteToneOf(rate: number | null): string {
-  switch (wasteTone(rate)) {
-    case "success":
-      return "text-success";
-    case "warning":
-      return "text-warning";
-    case "destructive":
-      return "text-destructive";
-    default:
-      return "text-muted-foreground";
-  }
-}
+/** Warna kartu mengikuti ambang scorecard (kartu "Ambang warna Scorecard Cabang"), bukan target per outlet. */
+const slBand = (pct: number | null, t: BranchThresholds): Band => (pct === null ? null : serviceLevelBandOf(pct, t));
+const wasteBand = (rate: number | null, t: BranchThresholds): Band =>
+  rate === null || !Number.isFinite(rate) ? null : wasteBandOf(rate * 100, t);
+const numId = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
 
 function pctLabel(pct: number | null): string {
   return pct === null ? "—" : `${(pct * 100).toFixed(1)}%`;
@@ -102,9 +83,11 @@ export function ServiceLevelAdminClient({
   outlets,
   employees,
   rangeLabel,
+  thresholds,
 }: {
   outlets: Outlet[];
   employees: Array<{ id: string; name: string }>;
+  thresholds: BranchThresholds;
   /** Label rentang aktif ("7 hari" / "30 hari" / "16 Agu – hari ini") —
    * SAMA untuk semua outlet, ditentukan picker di page.tsx. */
   rangeLabel: string;
@@ -137,7 +120,7 @@ export function ServiceLevelAdminClient({
       {/* Ringkasan — supaya superadmin tidak perlu membuka layar kasir. Ketuk kartu untuk melihat rincian outlet itu. */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {outlets.map((o) => (
-          <SummaryCard key={o.id} outlet={o} rangeLabel={rangeLabel} selected={o.id === selected.id} onSelect={() => setSelectedId(o.id)} />
+          <SummaryCard key={o.id} outlet={o} thresholds={thresholds} rangeLabel={rangeLabel} selected={o.id === selected.id} onSelect={() => setSelectedId(o.id)} />
         ))}
       </div>
 
@@ -150,21 +133,26 @@ export function ServiceLevelAdminClient({
 function SummaryCard({
   outlet: o,
   rangeLabel,
+  thresholds,
   selected,
   onSelect,
 }: {
   outlet: Outlet;
+  thresholds: BranchThresholds;
   rangeLabel: string;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const slTone = serviceLevelTone(o.summary?.percent ?? null, o.target);
+  const slB = slBand(o.summary?.percent ?? null, thresholds);
+  const wasteB = wasteBand(o.waste?.lossRate ?? null, thresholds);
+  // Status kartu = yang terburuk dari dua metrik, sama seperti kartu gabungan di scorecard.
+  const worst: Band = slB === "red" || wasteB === "red" ? "red" : slB === "yellow" || wasteB === "yellow" ? "yellow" : slB;
   const status =
-    slTone === "success"
+    worst === "green"
       ? { text: "Sesuai target", cls: "bg-success/15 text-success" }
-      : slTone === "warning"
+      : worst === "yellow"
         ? { text: "Mendekati target", cls: "bg-warning/20 text-warning" }
-        : slTone === "destructive"
+        : worst === "red"
           ? { text: "Di bawah target", cls: "bg-destructive/15 text-destructive" }
           : { text: "Belum ada data", cls: "bg-muted text-muted-foreground" };
 
@@ -196,17 +184,17 @@ function SummaryCard({
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground">Service level</p>
-              <p className={cn("font-display text-3xl font-extrabold leading-tight tabular-nums", toneOf(o.summary?.percent ?? null, o.target))}>
+              <p className={cn("font-display text-3xl font-extrabold leading-tight tabular-nums", bandText(slB))}>
                 {pctLabel(o.summary?.percent ?? null)}
               </p>
-              <p className="text-[11px] text-muted-foreground">target {(o.target * 100).toFixed(0)}%</p>
+              <p className="text-[11px] text-muted-foreground">target ≥ {numId(thresholds.slGreen)}%</p>
             </div>
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground">Susut (expired &amp; rusak)</p>
-              <p className={cn("font-display text-3xl font-extrabold leading-tight tabular-nums", wasteToneOf(o.waste?.lossRate ?? null))}>
+              <p className={cn("font-display text-3xl font-extrabold leading-tight tabular-nums", bandText(wasteB))}>
                 {pctLabel(o.waste?.lossRate ?? null)}
               </p>
-              <p className="text-[11px] text-muted-foreground">target &lt; {(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%</p>
+              <p className="text-[11px] text-muted-foreground">target ≤ {numId(thresholds.wasteGreen)}%</p>
             </div>
           </div>
           <p className="mt-3 text-[11.5px] leading-snug text-muted-foreground">
