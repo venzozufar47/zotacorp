@@ -393,6 +393,10 @@ export interface CakePickupHistoryRow {
    *  / dst. Satu sumber kebenaran yang sama dipakai board & detail. */
   paymentLabel: string;
   hasOutstanding: boolean;
+  /** Sisa tagihan saat ini (0 = lunas/gratis). */
+  remainingIdr: number;
+  /** Ukuran kue (cm); null bila tidak diisi. */
+  dimensionCm: number | null;
   /** Pelunasan yang tercatat PAS saat pickup ini (window ±5 menit dari
    *  `picked_up_at`), bukan DP lama atau pelunasan lain di hari yang
    *  sama. Null kalau order sudah lunas/gratis sebelum diambil. */
@@ -461,7 +465,7 @@ export async function listCakePickupHistory(
   const { data: rowsRaw } = await db
     .from("cake_orders" as never)
     .select(
-      "id, customer_name, base_cake_option_id, shape_option_id, shape_custom, filling_option_id, total_idr, paid_idr, refund_idr, free_claim, picked_up_at"
+      "id, customer_name, base_cake_option_id, shape_option_id, shape_custom, filling_option_id, dimension_cm, total_idr, paid_idr, refund_idr, free_claim, picked_up_at"
     )
     .eq("branch", branch)
     .eq("picked_up_via", "pos")
@@ -476,6 +480,7 @@ export async function listCakePickupHistory(
     shape_option_id: string | null;
     shape_custom: string | null;
     filling_option_id: string | null;
+    dimension_cm: number | null;
     total_idr: number;
     paid_idr: number;
     refund_idr: number;
@@ -583,6 +588,8 @@ export async function listCakePickupHistory(
       freeClaim: r.free_claim,
       paymentLabel: pay.label,
       hasOutstanding: pay.hasOutstanding,
+      remainingIdr: pay.remaining,
+      dimensionCm: r.dimension_cm,
       settlement: settlementFor(r),
     };
   });

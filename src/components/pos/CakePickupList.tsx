@@ -36,7 +36,7 @@ import { PosPinAuthDialog } from "./PosPinAuthDialog";
 import { QrisVerificationPicker, type QrisVerification } from "./QrisVerificationPicker";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import type { ReceiptData } from "@/lib/pos/receipt";
-import { receiptBaseFields, type ReceiptContext } from "@/lib/pos/receipt-flow";
+import { cakeReceiptData, receiptBaseFields, type ReceiptContext } from "@/lib/pos/receipt-flow";
 
 const CARD =
   "rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]";
@@ -393,30 +393,22 @@ function PickupDialog({
       // Struk serah terima, sama seperti checkout biasa: dicetak otomatis (bila diaktifkan) dan bisa dicetak manual.
       // Tidak dicetak bila perangkat lain sudah menandai lebih dulu (struknya sudah keluar di sana).
       if (receiptCtx && onReceipt && !res.data?.alreadyPickedUp) {
-        const paidBefore = Math.max(0, order.totalIdr - order.remainingIdr);
-        const paidNow = res.data?.recordedIdr ?? 0;
-        const left = res.data?.remainingIdr ?? 0;
-        const kind = paidNow > 0 ? methodKind : null;
-        const extraLines: { label: string; value: number }[] = [];
-        if (paidBefore > 0) extraLines.push({ label: "Sudah dibayar (DP)", value: paidBefore });
-        if (paidNow > 0) extraLines.push({ label: "Pelunasan", value: paidNow });
-        if (left > 0) extraLines.push({ label: "Sisa tagihan", value: left });
         const spec = [specLine(order), order.dimensionCm ? `${order.dimensionCm}cm` : ""].filter(Boolean).join(", ");
-        onReceipt({
-          ...receiptBaseFields(receiptCtx),
-          customerName: order.customerName,
-          fulfillment: null,
-          items: [{ name: "Custom Cake", qty: 1, subtotal: order.totalIdr, note: spec.replace(/ · /g, ", ") }],
-          grossTotal: order.totalIdr,
-          discountAmount: 0,
-          total: order.totalIdr,
-          method: kind === "cash" ? "cash" : kind === "qris" ? "qris" : "pending",
-          cashReceived: kind === "cash" ? cashReceived : null,
-          change: kind === "cash" && cashReceived != null ? cashReceived - paidNow : null,
-          methodText: kind ? null : isWaiving ? "Dilepas tanpa tagih" : left > 0 ? "Belum lunas" : "Lunas",
-          extraLines,
-          saleShortId: order.id.slice(0, 8),
-        });
+        onReceipt(
+          cakeReceiptData(receiptBaseFields(receiptCtx), {
+            id: order.id,
+            customerName: order.customerName,
+            spec,
+            totalIdr: order.totalIdr,
+            paidBeforeIdr: Math.max(0, order.totalIdr - order.remainingIdr),
+            paidNowIdr: res.data?.recordedIdr ?? 0,
+            remainingIdr: res.data?.remainingIdr ?? 0,
+            kind: methodKind === "cash" || methodKind === "qris" ? methodKind : null,
+            cashReceived,
+            waived: isWaiving,
+            freeClaim: order.freeClaim,
+          })
+        );
       }
       onClose();
       router.refresh();

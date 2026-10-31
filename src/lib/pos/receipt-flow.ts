@@ -44,3 +44,58 @@ export function autoPrintReceipt(data: ReceiptData): void {
   if (!t.autoPrint) return;
   void sendToPrinter(buildReceiptBytes(data), t.method).catch(() => {});
 }
+
+/**
+ * Struk serah terima custom cake: satu baris "Custom Cake" (spesifikasi di baris catatannya), total, lalu baris DP/pelunasan/sisa.
+ * Dipakai bersama oleh struk saat serah terima (cetak otomatis) dan cetak ulang dari Riwayat, supaya isinya selalu sama.
+ */
+export function cakeReceiptData(
+  base: ReturnType<typeof receiptBaseFields>,
+  a: {
+    id: string;
+    customerName: string;
+    /** Spesifikasi sudah dirangkai (base, bentuk, isian, ukuran). */
+    spec: string;
+    totalIdr: number;
+    /** Yang sudah dibayar sebelum serah terima (DP). */
+    paidBeforeIdr: number;
+    /** Pelunasan yang diterima saat serah terima. */
+    paidNowIdr: number;
+    /** Sisa tagihan setelah serah terima. */
+    remainingIdr: number;
+    /** Metode pelunasan saat serah terima; null bila tidak ada pelunasan. */
+    kind: "cash" | "qris" | null;
+    cashReceived?: number | null;
+    waived?: boolean;
+    freeClaim?: boolean;
+  }
+): ReceiptData {
+  const extraLines: { label: string; value: number }[] = [];
+  if (a.paidBeforeIdr > 0) extraLines.push({ label: "Sudah dibayar (DP)", value: a.paidBeforeIdr });
+  if (a.paidNowIdr > 0) extraLines.push({ label: "Pelunasan", value: a.paidNowIdr });
+  if (a.remainingIdr > 0) extraLines.push({ label: "Sisa tagihan", value: a.remainingIdr });
+  const kind = a.paidNowIdr > 0 ? a.kind : null;
+  return {
+    ...base,
+    customerName: a.customerName,
+    fulfillment: null,
+    items: [{ name: "Custom Cake", qty: 1, subtotal: a.totalIdr, note: a.spec.replace(/ · /g, ", ") }],
+    grossTotal: a.totalIdr,
+    discountAmount: 0,
+    total: a.totalIdr,
+    method: kind === "cash" ? "cash" : kind === "qris" ? "qris" : "pending",
+    cashReceived: kind === "cash" ? (a.cashReceived ?? null) : null,
+    change: kind === "cash" && a.cashReceived != null ? a.cashReceived - a.paidNowIdr : null,
+    methodText: kind
+      ? null
+      : a.freeClaim
+        ? "Gratis"
+        : a.waived
+          ? "Dilepas tanpa tagih"
+          : a.remainingIdr > 0
+            ? "Belum lunas"
+            : "Lunas",
+    extraLines,
+    saleShortId: a.id.slice(0, 8),
+  };
+}

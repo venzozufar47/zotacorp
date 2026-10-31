@@ -6,6 +6,8 @@ import { PosNavLink } from "@/components/pos/PosNavLink";
 import { PosShell } from "@/components/pos/PosShell";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
 import { ReprintReceiptButton } from "@/components/pos/ReprintReceiptButton";
+import { ReprintCakeReceiptButton } from "@/components/pos/ReprintCakeReceiptButton";
+import type { ReceiptContext } from "@/lib/pos/receipt-flow";
 import { VoidSaleButton } from "@/components/pos/VoidSaleButton";
 import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
@@ -259,6 +261,11 @@ export default async function PosRiwayatPage({
               <CakePickupHistoryCard
                 key={`cake-${entry.cake.id}`}
                 cake={entry.cake}
+                receiptCtx={
+                  receiptContent.enabled
+                    ? { content: receiptContent, branch: account.branch, cashierName: null, fixedCashierName: null }
+                    : null
+                }
               />
             );
           }
@@ -449,7 +456,14 @@ export default async function PosRiwayatPage({
  * Tidak collapsible seperti sale: isinya sudah pendek, dan tidak ada
  * baris item untuk disembunyikan.
  */
-function CakePickupHistoryCard({ cake }: { cake: CakePickupHistoryRow }) {
+function CakePickupHistoryCard({
+  cake,
+  receiptCtx,
+}: {
+  cake: CakePickupHistoryRow;
+  /** null = sistem struk mati (tombol cetak disembunyikan). */
+  receiptCtx: ReceiptContext | null;
+}) {
   return (
     <div className="rounded-2xl border-2 border-foreground bg-card shadow-[2px_2px_0_0_var(--foreground)] p-3.5">
       <div className="flex items-start justify-between gap-3">
@@ -503,6 +517,7 @@ function CakePickupHistoryCard({ cake }: { cake: CakePickupHistoryRow }) {
           </span>
         </div>
       )}
+      {receiptCtx && <ReprintCakeReceiptButton cake={cake} receiptCtx={receiptCtx} />}
     </div>
   );
 }
