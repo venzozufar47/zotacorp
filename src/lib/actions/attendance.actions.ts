@@ -8,7 +8,8 @@ import {
   getCurrentRole,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
-import { jakartaDateString } from "@/lib/utils/jakarta";
+import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
+import { isSoftSelfieIssueSet } from "@/lib/attendance/selfie-gate";
 import { isWorkdayFor, jakartaDayOfWeek } from "@/lib/utils/workdays";
 import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
 import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
@@ -55,6 +56,7 @@ interface SelfieCheckRow {
   selfie_path: string;
   verdict: "ok" | "reject" | "error" | "skipped";
   message: string | null;
+  issues: string[] | null;
   created_at: string;
 }
 
@@ -72,6 +74,8 @@ function resolveSelfieGate(
   | {
       verdict: "ok" | "overridden" | "unchecked" | null;
       note: string | null;
+      /** Penolakannya hanya soal warna kerudung (penilaian yang gampang meleset): lihat isSoftSelfieIssueSet. */
+      soft?: boolean;
       attempts: number;
       firstAttemptAt: string | null;
     } {
@@ -82,7 +86,7 @@ function resolveSelfieGate(
   if (row.verdict === "ok") return { verdict: "ok", note: null, attempts, firstAttemptAt };
   if (row.verdict === "reject") {
     if (!override) return { error: "Foto selfie belum sesuai. Foto ulang, atau pilih Tetap absen." };
-    return { verdict: "overridden", note: row.message, attempts, firstAttemptAt };
+    return { verdict: "overridden", note: row.message, soft: isSoftSelfieIssueSet(row.issues), attempts, firstAttemptAt };
   }
   return { verdict: "unchecked", note: null, attempts, firstAttemptAt };
 }
@@ -252,7 +256,7 @@ export async function checkIn(payload: CheckInPayload) {
   // Filter selfie AI (migrasi 192): putusan + waktu percobaan pertama dari pemeriksaan tersimpan.
   const { data: sessionChecks } = await looseDb(createAdminClient())
     .from("attendance_selfie_checks")
-    .select("selfie_path, verdict, message, created_at")
+    .select("selfie_path, verdict, message, issues, created_at")
     .eq("user_id", user.id)
     .gte("created_at", new Date(Date.now() - SELFIE_SESSION_WINDOW_MS).toISOString())
     .order("created_at", { ascending: true });
@@ -262,6 +266,20 @@ export async function checkIn(payload: CheckInPayload) {
     payload.selfie_override === true
   );
   if ("error" in selfieGate) return { error: selfieGate.error };
+
+  // Penolakan yang HANYA soal warna kerudung tidak langsung membuat Inbox/notifikasi admin: baru bila berulang (ada
+  // override lain dalam 2 hari sebelumnya). Datanya tetap tersimpan (terlihat di rekap absensi); hanya ditandai ditinjau otomatis.
+  let autoReviewSoft = false;
+  if (selfieGate.verdict === "overridden" && selfieGate.soft) {
+    const { count: recent } = await supabase
+      .from("attendance_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("selfie_ai_verdict", "overridden")
+      .gte("date", jakartaDateMinusDays(today, 2))
+      .lt("date", today);
+    autoReviewSoft = (recent ?? 0) === 0;
+  }
 
   // Get profile for per-user working time settings + name (used in WA notify)
   // + today's national-holiday lookup (for the holiday-bonus gate). Both are
@@ -331,7 +349,7 @@ export async function checkIn(payload: CheckInPayload) {
     selfie_ai_note: selfieGate.note,
     selfie_ai_verdict: selfieGate.verdict,
     selfie_ai_attempts: selfieGate.attempts,
-    selfie_ai_reviewed_at: null,
+    selfie_ai_reviewed_at: autoReviewSoft ? now.toISOString() : null,
     is_early_arrival,
     is_overtime: false,
     overtime_minutes: 0,
@@ -383,7 +401,7 @@ export async function checkIn(payload: CheckInPayload) {
 
   // Karyawan tetap absen padahal AI menolak fotonya → kabari admin SEKALI per karyawan per hari
   // (re-check-in di hari yang sama tidak mengirim push lagi). Inbox admin membaca kolom yang sama.
-  if (selfieGate.verdict === "overridden" && existing?.selfie_ai_verdict !== "overridden") {
+  if (selfieGate.verdict === "overridden" && !autoReviewSoft && existing?.selfie_ai_verdict !== "overridden") {
     const logId = data.id;
     const who = profile?.full_name ?? "Karyawan";
     const note = selfieGate.note;

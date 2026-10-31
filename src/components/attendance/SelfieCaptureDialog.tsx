@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { toast } from "sonner";
-import { encodeCanvas, MAX_EDGE_PHOTO } from "@/lib/images/compress-image";
+import { encodeCanvas, MAX_EDGE_SELFIE, SELFIE_QUALITY } from "@/lib/images/compress-image";
 
 /**
  * Frame hitam = kamera belum mengeluarkan gambar (baru menyala / diblokir aplikasi lain / izin setengah jalan).
@@ -178,7 +178,7 @@ export function SelfieCaptureDialog({
     // Itulah kenapa bucket foto tumbuh jauh lebih cepat dari dugaan.
     const scale = Math.min(
       1,
-      MAX_EDGE_PHOTO / Math.max(video.videoWidth, video.videoHeight)
+      MAX_EDGE_SELFIE / Math.max(video.videoWidth, video.videoHeight)
     );
     const w = Math.round(video.videoWidth * scale);
     const h = Math.round(video.videoHeight * scale);
@@ -198,7 +198,7 @@ export function SelfieCaptureDialog({
     // WebP q0.7, mundur ke JPEG kalau peramban tidak bisa meng-encode-nya.
     // Pemanggil WAJIB menurunkan ekstensi dan contentType dari `blob.type`,
     // bukan mengasumsikan .jpg — lihat CheckInButton & CleaningChecklistCard.
-    const blob = await encodeCanvas(canvas);
+    const blob = await encodeCanvas(canvas, SELFIE_QUALITY);
     if (!blob) return;
 
     // Stop the live stream while the still is on screen — saves battery

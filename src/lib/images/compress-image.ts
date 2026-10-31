@@ -27,6 +27,13 @@ export const MAX_EDGE_DOCUMENT = 1280;
 /** Longest edge for scene/face photos, where no small text is being read. */
 export const MAX_EDGE_PHOTO = 960;
 
+/**
+ * Selfie absen yang dinilai AI (warna kerudung): sisi terpanjang dan kualitas sedikit lebih tinggi supaya warna pastel
+ * (pink muda) tidak menjadi putih akibat kompresi. Tambahannya kecil (puluhan KB per foto).
+ */
+export const MAX_EDGE_SELFIE = 1280;
+export const SELFIE_QUALITY = 0.8;
+
 /** Shared quality for both. Chosen against real samples, not by feel. */
 export const IMAGE_QUALITY = 0.7;
 
