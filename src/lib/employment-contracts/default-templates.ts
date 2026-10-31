@@ -447,13 +447,29 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (6) Pada saat hubungan kerja berakhir, Karyawan menyelesaikan seluruh kewajibannya dan mengembalikan seluruh aset, kunci, dan akses milik Pemberi Kerja.
 
-## Pasal 16: Penyelesaian Perselisihan
+## Pasal 16: Keadaan Memaksa (Force Majeure)
+
+(1) Keadaan Memaksa adalah peristiwa di luar kendali dan kemampuan wajar Para Pihak yang terjadi setelah Perjanjian ini ditandatangani, tidak dapat diperkirakan sebelumnya, dan menghalangi pelaksanaan kewajiban salah satu Pihak atau kedua Pihak, baik sebagian maupun seluruhnya. Contohnya: bencana alam (gempa bumi, banjir, kebakaran, letusan gunung berapi), wabah atau pandemi yang ditetapkan pemerintah, kerusuhan, perang, sabotase, kebijakan atau larangan pemerintah yang menghentikan atau membatasi kegiatan usaha, gangguan listrik, air, atau jaringan telekomunikasi berskala luas di luar kendali Para Pihak, serta kerusakan atau hilangnya tempat usaha yang bukan akibat kelalaian Pemberi Kerja.
+
+(2) Yang tidak termasuk Keadaan Memaksa antara lain kerugian atau kesulitan keuangan usaha yang bersifat biasa, kenaikan harga bahan, kelalaian salah satu Pihak, serta keperluan atau halangan pribadi Karyawan yang pengaturannya ada pada Pasal 4 (Waktu Kerja dan Izin).
+
+(3) Pihak yang terhalang melaksanakan kewajibannya karena Keadaan Memaksa memberi tahu Pihak lain secepatnya, paling lambat 3 (tiga) hari sejak keadaan itu diketahui, melalui Zota Apps atau sarana komunikasi lain yang disepakati, disertai penjelasan dan bukti yang wajar.
+
+(4) Selama Keadaan Memaksa berlangsung, kewajiban yang terhalang ditangguhkan hanya sebatas dan selama keadaan itu berlangsung. Para Pihak berupaya wajar meminimalkan dampaknya dan melanjutkan pelaksanaan Perjanjian secepatnya. Pemberi Kerja dapat mengatur ulang jadwal, lokasi, atau pembagian tugas Karyawan secara wajar dengan pemberitahuan sebelumnya.
+
+(5) Upah atas pekerjaan yang telah dilaksanakan sebelum Keadaan Memaksa tetap dibayarkan. Untuk masa Karyawan tidak dapat bekerja karena Keadaan Memaksa, upah diatur berdasarkan peraturan perundang-undangan dan musyawarah Para Pihak. Dasar perhitungannya disampaikan terbuka melalui rincian upah di Zota Apps.
+
+(6) Apabila Keadaan Memaksa berlangsung lebih dari 30 (tiga puluh) hari berturut-turut, Para Pihak bermusyawarah untuk menentukan kelanjutan hubungan kerja. Bila tidak tercapai kesepakatan, atau usaha terpaksa ditutup akibat Keadaan Memaksa, berakhirnya hubungan kerja dan hak-hak Karyawan mengikuti peraturan perundang-undangan.
+
+(7) Keadaan Memaksa tidak menghapus kewajiban yang sudah timbul sebelumnya, misalnya upah terutang atau kasbon, dan tidak menghentikan kewajiban kerahasiaan (Pasal 11) serta larangan usaha sejenis (Pasal 12).
+
+## Pasal 17: Penyelesaian Perselisihan
 
 (1) Apabila terjadi perselisihan sehubungan dengan pelaksanaan Perjanjian ini, Para Pihak sepakat menyelesaikannya terlebih dahulu secara musyawarah untuk mencapai mufakat dengan dilandasi itikad baik.
 
 (2) Apabila musyawarah tidak mencapai mufakat, perselisihan diselesaikan melalui pengadilan yang berwenang di kota atau daerah tempat Karyawan bekerja, setelah melalui tahapan penyelesaian yang diwajibkan peraturan perundang-undangan.
 
-## Pasal 17: Ketentuan Penutup
+## Pasal 18: Ketentuan Penutup
 
 (1) Hal-hal yang belum diatur atau belum cukup diatur dalam Perjanjian ini diatur kemudian berdasarkan kesepakatan Para Pihak dan SOP.
 
