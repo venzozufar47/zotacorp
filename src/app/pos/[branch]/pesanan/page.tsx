@@ -1,15 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { findPosAccount, listActivePosProducts } from "@/lib/actions/pos.actions";
 import { listPendingPesanan } from "@/lib/actions/pos-pesanan.actions";
 import { getPosAuthorizers } from "@/lib/actions/pos-stock.actions";
 import { listCakePickupsForPos } from "@/lib/actions/pos-cake-pickup.actions";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { PosShell } from "@/components/pos/PosShell";
-import { PesananList } from "@/components/pos/PesananList";
-import { CakePickupList } from "@/components/pos/CakePickupList";
+import { PesananBoard } from "@/components/pos/PesananBoard";
+import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
+import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
+import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { resolvePosShiftView } from "@/components/pos/shift-view";
 
 /**
@@ -46,12 +48,15 @@ export default async function PesananPage({
   // Metode bayar ikut dari action yang sama: daftarnya diturunkan dari
   // penyaring yang dipakai server saat memvalidasi, jadi chip yang
   // tampil dan metode yang diterima tidak bisa berbeda.
-  const [role, pesanan, cakeBoard, authorizers, products] = await Promise.all([
+  const [role, pesanan, cakeBoard, authorizers, products, receiptConfig, profile] = await Promise.all([
     getCurrentRole(),
     listPendingPesanan(account.id),
     listCakePickupsForPos(account.id),
     getPosAuthorizers(account.id),
     listActivePosProducts(account.id),
+    // Konfigurasi struk outlet (sama dengan layar kasir). Gagal baca tidak boleh menjatuhkan halaman.
+    getPosReceiptConfig(account.id).catch(() => null),
+    getCurrentProfile(),
   ]);
 
   return (
@@ -64,25 +69,20 @@ export default async function PesananPage({
       subtitle="kue custom siap diambil + pesanan menunggu pembayaran"
       shiftSlot={view.shiftSlot}
     >
-      {/* Cake didahulukan: customer-nya sedang berdiri di konter,
-          sementara pesanan tertunda bisa menunggu. */}
-      <div className="max-w-3xl mx-auto px-3 sm:px-5 py-5 space-y-6">
-        <CakePickupList
-          pickups={cakeBoard.pickups}
-          paymentMethods={cakeBoard.paymentMethods}
-          authorizers={cakeBoard.authorizers}
-        />
-        <section>
-          <h2 className="text-sm font-bold text-foreground mb-2">
-            Pesanan tertunda
-          </h2>
-          <PesananList
-            pesanan={pesanan}
-            authorizers={authorizers.sale_void}
-            products={products}
-          />
-        </section>
-      </div>
+      <PesananBoard
+        pickups={cakeBoard.pickups}
+        paymentMethods={cakeBoard.paymentMethods}
+        cakeAuthorizers={cakeBoard.authorizers}
+        pesanan={pesanan}
+        voidAuthorizers={authorizers.sale_void}
+        products={products}
+        receipt={{
+          content: receiptConfig ?? defaultReceiptContent(account.accountName),
+          branch: account.branch,
+          cashierName: cashierDisplayName(profile?.nickname, profile?.full_name),
+          fixedCashierName: view.fixedCashierName ?? null,
+        }}
+      />
     </PosShell>
   );
 }

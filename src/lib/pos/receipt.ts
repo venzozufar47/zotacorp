@@ -86,6 +86,10 @@ export interface ReceiptData {
   wifiPassword?: string;
   /** Potongan id sale untuk jejak (mis. 8 char pertama). */
   saleShortId?: string | null;
+  /** Baris tambahan setelah TOTAL (mis. "DP" dan "Pelunasan" untuk custom cake). Teks ASCII singkat. */
+  extraLines?: { label: string; value: number }[];
+  /** Menggantikan teks metode bayar (mis. "Lunas"); kosong = label metode biasa. */
+  methodText?: string | null;
   /** Label/teks tetap. Kosong = pakai default. */
   labels?: ReceiptLabels;
 }
@@ -178,6 +182,7 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   }
   b.size("tall").bold(true).row(L.total, formatIDR(data.total));
   b.size("normal").bold(false);
+  for (const x of data.extraLines ?? []) b.row(x.label, formatIDR(x.value));
 
   // Pembayaran.
   b.line();
@@ -185,7 +190,7 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
     b.row(L.cash, formatIDR(data.cashReceived));
     if (data.change != null) b.row(L.change, formatIDR(data.change));
   }
-  b.textLine(`${L.method}: ${methodLabel(data.method, L)}`);
+  b.textLine(`${L.method}: ${data.methodText?.trim() || methodLabel(data.method, L)}`);
 
   // WiFi (opsional) — di area bawah, center. Nama & password baris sendiri.
   b.line();

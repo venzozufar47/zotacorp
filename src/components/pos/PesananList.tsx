@@ -44,6 +44,8 @@ import {
   type PosAuthorizerRef,
 } from "@/lib/pos-pin-format";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
+import type { ReceiptData } from "@/lib/pos/receipt";
+import { receiptBaseFields, type ReceiptContext } from "@/lib/pos/receipt-flow";
 
 function timeAgo(iso: string): string {
   if (!iso) return "";
@@ -61,12 +63,18 @@ export function PesananList({
   pesanan,
   authorizers,
   products,
+  receiptCtx = null,
+  onReceipt,
 }: {
   pesanan: PendingPesanan[];
   /** Kosong = pembatalan tidak butuh PIN, dan tidak ada nama tercatat. */
   authorizers: PosAuthorizerRef[];
   /** Katalog aktif outlet — sumber "+ Tambah produk" di dialog edit. */
   products: PosProduct[];
+  /** Konteks struk outlet; null = sistem struk mati (tidak ada cetak). */
+  receiptCtx?: ReceiptContext | null;
+  /** Dipanggil setelah pesanan lunas dengan struknya (induk mencetak otomatis dan menampilkan dialog struk). */
+  onReceipt?: (data: ReceiptData) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -104,6 +112,8 @@ export function PesananList({
       {openId && (
         <SettlePesananDialog
           pesanan={pesanan.find((p) => p.id === openId)!}
+          receiptCtx={receiptCtx}
+          onReceipt={onReceipt}
           onClose={() => setOpenId(null)}
         />
       )}
@@ -775,9 +785,13 @@ function ProductPickerSheet({
 
 function SettlePesananDialog({
   pesanan,
+  receiptCtx,
+  onReceipt,
   onClose,
 }: {
   pesanan: PendingPesanan;
+  receiptCtx: ReceiptContext | null;
+  onReceipt?: (data: ReceiptData) => void;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -829,6 +843,28 @@ function SettlePesananDialog({
       toast.success(
         `Pesanan ${pesanan.customerName ?? ""} selesai — ${label} ${formatRp(total)}`
       );
+      // Struk pelunasan, sama seperti checkout biasa: dicetak otomatis (bila diaktifkan) dan bisa dicetak manual.
+      if (receiptCtx && onReceipt) {
+        const now = new Date();
+        onReceipt({
+          ...receiptBaseFields(receiptCtx, now),
+          customerName: pesanan.customerName,
+          fulfillment: pesanan.fulfillmentType,
+          items: pesanan.items.map((it) => ({
+            name: it.variantName ? `${it.productName} — ${it.variantName}` : it.productName,
+            qty: it.qty,
+            subtotal: it.subtotal,
+            note: sugarLevelLabel(it.sugarLevel),
+          })),
+          grossTotal: total,
+          discountAmount: 0,
+          total,
+          method: mode,
+          cashReceived: mode === "cash" ? cashReceived : null,
+          change: mode === "cash" && cashReceived != null ? cashReceived - total : null,
+          saleShortId: pesanan.id.slice(0, 8),
+        });
+      }
       onClose();
       router.refresh();
     });
