@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { cn } from "@/lib/utils";
 import type { ClockedInEmployee } from "@/lib/actions/admin-home.actions";
@@ -15,6 +16,9 @@ import type { ClockedInEmployee } from "@/lib/actions/admin-home.actions";
  * `AdminHomePage`) supaya admin tetap punya interaksi click → drawer
  * detail; karyawan biasa cukup lihat roster saja.
  */
+/** Avatar maksimum di baris ringkas; selebihnya jadi "+N". */
+const MAX_STACK = 7;
+
 export function FloorTodayCard({
   people,
 }: {
@@ -22,48 +26,62 @@ export function FloorTodayCard({
 }) {
   const onDuty = people.filter((p) => !p.checkedOut);
   const groups = groupByUnit(people);
+  // Yang masih di kantor didahulukan; sisanya diringkas jadi "+N".
+  const ordered = [...onDuty, ...people.filter((p) => p.checkedOut)];
+  const stack = ordered.slice(0, MAX_STACK);
+  const extra = ordered.length - stack.length;
   return (
     <section aria-label="Karyawan hari ini" className="animate-fade-up animate-fade-up-delay-2">
-      {/* Ringkas: satu kartu rapat tanpa judul seksi terpisah. Info tetap lengkap (siapa, unit, on duty / sudah pulang). */}
-      <div className="panel-sticker px-3.5 py-3">
-        <div className="mb-2 flex items-baseline justify-between gap-2">
-          <h3 className="text-[13px] font-semibold text-foreground">Siapa di kantor hari ini</h3>
-          <p className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
-            {people.length === 0 ? "Belum ada yang sign-in" : `${onDuty.length} on duty · ${people.length} sign-in`}
-          </p>
+      {/* Satu baris: avatar bertumpuk + jumlah. Ketuk untuk membuka nama per unit (details native, tanpa JS). */}
+      {people.length === 0 ? (
+        <div className="panel-sticker px-3.5 py-2.5 text-[12px] text-muted-foreground">
+          Belum ada karyawan yang check-in hari ini.
         </div>
-        {people.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground">Belum ada karyawan yang check-in hari ini.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {groups.map(({ unit, members }) => (
-              <div key={unit} className="flex flex-wrap items-center gap-1">
-                <span className="mr-0.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {unit} <span className="tabular-nums text-muted-foreground/60">{members.length}</span>
+      ) : (
+        <details className="panel-sticker group px-3.5 py-2">
+          <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center pl-1">
+              {stack.map((p) => (
+                <EmployeeAvatar
+                  key={p.userId}
+                  size="sm"
+                  full_name={p.fullName}
+                  avatar_url={p.avatarUrl}
+                  avatar_seed={p.avatarSeed}
+                  className={cn("-ml-1.5 data-[size=sm]:size-6 border-2 border-card first:ml-0", p.checkedOut && "grayscale opacity-60")}
+                />
+              ))}
+              {extra > 0 && (
+                <span className="-ml-1.5 flex size-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[10px] font-medium tabular-nums text-muted-foreground">
+                  +{extra}
                 </span>
-                {members.map((p) => (
-                  <span
-                    key={p.userId}
-                    className={`inline-flex h-6 items-center gap-1 rounded-full border border-border/60 pl-0.5 pr-2 text-[11.5px] ${
-                      p.checkedOut ? "bg-muted/30 text-muted-foreground opacity-60" : "bg-muted/50 text-foreground"
-                    }`}
-                    title={p.checkedOut ? `Sudah sign-out · ${p.status}` : `On duty · ${p.status}`}
-                  >
-                    <EmployeeAvatar
-                      size="sm"
-                      full_name={p.fullName}
-                      avatar_url={p.avatarUrl}
-                      avatar_seed={p.avatarSeed}
-                      className={cn("data-[size=sm]:size-5 border", p.checkedOut && "grayscale")}
-                    />
-                    <span className="max-w-[96px] truncate">{firstName(p.fullName)}</span>
-                  </span>
-                ))}
-              </div>
-            ))}
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
+              <span className="font-semibold">{onDuty.length} di kantor</span>
+              <span className="text-muted-foreground"> · {people.length} sign-in</span>
+            </span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-[12px] leading-relaxed">
+            {groups.map(({ unit, members }) => {
+              const on = members.filter((p) => !p.checkedOut);
+              const off = members.filter((p) => p.checkedOut);
+              return (
+                <p key={unit} className="text-muted-foreground">
+                  <span className="font-medium text-foreground">{unit}</span>{" "}
+                  {on.map((p) => firstName(p.fullName)).join(", ")}
+                  {off.length > 0 && (
+                    <span className="text-muted-foreground/70">
+                      {on.length > 0 ? " · " : ""}pulang: {off.map((p) => firstName(p.fullName)).join(", ")}
+                    </span>
+                  )}
+                </p>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </details>
+      )}
     </section>
   );
 }
