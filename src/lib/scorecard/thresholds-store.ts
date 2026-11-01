@@ -17,6 +17,48 @@ export function invalidateThresholdsCache(): void {
   cache = null;
 }
 
+type OverrideMetric = "waste" | "service_level" | "feedback";
+const overrideCache = new Map<string, { at: number; value: Partial<Record<OverrideMetric, { green: number; yellow: number }>> }>();
+
+/**
+ * Ambang yang berlaku untuk SATU cabang pada SATU bulan (`monthStart` = "YYYY-MM-01"): ambang umum, lalu ditimpa per metrik oleh
+ * baris di `branch_scorecard_threshold_overrides` bila ada. Hasil yang tidak sah (mis. batas kuning ≥ batas hijau) dibuang, jadi
+ * penimpaan yang salah ketik tidak merusak scorecard. Gagal baca → ambang umum.
+ */
+export async function loadThresholdsFor(admin: Admin, branch: string, monthStart: string): Promise<BranchThresholds> {
+  const base = await loadThresholds(admin);
+  const key = `${branch}|${monthStart}`;
+  let entry = overrideCache.get(key);
+  if (!entry || Date.now() - entry.at >= TTL_MS) {
+    const value: Partial<Record<OverrideMetric, { green: number; yellow: number }>> = {};
+    try {
+      const { data } = await admin
+        .from("branch_scorecard_threshold_overrides" as never)
+        .select("metric, green_bound, yellow_bound")
+        .eq("branch", branch)
+        .eq("month", monthStart);
+      for (const r of (data ?? []) as { metric: OverrideMetric; green_bound: number | string; yellow_bound: number | string }[]) {
+        value[r.metric] = { green: Number(r.green_bound), yellow: Number(r.yellow_bound) };
+      }
+    } catch {
+      // Tanpa penimpaan.
+    }
+    entry = { at: Date.now(), value };
+    overrideCache.set(key, entry);
+  }
+  const o = entry.value;
+  if (!o.waste && !o.service_level && !o.feedback) return base;
+  const candidate: BranchThresholds = {
+    wasteGreen: o.waste?.green ?? base.wasteGreen,
+    wasteYellow: o.waste?.yellow ?? base.wasteYellow,
+    slGreen: o.service_level?.green ?? base.slGreen,
+    slYellow: o.service_level?.yellow ?? base.slYellow,
+    fbGreen: o.feedback?.green ?? base.fbGreen,
+    fbYellow: o.feedback?.yellow ?? base.fbYellow,
+  };
+  return validateThresholds(candidate) ? base : candidate;
+}
+
 export async function loadThresholds(admin: Admin): Promise<BranchThresholds> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.value;
   let value = DEFAULT_THRESHOLDS;

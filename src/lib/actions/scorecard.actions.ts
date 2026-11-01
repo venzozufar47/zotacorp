@@ -19,7 +19,7 @@ import {
   wasteRanges,
   type BandRange,
 } from "@/lib/scorecard/thresholds";
-import { loadThresholds } from "@/lib/scorecard/thresholds-store";
+import { loadThresholdsFor } from "@/lib/scorecard/thresholds-store";
 import { loadFeedbackWindow } from "@/lib/feedback/store";
 import { computeFeedbackStats, targetDays } from "@/lib/feedback/stats";
 import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "@/lib/feedback/constants";
@@ -235,7 +235,8 @@ export async function computeMetricsAsOf(
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
     opts ? sumCakeRevenue(branch, monthStart, asOf) : Promise.resolve(0),
     // Ambang Waste/Service level/Feedback yang diatur owner (kartu "Ambang warna Scorecard Cabang"); bawaan bila belum ada.
-    loadThresholds(createAdminClient()),
+    // Ambang bulan itu: ambang umum, ditimpa target khusus cabang+bulan bila ada (mis. Service level Pare Oktober 2026).
+    loadThresholdsFor(createAdminClient(), branch, monthStart),
     // Feedback customer: 30 hari bergulir, selalu (juga untuk kalkulator bonus), supaya sama dengan yang dilihat di scorecard.
     loadFeedbackWindow(createAdminClient(), branch, addDays(asOf, -(FEEDBACK_WINDOW_DAYS - 1)), asOf).catch(() => null),
   ]);
