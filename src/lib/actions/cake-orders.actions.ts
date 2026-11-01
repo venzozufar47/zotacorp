@@ -9,7 +9,7 @@ import {
   type ActionResult,
 } from "./_gates";
 import { maybeCloseSlipForOrder } from "./cake-slips.actions";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentRole, getCurrentUser } from "@/lib/supabase/cached";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type {
   AddCakePaymentInput,
@@ -25,6 +25,7 @@ import { isSlipFrozen } from "@/lib/cake-orders/helpers";
 import { insertCakePaymentLeg } from "@/lib/cake-orders/payment-write";
 import { resolveBasePrice } from "@/lib/cake-orders/pricing";
 import {
+  isReadyCakeInStock,
   recordReadyCakeExit,
   recordReadyCakeProduced,
   retractReadyCakeProduced,
@@ -98,6 +99,15 @@ function computeDiscountIdr(
  */
 function resolveIsReadyStock(input: Pick<CreateCakeOrderInput, "isReadyStock" | "customerName">): boolean {
   return !!input.isReadyStock || /^s*ready(s|$)/i.test(input.customerName ?? "");
+}
+
+const READY_CAKE_LOCK_MESSAGE =
+  "Ready cake yang sudah masuk stok hanya bisa dikeluarkan lewat penarikan di POS (kasir toko / koordinator toko).";
+
+/** Ready cake yang sudah di stok dikunci untuk Buang / Batalkan oleh non-admin. */
+async function readyCakeLockedForCaller(db: ReturnType<typeof adminClient>, id: string): Promise<boolean> {
+  if ((await getCurrentRole()) === "admin") return false;
+  return isReadyCakeInStock(db, id);
 }
 
 // ---------- Create ----------------------------------------------------
@@ -1057,6 +1067,7 @@ export async function discardCakeOrder(id: string): Promise<ActionResult> {
     .maybeSingle();
   const current = (row as unknown as { status?: string } | null)?.status;
   if (!current) return { ok: false, error: "Order tidak ditemukan" };
+  if (await readyCakeLockedForCaller(supabase, id)) return { ok: false, error: READY_CAKE_LOCK_MESSAGE };
   if (
     current !== "in_progress" &&
     current !== "ready" &&
@@ -1109,6 +1120,9 @@ export async function setCakeOrderStatus(
   } | null;
   const current = row?.status;
   if (!current) return { ok: false, error: "Order tidak ditemukan" };
+  if (status === "cancelled" && (await readyCakeLockedForCaller(supabase, id))) {
+    return { ok: false, error: READY_CAKE_LOCK_MESSAGE };
+  }
 
   // LAPIS 3 dari tiga — dan satu-satunya yang mengikat.
   //

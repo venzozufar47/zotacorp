@@ -95,6 +95,8 @@ export async function getKitchenCapacity(bankAccountId: string): Promise<ActionR
         .select("id, product_id, qty, movement_date, movement_time")
         .eq("bank_account_id", bankAccountId)
         .eq("type", "production")
+        // Ready cake masuk stok otomatis dari pesanan kue; bukan batch produksi dapur.
+        .is("cake_order_id", null)
         .gte("movement_date", SERIES_FROM)
         .lte("qty", QTY_CAP)
     );

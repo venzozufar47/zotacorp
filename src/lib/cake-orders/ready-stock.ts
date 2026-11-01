@@ -228,3 +228,18 @@ export async function discardOldestReadyCakes(
     return 0;
   }
 }
+
+/**
+ * Ready cake yang sudah tercatat masuk stok dan belum keluar. Kue seperti ini hanya boleh dikeluarkan lewat
+ * penarikan di POS (kasir toko / koordinator toko, dengan PIN); admin cake tidak boleh membuang atau membatalkannya.
+ */
+export async function isReadyCakeInStock(db: Db, orderId: string): Promise<boolean> {
+  try {
+    const order = await loadOrder(db, orderId);
+    if (!order?.is_ready_stock) return false;
+    if (!(await movementExists(db, orderId, "production"))) return false;
+    return !(await movementExists(db, orderId, "withdrawal"));
+  } catch {
+    return false;
+  }
+}
