@@ -2213,6 +2213,7 @@ export type Database = {
           greeting_card: string | null
           id: string
           is_diy: boolean
+          is_ready_stock: boolean
           paid_at: string | null
           paid_idr: number
           payment_option_id: string | null
@@ -2265,6 +2266,7 @@ export type Database = {
           greeting_card?: string | null
           id?: string
           is_diy?: boolean
+          is_ready_stock?: boolean
           paid_at?: string | null
           paid_idr?: number
           payment_option_id?: string | null
@@ -2317,6 +2319,7 @@ export type Database = {
           greeting_card?: string | null
           id?: string
           is_diy?: boolean
+          is_ready_stock?: boolean
           paid_at?: string | null
           paid_idr?: number
           payment_option_id?: string | null
@@ -6839,6 +6842,7 @@ export type Database = {
           requires_sugar_level: boolean
           sort_order: number
           stock_aggregate_variants: boolean
+          stock_only: boolean
           track_stock: boolean
           updated_at: string
         }
@@ -6854,6 +6858,7 @@ export type Database = {
           requires_sugar_level?: boolean
           sort_order?: number
           stock_aggregate_variants?: boolean
+          stock_only?: boolean
           track_stock?: boolean
           updated_at?: string
         }
@@ -6869,6 +6874,7 @@ export type Database = {
           requires_sugar_level?: boolean
           sort_order?: number
           stock_aggregate_variants?: boolean
+          stock_only?: boolean
           track_stock?: boolean
           updated_at?: string
         }
@@ -7534,6 +7540,7 @@ export type Database = {
           type: string
           variant_id: string | null
           withdrawal_reason: string | null
+          cake_order_id: string | null
         }
         Insert: {
           bank_account_id: string
@@ -7549,6 +7556,7 @@ export type Database = {
           type: string
           variant_id?: string | null
           withdrawal_reason?: string | null
+          cake_order_id?: string | null
         }
         Update: {
           bank_account_id?: string
@@ -7564,6 +7572,7 @@ export type Database = {
           type?: string
           variant_id?: string | null
           withdrawal_reason?: string | null
+          cake_order_id?: string | null
         }
         Relationships: [
           {

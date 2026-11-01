@@ -62,6 +62,7 @@ import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { DailyRevenueTargetCard } from "@/components/pos/DailyRevenueTargetCard";
 import { FeedbackTargetCard } from "@/components/pos/FeedbackTargetCard";
+import { ReadyCakePanel, type ReadyCakeSummary } from "@/components/pos/ReadyCakePanel";
 import type { PosFeedbackToday } from "@/lib/actions/feedback.actions";
 import type { PosDailyRevenueSummary } from "@/lib/actions/pos.actions";
 import {
@@ -96,6 +97,8 @@ interface Props {
    *  admin / gagal dibaca — kartu tidak dirender. */
   dailyRevenue?: PosDailyRevenueSummary | null;
   feedbackToday?: PosFeedbackToday | null;
+  /** Stok + daftar ready cake cabang ini; null = cabang tanpa SKU Ready Cake (panel tidak dirender). */
+  readyCake?: ReadyCakeSummary | null;
   /** Konten struk bersama (server, per rekening). */
   receiptContent: ReceiptContent;
   products: PosProduct[];
@@ -208,6 +211,7 @@ export function POSClient({
   serviceLevel = null,
   dailyRevenue = null,
   feedbackToday = null,
+  readyCake = null,
   receiptContent,
   products,
   isAdmin,
@@ -1278,6 +1282,7 @@ export function POSClient({
             )}
           </div>
         )}
+        {readyCake && <ReadyCakePanel summary={readyCake} />}
         <DiscountBanner campaigns={campaigns} now={liveNow} picked={picked} chosenId={chosenCampaignId} onChoose={setChosenCampaignId} />
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
           <div className="relative">

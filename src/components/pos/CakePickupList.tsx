@@ -150,6 +150,11 @@ function PickupCard({
             {scheduleLabel(order.scheduledAt, todayWib)}
           </div>
           <h3 className="text-base font-bold text-foreground truncate">
+            {order.isReadyStock ? (
+              <span className="mr-1.5 inline-block rounded-full bg-primary/15 px-1.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-primary">
+                Ready{order.isDiy ? " · DIY" : ""}
+              </span>
+            ) : null}
             {order.customerName}
           </h3>
         </div>

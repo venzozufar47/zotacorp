@@ -53,6 +53,7 @@ import {
 } from "@/lib/utils/jakarta";
 import { jakartaHourIso } from "@/lib/pos/stock-engine";
 import { classifyPaymentMethod } from "@/lib/cake-orders/payment-method";
+import { recordReadyCakeExit } from "@/lib/cake-orders/ready-stock";
 import { CAKE_BRANCH_LABELS, type CakeBranch } from "@/lib/cake-orders/types";
 import {
   listAuthorizersFor,
@@ -76,6 +77,10 @@ export interface CakePickupOrder {
   remainingIdr: number;
   paymentState: CakePaymentState;
   freeClaim: boolean;
+  /** Ready cake (stok toko), bukan pesanan pelanggan. Kartu menampilkan lencana "Ready". */
+  isReadyStock: boolean;
+  /** Ready cake DIY (jenis kue). */
+  isDiy: boolean;
 }
 
 /** Metode bayar yang boleh diterima kasir, sudah tersaring di server. */
@@ -235,6 +240,8 @@ type ListRow = {
   paid_idr: number;
   refund_idr: number;
   free_claim: boolean;
+  is_ready_stock: boolean;
+  is_diy: boolean;
 };
 
 /** Kolom yang benar-benar dibaca jalur penandaan — sengaja lebih sempit
@@ -321,7 +328,7 @@ export async function listCakePickupsForPos(
   const { data: rowsRaw } = await db
     .from("cake_orders" as never)
     .select(
-      "id, customer_name, customer_phone, scheduled_at, base_cake_option_id, shape_option_id, shape_custom, dimension_cm, filling_option_id, greeting_card, total_idr, paid_idr, refund_idr, free_claim"
+      "id, customer_name, customer_phone, scheduled_at, base_cake_option_id, shape_option_id, shape_custom, dimension_cm, filling_option_id, greeting_card, total_idr, paid_idr, refund_idr, free_claim, is_ready_stock, is_diy"
     )
     .eq("branch", branch)
     .eq("status", "ready")
@@ -354,6 +361,8 @@ export async function listCakePickupsForPos(
       remainingIdr: pay.remaining,
       paymentState: pay.state,
       freeClaim: r.free_claim,
+      isReadyStock: r.is_ready_stock,
+      isDiy: r.is_diy,
     };
   });
 
@@ -907,6 +916,8 @@ export async function markCakePickedUpAtPos(
     .is("picked_up_at", null)
     .select("id");
   const alreadyPickedUp = ((updatedRaw ?? []) as unknown[]).length === 0;
+  // Ready cake keluar dari stok Ready Cake (no-op untuk pesanan biasa).
+  if (!alreadyPickedUp) await recordReadyCakeExit(db, order.id, "handover");
 
   revalidatePath("/pos", "layout");
   revalidatePath("/cake-orders");

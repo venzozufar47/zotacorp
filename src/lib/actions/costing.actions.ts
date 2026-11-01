@@ -997,6 +997,7 @@ export async function listPosOptions(
     .select("id, name, price")
     .in("bank_account_id", acctIds)
     .eq("active", true)
+    .eq("stock_only", false)
     .order("name", { ascending: true });
   const products = (prods ?? []) as { id: string; name: string; price: number | string }[];
   if (products.length === 0) return { ok: true, data: [] };

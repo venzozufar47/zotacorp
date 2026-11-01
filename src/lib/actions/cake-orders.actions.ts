@@ -25,6 +25,12 @@ import { isSlipFrozen } from "@/lib/cake-orders/helpers";
 import { insertCakePaymentLeg } from "@/lib/cake-orders/payment-write";
 import { resolveBasePrice } from "@/lib/cake-orders/pricing";
 import {
+  recordReadyCakeExit,
+  recordReadyCakeProduced,
+  retractReadyCakeProduced,
+  reverseReadyCakeExit,
+} from "@/lib/cake-orders/ready-stock";
+import {
   parseCakeBranch,
   type CakeBaseDiameterPrice,
   type CakeDiameterOption,
@@ -84,6 +90,14 @@ function computeDiscountIdr(
     return Math.round((baseAndAddOns * pct) / 100);
   }
   return Math.min(baseAndAddOns, Math.round(value));
+}
+
+/**
+ * Penanda ready cake. Dipilih Tasya di form; nama berawalan "ready" otomatis menyalakannya (kebiasaan lama) supaya
+ * pesanan yang lupa dicentang tetap masuk stok.
+ */
+function resolveIsReadyStock(input: Pick<CreateCakeOrderInput, "isReadyStock" | "customerName">): boolean {
+  return !!input.isReadyStock || /^s*ready(s|$)/i.test(input.customerName ?? "");
 }
 
 // ---------- Create ----------------------------------------------------
@@ -148,6 +162,7 @@ export async function createCakeOrder(
   const branch = parseCakeBranch(input.branch);
   const { diameters, prices, diyPrices } = await loadPriceMatrix(supabase);
   const isDiy = input.isDiy ?? false;
+  const isReadyStock = resolveIsReadyStock(input);
   const basePrice = resolveBasePrice({
     baseOption: baseOpt,
     branch,
@@ -187,6 +202,7 @@ export async function createCakeOrder(
       base_cake_option_id: baseOpt.id,
       base_price_idr: basePrice,
       is_diy: isDiy,
+      is_ready_stock: isReadyStock,
       shape_option_id: shapeOpt.id,
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
@@ -707,6 +723,7 @@ export async function updateCakeOrderFull(
   const branch = parseCakeBranch(input.branch);
   const { diameters, prices, diyPrices } = await loadPriceMatrix(supabase);
   const isDiy = input.isDiy ?? false;
+  const isReadyStock = resolveIsReadyStock(input);
   const basePrice = resolveBasePrice({
     baseOption: baseOpt,
     branch,
@@ -743,6 +760,7 @@ export async function updateCakeOrderFull(
       base_cake_option_id: baseOpt.id,
       base_price_idr: basePrice,
       is_diy: isDiy,
+      is_ready_stock: isReadyStock,
       shape_option_id: shapeOpt.id,
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
@@ -1055,6 +1073,7 @@ export async function discardCakeOrder(id: string): Promise<ActionResult> {
     .update({ status: "discarded" } as never)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+  await recordReadyCakeExit(supabase, id, "discard");
   revalidatePath("/cake-orders");
   revalidatePath("/cake-orders/archive");
   revalidatePath("/admin/cake-orders");
@@ -1161,6 +1180,10 @@ export async function setCakeOrderStatus(
     .update(patch as never)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+  // Stok Ready Cake mengikuti: selesai / batal mengeluarkan kue, membuka kembali dari "done" mengembalikannya.
+  if (status === "done") await recordReadyCakeExit(supabase, id, "handover");
+  else if (status === "cancelled") await recordReadyCakeExit(supabase, id, "cancel");
+  else if (current === "done") await reverseReadyCakeExit(supabase, id);
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
   revalidatePath("/cake-orders/slip");
@@ -1260,6 +1283,7 @@ export async function setOrderProductionStatus(
       .eq("id", id)
       .in("status", ["submitted", "in_progress"]);
     void maybeCloseSlipForOrder(id).catch(() => {});
+    await recordReadyCakeProduced(adminDb, id);
   }
 
   // Revert dari done: kalau cake_orders.status saat ini "ready" (di-set
@@ -1274,6 +1298,7 @@ export async function setOrderProductionStatus(
       .update({ status: "in_progress" } as never)
       .eq("id", id)
       .eq("status", "ready");
+    await retractReadyCakeProduced(adminDb, id);
   }
 
   revalidatePath("/cake-production");

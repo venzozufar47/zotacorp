@@ -100,6 +100,7 @@ interface MovementRow {
   type: string;
   qty: number;
   withdrawal_reason: string | null;
+  cake_order_id: string | null;
 }
 
 interface PricedRow {
@@ -154,7 +155,7 @@ export async function computeWaste(
   const { rows } = await fetchAllPages<MovementRow>(() =>
     supabase
       .from("pos_stock_movements")
-      .select("id, product_id, variant_id, type, qty, withdrawal_reason")
+      .select("id, product_id, variant_id, type, qty, withdrawal_reason, cake_order_id")
       .eq("bank_account_id", bankAccountId)
       .gte("movement_date", fromDate)
       .lte("movement_date", toDate)
@@ -184,6 +185,8 @@ export async function computeWaste(
       continue;
     }
     if (r.type !== "withdrawal") continue;
+    // Serah terima ready cake ke pelanggan (otomatis, tanpa alasan) adalah penjualan, bukan penarikan tanpa alasan.
+    if (r.cake_order_id && !r.withdrawal_reason) continue;
 
     if (!isWithdrawalReason(r.withdrawal_reason)) {
       unknownRows += 1;

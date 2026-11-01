@@ -29,6 +29,7 @@ import {
 // Primitif mesin stok tinggal di modul biasa supaya cron (tanpa sesi)
 // bisa memakainya juga — file ini "use server" dan tidak boleh
 // mengekspor fungsi non-async. Lihat header stock-engine.ts.
+import { discardOldestReadyCakes } from "@/lib/cake-orders/ready-stock";
 import {
   computeExpectedCounts,
   jakartaHourIso,
@@ -385,7 +386,7 @@ export async function createStockMovements(input: {
   const productIds = [...new Set(input.lines.map((l) => l.productId))];
   const { data: products } = await supabase
     .from("pos_products")
-    .select("id, name, stock_aggregate_variants, track_stock")
+    .select("id, name, stock_aggregate_variants, track_stock, stock_only")
     .in("id", productIds);
   const byId = new Map((products ?? []).map((p) => [p.id, p]));
 
@@ -430,7 +431,26 @@ export async function createStockMovements(input: {
     .insert(rows)
     .select("id");
   if (error) return { ok: false, error: error.message };
+
+  // Penarikan Ready Cake: kue tertua keluar dari daftar serah terima supaya stok dan tab Pesanan tetap sejalan.
+  // "Koreksi salah input" hanya membetulkan angka, kuenya tidak benar-benar hilang.
+  if (input.type === "withdrawal") {
+    const readyIds = new Set(
+      (products ?? []).filter((p) => p.stock_only).map((p) => p.id)
+    );
+    const adminDb = createAdminClient();
+    for (const l of input.lines) {
+      if (!readyIds.has(l.productId) || l.reason === "koreksi_input") continue;
+      await discardOldestReadyCakes(adminDb, {
+        productId: l.productId,
+        variantId: byId.get(l.productId)?.stock_aggregate_variants ? null : (l.variantId ?? null),
+        qty: l.qty,
+      });
+    }
+  }
   revalidatePath("/pos", "layout");
+  revalidatePath("/cake-orders");
+  revalidatePath("/admin/cake-orders");
   return { ok: true, data: { count: data?.length ?? rows.length } };
 }
 

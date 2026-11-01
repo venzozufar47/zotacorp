@@ -239,6 +239,8 @@ export async function listActivePosProducts(
     .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
+    // Produk khusus stok (Ready Cake) tidak dijual dari keranjang: omzetnya sudah tercatat lewat pesanan kue.
+    .eq("stock_only", false)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true })
     .limit(PRODUCT_LIST_LIMIT);

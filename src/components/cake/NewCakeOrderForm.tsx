@@ -130,6 +130,9 @@ export function NewCakeOrderForm({
    *  tetap bebas dipilih). Cuma mengganti sumber harga: bukan matriks
    *  base×diameter, tapi `cake_diy_diameter_prices` (per diameter). */
   const [isDiy, setIsDiy] = useState(editing?.is_diy ?? false);
+  /** Ready cake: kue untuk dipajang di toko (bukan pesanan pelanggan). Independen dari DIY — DIY itu jenis kue, ini
+   *  peruntukannya. Produksi selesai otomatis menambah stok "Ready Cake" di POS cabang ini. */
+  const [isReadyStock, setIsReadyStock] = useState(editing?.is_ready_stock ?? false);
   const [diyPrices, setDiyPrices] = useState<CakeDiyDiameterPrice[]>([]);
   useEffect(() => {
     listCakeDiyPrices().then((res) => {
@@ -351,6 +354,7 @@ export function NewCakeOrderForm({
         branch,
         baseCakeOptionId,
         isDiy,
+        isReadyStock,
         shapeOptionId,
         shapeCustom: shapeOpt?.is_custom_freeform ? shapeCustom : null,
         dimensionCm: dimensionCmNum,
@@ -522,6 +526,21 @@ export function NewCakeOrderForm({
               </button>
             }
           >
+            <label className="flex items-center gap-2 rounded-lg border-2 border-dashed border-border px-3 py-2 hover:border-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isReadyStock}
+                onChange={(e) => setIsReadyStock(e.target.checked)}
+                className="size-4"
+              />
+              <span className="text-sm text-foreground font-medium">
+                🧁 Ready cake (stok toko)
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                — kue untuk dipajang, bukan pesanan pelanggan. Otomatis masuk
+                stok POS saat baker &amp; cake artist menyelesaikan
+              </span>
+            </label>
             <label className="flex items-center gap-2 rounded-lg border-2 border-dashed border-border px-3 py-2 hover:border-foreground cursor-pointer">
               <input
                 type="checkbox"

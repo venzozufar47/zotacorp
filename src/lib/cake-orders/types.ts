@@ -129,6 +129,9 @@ export interface CakeOrder {
    *  base×diameter, tapi `cake_diy_diameter_prices` (per diameter saja,
    *  base cake tidak berpengaruh). Lihat resolveBasePrice di pricing.ts. */
   is_diy: boolean;
+  /** Ready cake (stok toko, bukan untuk pelanggan tertentu) — dipilih Tasya di form. Independen dari `is_diy`: DIY itu
+   *  jenis kue, ready itu peruntukan. Produksi selesai menambah stok "Ready Cake" di POS cabang; lihat ready-stock.ts. */
+  is_ready_stock: boolean;
   shape_option_id: string;
   shape_custom: string | null;
   /** Diameter / sisi terpanjang kue dalam cm. Null = belum diisi
@@ -302,6 +305,8 @@ export interface CreateCakeOrderInput {
   baseCakeOptionId: string;
   /** Jenis pesanan DIY — lihat `CakeOrder.is_diy`. Default false. */
   isDiy?: boolean;
+  /** Ready cake (stok toko) — lihat `CakeOrder.is_ready_stock`. Default false. */
+  isReadyStock?: boolean;
   shapeOptionId: string;
   shapeCustom?: string | null;
   /** Diameter / ukuran sisi terpanjang kue (cm). Optional. */
