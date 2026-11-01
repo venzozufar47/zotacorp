@@ -43,12 +43,12 @@ export function TicketHomeCard({
   if (!needsAction && !overview && !kpi) return null;
 
   return (
-    <section aria-label="Tiket" className="overflow-hidden rounded-2xl border-2 border-foreground bg-card shadow-hard-sm">
+    <section aria-label="Tiket" className="overflow-hidden rounded-2xl border border-border/70 bg-card">
       {needsAction && (
         <Link
           href="/tickets"
           className={cn(
-            "group block border-b-2 border-foreground px-3.5 py-3 transition active:opacity-90",
+            "group block border-b border-border/70 px-3.5 py-3 transition active:opacity-90",
             action.urgent ? "bg-destructive/15" : "bg-warning/25"
           )}
         >
