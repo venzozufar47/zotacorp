@@ -126,7 +126,7 @@ export function TicketingSystem({
       {isManager && (
         <Section icon={<TicketIcon size={16} />} title="Perlu ditindak" count={toAct.length} empty="Antrian bersih — tidak ada tiket menunggu tindakanmu. 🎉">
           {toAct.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="queue" mySuperiors={formOptions.mySuperiors[t.branchId]} />
+            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="queue" mySuperiors={formOptions.mySuperiors[t.branchId]} myTeam={formOptions.forwardTargets?.[t.branchId]} />
           ))}
         </Section>
       )}

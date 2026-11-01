@@ -31,6 +31,10 @@
       "schedule": "0 11 * * *"
     },
     {
+      "path": "/api/cron/ticket-auto-confirm",
+      "schedule": "30 17 * * *"
+    },
+    {
       "path": "/api/cron/sim-card-reminders",
       "schedule": "0 4 * * *"
     },

@@ -497,6 +497,56 @@ export async function delegateTicket(ticketId: string, note: string, toUserId: s
   return { ok: true };
 }
 
+/**
+ * Owner meneruskan tiket 'naik' yang dipegangnya ke koordinator (atasan) cabang tiket itu. Owner adalah puncak, jadi tidak
+ * ada eskalasi lagi; yang ada hanya menyerahkan penanganan ke bawah. Tiket kembali berstatus baru di tangan koordinator
+ * (yang bisa mengerjakan, meneruskan ke tim, atau mengeskalasi balik).
+ */
+export async function forwardOwnerTicket(ticketId: string, note: string, toUserId: string): Promise<ActionResult> {
+  const actor = await getActor();
+  if (!actor) return { ok: false, error: "Not signed in" };
+  if (!toUserId) return { ok: false, error: "Pilih tujuan tiket" };
+  const admin = createAdminClient() as any;
+  const row = await loadRow(admin, ticketId);
+  if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
+  if (row.direction !== "up" || Number(row.handler_level) < OWNER_LEVEL) {
+    return { ok: false, error: "Hanya tiket naik yang sedang dipegang owner yang bisa diteruskan dari sini" };
+  }
+  if (!(await isHandler(row, actor))) return { ok: false, error: "Forbidden — kamu bukan penanggung jawab tiket ini" };
+  if (!["open", "in_progress"].includes(row.status)) return { ok: false, error: "Tiket tidak bisa diteruskan pada status ini" };
+  if (toUserId === row.created_by) return { ok: false, error: "Tiket tidak bisa diteruskan ke pelapornya sendiri" };
+  // Tujuan harus koordinator cabang ini: hanya atasan yang melihat antrean tiketnya di halaman Tiket.
+  const links = await linksOf(row.branch_id);
+  if (!links.some((l) => l.superiorId === toUserId)) return { ok: false, error: "Tujuan harus koordinator (atasan) cabang tiket ini" };
+  const { data: alive } = await admin.from("profiles").select("id").eq("id", toUserId).eq("is_active", true).is("resigned_at", null).maybeSingle();
+  if (!alive) return { ok: false, error: "Orang itu sudah tidak aktif" };
+  if (((row.verifier_ids ?? []) as string[]).includes(toUserId)) {
+    return { ok: false, error: "Orang itu verifikator tiket ini, tidak bisa sekaligus pengerjanya" };
+  }
+  const { data: updated, error } = await admin
+    .from("tickets")
+    .update({
+      status: "open",
+      handler_level: PERSON_LEVEL,
+      handler_id: toUserId,
+      delegated_from_id: actor.userId,
+      delegated_at: new Date().toISOString(),
+      in_progress_at: null,
+      in_progress_by: null,
+    })
+    .eq("id", ticketId)
+    .in("status", ["open", "in_progress"])
+    .gte("handler_level", OWNER_LEVEL)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!updated || updated.length === 0) return { ok: false, error: "Tiket sudah berubah — muat ulang halaman" };
+  const [fromName] = await namesOf(admin, [actor.userId]);
+  const extra = note.trim() ? ` — "${note.trim()}"` : "";
+  void firePush([toUserId], { title: "Tiket diteruskan ke kamu", body: `${fromName}: ${row.title} (${row.branch})${extra}`, url: "/tickets" });
+  revalidateTickets();
+  return { ok: true };
+}
+
 export async function cancelTicket(ticketId: string): Promise<ActionResult> {
   const actor = await getActor();
   if (!actor) return { ok: false, error: "Not signed in" };
@@ -1073,6 +1123,8 @@ export interface TicketFormOptions {
   mySuperiors: Record<string, { id: string; name: string }[]>;
   /** Orang yang boleh dipilih sebagai verifikator penyelesaian tiket. */
   verifierPeople: VerifierPerson[];
+  /** Admin saja: koordinator (atasan) tiap cabang, tujuan "Teruskan" untuk tiket naik yang dipegang owner. */
+  forwardTargets?: Record<string, { id: string; name: string }[]>;
 }
 
 export async function getTicketFormOptions(): Promise<TicketFormOptions> {
@@ -1137,7 +1189,9 @@ export async function getTicketFormOptions(): Promise<TicketFormOptions> {
         .sort((a, b) => a.name.localeCompare(b.name, "id", { sensitivity: "base" })),
     });
   }
-  return { fileBranches, downTargets, myTeam: {}, mySuperiors: {}, verifierPeople };
+  const forwardTargets: Record<string, { id: string; name: string }[]> = {};
+  for (const d of downTargets) forwardTargets[d.branch.id] = d.employees.filter((e) => e.coordinator).map(({ id, name }) => ({ id, name }));
+  return { fileBranches, downTargets, myTeam: {}, mySuperiors: {}, verifierPeople, forwardTargets };
 }
 
 // ─── Hierarki (admin) ───────────────────────────────────────────────────────

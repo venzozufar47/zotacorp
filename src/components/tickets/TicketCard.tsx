@@ -25,7 +25,7 @@ import {
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { cn } from "@/lib/utils";
 import { TicketPhotos } from "./TicketPhotos";
-import { holderLabel } from "@/lib/tickets/chain-logic";
+import { holderLabel, OWNER_LEVEL } from "@/lib/tickets/chain-logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { compressImageStrict, extensionFor, MAX_EDGE_DOCUMENT } from "@/lib/images/compress-image";
 import {
@@ -33,6 +33,7 @@ import {
   resolveTicket,
   escalateTicket,
   delegateTicket,
+  forwardOwnerTicket,
   cancelTicket,
   ownerDecideTicket,
   confirmTicketResolution,
@@ -195,6 +196,8 @@ export function TicketCard({
   const resolutionPhotos = (ticket.attachments ?? []).filter((a) => a.kind === "resolution");
   // Tiket yang pernah ditolak pelapor: keterangan baru + foto baru wajib.
   const isReopened = !!ticket.disputeNote;
+  // Tiket naik yang sedang di tangan owner: tidak ada atasan lagi, jadi aksinya "Teruskan", bukan "Eskalasi".
+  const atOwner = ticket.direction === "up" && ticket.handlerLevel >= OWNER_LEVEL;
 
   return (
     <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm space-y-2.5">
@@ -292,7 +295,9 @@ export function TicketCard({
             </span>
           )}
           {ticket.confirmedAt ? (
-            <span className="block text-success/80">✓✓ Dikonfirmasi pelapor</span>
+            <span className="block text-success/80">
+              {ticket.confirmedBy ? "✓✓ Dikonfirmasi pelapor" : "✓ Dikonfirmasi otomatis (tidak ada respons 7 hari)"}
+            </span>
           ) : (
             <span className="block text-warning">⏳ Menunggu konfirmasi pelapor</span>
           )}
@@ -329,14 +334,15 @@ export function TicketCard({
             successMsg: ticket.direction === "down" ? "Tiket dikembalikan ke owner" : "Tiket dieskalasi ke atasan",
           })
         }
-        canDelegate={ticket.direction === "down" && myTeam.length > 0}
+        atOwner={atOwner}
+        canDelegate={(ticket.direction === "down" || atOwner) && myTeam.length > 0}
         onDelegate={() =>
           setPrompt({
-            title: "Teruskan ke anggota tim",
+            title: atOwner ? "Teruskan ke koordinator cabang" : "Teruskan ke anggota tim",
             required: false,
-            choose: { label: "Pilih anggota tim tujuan", options: myTeam },
-            run: (n, _p, to) => delegateTicket(ticket.id, n, to),
-            successMsg: "Tiket diteruskan ke anggota tim",
+            choose: { label: atOwner ? "Pilih koordinator tujuan" : "Pilih anggota tim tujuan", options: myTeam },
+            run: (n, _p, to) => (atOwner ? forwardOwnerTicket(ticket.id, n, to) : delegateTicket(ticket.id, n, to)),
+            successMsg: atOwner ? "Tiket diteruskan ke koordinator" : "Tiket diteruskan ke anggota tim",
           })
         }
         onCancel={() =>
@@ -511,6 +517,7 @@ function ActionBar({
   onStart,
   onResolveDirect,
   onEscalate,
+  atOwner,
   canDelegate,
   onDelegate,
   onCancel,
@@ -526,6 +533,8 @@ function ActionBar({
   onStart: () => void;
   onResolveDirect: () => void;
   onEscalate: () => void;
+  /** Tiket naik yang dipegang owner: puncak hierarki, jadi tidak ada eskalasi — hanya "Teruskan". */
+  atOwner: boolean;
   canDelegate: boolean;
   onDelegate: () => void;
   onCancel: () => void;
@@ -586,11 +595,12 @@ function ActionBar({
           <CheckCircle2 size={13} /> Selesai
         </Button>
       );
-      btns.push(
-        <Button key="esc" variant="outline" size="xs" disabled={pending} onClick={onEscalate}>
-          <ArrowUpCircle size={13} /> {ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi"}
-        </Button>
-      );
+      if (!atOwner)
+        btns.push(
+          <Button key="esc" variant="outline" size="xs" disabled={pending} onClick={onEscalate}>
+            <ArrowUpCircle size={13} /> {ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi"}
+          </Button>
+        );
       if (canDelegate)
         btns.push(
           <Button key="delegate" variant="outline" size="xs" disabled={pending} onClick={onDelegate}>
