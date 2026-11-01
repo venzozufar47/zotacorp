@@ -187,6 +187,8 @@ export async function loadBrandProcurement(
         )
         .eq("business_unit", opts.businessUnit)
         .eq("is_active", true)
+        // Bahan setengah jadi (dibuat sendiri) tidak dibeli/dihitung stoknya di Pengadaan.
+        .is("source_product_id", null)
         .order("name"),
       fetchProcurementSettings(supabase),
       loadOpnameHistory(supabase, opts.businessUnit),

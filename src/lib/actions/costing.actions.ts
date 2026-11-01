@@ -52,6 +52,8 @@ export interface CostingMaterial {
   shopee_url: string | null;
   price_updated_at: string;
   is_active: boolean;
+  /** Bahan setengah jadi: harga mengikuti HPP produk costing ini (tidak diedit manual). */
+  source_product_id: string | null;
 }
 
 export interface CostingRecipeItem {
@@ -235,7 +237,7 @@ export async function updateMaterial(input: {
   // Baca kondisi lama untuk (a) validasi dan (b) deteksi perubahan harga.
   const { data: prevRow, error: prevErr } = await supabase
     .from("costing_materials" as never)
-    .select("purchase_price, content_per_purchase, purchase_unit, usage_unit")
+    .select("purchase_price, content_per_purchase, purchase_unit, usage_unit, source_product_id")
     .eq("id", input.id)
     .maybeSingle();
   if (prevErr) return { ok: false, error: prevErr.message };
@@ -245,7 +247,15 @@ export async function updateMaterial(input: {
     content_per_purchase: unknown;
     purchase_unit: string;
     usage_unit: string;
+    source_product_id: string | null;
   };
+  // Bahan setengah jadi: harga/isi/satuan pakai mengikuti resep sumbernya (diselaraskan otomatis), jadi tak boleh diubah di sini.
+  if (
+    prev.source_product_id &&
+    (input.purchase_price !== undefined || input.content_per_purchase !== undefined || input.usage_unit !== undefined)
+  ) {
+    return { ok: false, error: "Harga bahan setengah jadi mengikuti resep produknya — ubah resep sumbernya, bukan harganya." };
+  }
   const prevPrice = num(prev.purchase_price);
   const prevContent = num(prev.content_per_purchase);
 

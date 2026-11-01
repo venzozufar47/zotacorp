@@ -481,6 +481,14 @@ function MaterialRow({
             nonaktif
           </span>
         )}
+        {m.source_product_id && (
+          <span
+            className="text-[11px] font-semibold text-primary"
+            title="Harga dan isi mengikuti HPP resep produk sumbernya. Ubah resep sumbernya, bukan harganya."
+          >
+            setengah jadi · harga mengikuti resep
+          </span>
+        )}
         <span className={`text-[11px] ${usage.n === 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
           {usage.n === 0 ? "belum dipakai produk mana pun" : `dipakai ${usage.n} produk`}
           {usage.unlinked > 0 && (

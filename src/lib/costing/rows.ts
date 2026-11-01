@@ -16,6 +16,7 @@ import {
   type CostingMaterialLite,
   type UnitDef,
 } from "@/lib/costing/calc";
+import { resolveDerivedMaterials, type DerivedLink } from "@/lib/costing/derived";
 import type {
   CostingMaterial,
   CostingProduct,
@@ -45,6 +46,7 @@ export function mapMaterial(r: Record<string, unknown>): CostingMaterial {
     shopee_url: (r.shopee_url as string | null) ?? null,
     price_updated_at: r.price_updated_at as string,
     is_active: r.is_active as boolean,
+    source_product_id: (r.source_product_id as string | null) ?? null,
   };
 }
 
@@ -167,8 +169,9 @@ export async function loadBrandCosting(
   ]);
 
   const products = ((prodRows ?? []) as Record<string, unknown>[]).map(mapProduct);
+  const materialRows = (matRows ?? []) as Record<string, unknown>[];
   const materialsById = new Map(
-    ((matRows ?? []) as Record<string, unknown>[]).map((r) => {
+    materialRows.map((r) => {
       const m = mapMaterial(r);
       return [m.id, toLite(m)] as const;
     })
@@ -190,7 +193,87 @@ export async function loadBrandCosting(
     }
   }
 
+  await applyDerivedMaterials(supabase, {
+    materialRows,
+    products,
+    itemsByProduct,
+    materialsById,
+    unitsByCode,
+  });
+
   return { products, itemsByProduct, materialsById, unitsByCode };
+}
+
+/**
+ * Bahan setengah jadi (`source_product_id`): harganya = HPP batch produk sumber. Dihitung ulang di setiap pemuatan costing
+ * (jadi harga bahan baku di resep sumber langsung terbawa), lalu nilai tersimpan di tabel diselaraskan supaya pembaca lain
+ * (daftar bahan, ekspor) tak jauh berbeda. Produk sumber yang tak ikut termuat (mis. nonaktif saat hanya produk aktif)
+ * diambil terpisah, tanpa dimasukkan ke daftar produk hasil. Penulisan best-effort: gagal tak mengganggu pembacaan.
+ */
+async function applyDerivedMaterials(
+  supabase: DB,
+  args: {
+    materialRows: Record<string, unknown>[];
+    products: CostingProduct[];
+    itemsByProduct: Map<string, CostingRecipeItem[]>;
+    materialsById: Map<string, CostingMaterialLite>;
+    unitsByCode: Map<string, UnitDef>;
+  }
+): Promise<void> {
+  const derived: DerivedLink[] = args.materialRows
+    .filter((r) => r.source_product_id)
+    .map((r) => ({ materialId: r.id as string, productId: r.source_product_id as string }));
+  if (derived.length === 0) return;
+
+  const productsById = new Map<string, CostingProduct>(args.products.map((p) => [p.id, p]));
+  const itemsOf = new Map<string, CostingRecipeItem[]>(args.itemsByProduct);
+  const missing = Array.from(new Set(derived.map((d) => d.productId))).filter((id) => !productsById.has(id));
+  if (missing.length > 0) {
+    const [{ data: pRows }, { data: iRows }] = await Promise.all([
+      supabase.from("costing_products" as never).select("*").in("id", missing),
+      supabase.from("costing_recipe_items" as never).select("*").in("product_id", missing).order("sort_order", { ascending: true }),
+    ]);
+    for (const r of (pRows ?? []) as Record<string, unknown>[]) {
+      const p = mapProduct(r);
+      productsById.set(p.id, p);
+    }
+    for (const r of (iRows ?? []) as Record<string, unknown>[]) {
+      const it = mapItem(r);
+      const arr = itemsOf.get(it.product_id) ?? [];
+      arr.push(it);
+      itemsOf.set(it.product_id, arr);
+    }
+  }
+
+  const resolved = resolveDerivedMaterials({
+    derived,
+    productsById,
+    itemsByProduct: new Map(
+      Array.from(itemsOf, ([id, items]) => [id, items.map((it) => ({ material_id: it.material_id, qty: it.qty, unit: it.unit }))])
+    ),
+    materials: args.materialsById,
+    units: args.unitsByCode,
+  });
+
+  const stored = new Map(args.materialRows.map((r) => [r.id as string, r]));
+  for (const price of resolved.values()) {
+    const lite = args.materialsById.get(price.materialId);
+    if (!lite) continue;
+    args.materialsById.set(price.materialId, {
+      ...lite,
+      purchase_price: price.purchasePrice,
+      content_per_purchase: price.contentPerPurchase,
+    });
+    const row = stored.get(price.materialId);
+    const storedPrice = num(row?.purchase_price);
+    const storedContent = num(row?.content_per_purchase);
+    if (Math.abs(storedPrice - price.purchasePrice) > 0.005 || Math.abs(storedContent - price.contentPerPurchase) > 1e-4) {
+      await supabase
+        .from("costing_materials" as never)
+        .update({ purchase_price: round2(price.purchasePrice), content_per_purchase: price.contentPerPurchase } as never)
+        .eq("id", price.materialId);
+    }
+  }
 }
 
 /** Turunkan CostingProductWithHpp[] dari data yang sudah dimuat. */

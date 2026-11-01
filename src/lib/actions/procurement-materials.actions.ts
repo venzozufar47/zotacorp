@@ -73,6 +73,8 @@ export async function listMaterialDetails(businessUnit: string): Promise<ActionR
       "id, name, category, purchase_unit, purchase_price, content_per_purchase, usage_unit, shopee_url, is_active, review_status, halal_kind, in_halal_list"
     )
     .eq("business_unit", businessUnit)
+    // Bahan setengah jadi dikelola dari resep sumbernya (Costing), bukan dari Pengadaan.
+    .is("source_product_id", null)
     .order("name");
   if (error) return { ok: false, error: error.message };
   const [{ data: brandRows }, { data: usageRows }] = await Promise.all([
