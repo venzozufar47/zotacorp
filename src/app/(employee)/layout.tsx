@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { PullToRefresh } from "@/components/layout/PullToRefresh";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/cashflow/access";
 import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
@@ -78,6 +79,7 @@ export default async function EmployeeLayout({
   return (
     <div className="flex min-h-screen bg-background">
       <RouteProgressBar />
+      <PullToRefresh />
       <Sidebar
         className="hidden md:flex"
         hasFinance={hasFinance}
