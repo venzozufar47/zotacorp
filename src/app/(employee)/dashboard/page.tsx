@@ -55,18 +55,16 @@ import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
 import { getRevenueSummaryForHome } from "@/lib/actions/admin-home.actions";
 import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
 import { AdminRevenueCard } from "@/components/admin/home/AdminRevenueCard";
-import { TicketResolutionPanel } from "@/components/dashboard/TicketResolutionPanel";
+import { TicketHomeCard } from "@/components/dashboard/TicketHomeCard";
 import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
 import {
   getMyOpenTicketsSummary,
-  getStudioQueueCount,
+  getStudioQueueStats,
   getStudioHeadRecentResolutionKpi,
-  getBranchQueue,
+  getBranchTicketOverview,
 } from "@/lib/actions/tickets.actions";
 import { isStudioHead } from "@/lib/tickets/access";
-import { BranchQueueCard } from "@/components/tickets/BranchQueueCard";
-import Link from "next/link";
-import { Brain, FileSignature, Ticket as TicketIcon, PackageSearch } from "lucide-react";
+import { Brain, FileSignature, PackageSearch } from "lucide-react";
 import { isProcurementStaff } from "@/lib/procurement/access";
 import { getProcurementDashboardBadge,
   type ProcurementBadgeItem, } from "@/lib/actions/procurement.actions";
@@ -157,8 +155,8 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
     extraWorkKinds,
     myPendingContract,
     myTicketsSummary,
-    branchQueue,
-    studioQueueCount,
+    branchTicketOverview,
+    studioQueue,
     isHeadOfStudio,
     coachingNotes,
     cleaningRedoPhotos,
@@ -204,8 +202,8 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
     listExtraWorkKindsForUser(user.id),
     getMyPendingContract(),
     getMyOpenTicketsSummary(),
-    getBranchQueue(),
-    getStudioQueueCount(),
+    getBranchTicketOverview(),
+    getStudioQueueStats(),
     isStudioHead(),
     listMyCoachingNotes(),
     getMyPendingRedoPhotos(),
@@ -372,15 +370,16 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
         />
       )}
 
-      {isHeadOfStudio && studioQueueCount > 0 && (
-        <NoticeCard
-          href="/tickets"
-          tone="warn"
-          icon={<TicketIcon size={20} />}
-          title={`${studioQueueCount} tiket menunggu ditangani`}
-          body="Tiket ditujukan kepadamu — ketuk untuk menindaklanjuti."
-        />
-      )}
+      <TicketHomeCard
+        action={{
+          assigned: myTicketsSummary.assignedToMe,
+          studioQueue: isHeadOfStudio ? studioQueue.count : 0,
+          awaitingConfirmation: myTicketsSummary.awaitingConfirmation,
+          urgent: myTicketsSummary.assignedUrgent > 0 || (isHeadOfStudio && studioQueue.urgent > 0),
+        }}
+        overview={branchTicketOverview}
+        kpi={ticketResolutionKpi}
+      />
 
       {procurementBadge &&
         (procurementBadge.needBuy > 0 ||
@@ -434,61 +433,6 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
           title={`${pendingLeaveApprovals} pengajuan izin menunggu persetujuanmu`}
           body="Kamu atasan langsung pemohon — ketuk untuk tinjau."
         />
-      )}
-
-      {myTicketsSummary.assignedToMe > 0 && (
-        <NoticeCard
-          href="/tickets"
-          tone="warn"
-          icon={<TicketIcon size={20} />}
-          title={`${myTicketsSummary.assignedToMe} tiket ditugaskan untukmu`}
-          body="Ditugaskan untukmu atau cabangmu — ketuk untuk mengerjakan dan kirim bukti foto."
-        />
-      )}
-
-      {myTicketsSummary.awaitingConfirmation > 0 && (
-        <NoticeCard
-          href="/tickets"
-          tone="success"
-          icon={<TicketIcon size={20} />}
-          title={`${myTicketsSummary.awaitingConfirmation} tiket menunggu konfirmasimu`}
-          body="Sudah ditandai selesai — cek & konfirmasi, atau tandai belum beres."
-        />
-      )}
-
-      {myTicketsSummary.openCount > 0 && (
-        <NoticeCard
-          href="/tickets"
-          tone="neutral"
-          icon={<TicketIcon size={20} />}
-          title={`${myTicketsSummary.openCount} tiket kamu sedang diproses`}
-          body="Ketuk untuk lihat status & lampiran."
-        />
-      )}
-
-      {branchQueue.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <TicketIcon size={15} />
-            <span className="font-display font-bold text-sm">
-              {branchQueue.length} tiket aktif di cabangmu
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Laporan rekan kerja di cabangmu.
-          </p>
-          {branchQueue.slice(0, 5).map((t) => (
-            <BranchQueueCard key={t.id} ticket={t} />
-          ))}
-          {branchQueue.length > 5 && (
-            <Link
-              href="/tickets"
-              className="block text-center text-xs font-semibold text-primary hover:underline"
-            >
-              +{branchQueue.length - 5} tiket aktif lainnya
-            </Link>
-          )}
-        </div>
       )}
 
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
@@ -575,7 +519,6 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
       )}
 
       {/* Kartu KPI tiket — render sendiri nol kalau bukan atasan. */}
-      <TicketResolutionPanel kpi={ticketResolutionKpi} />
 
       {/* Attendance — magazine-style section with an eyebrow label and a soft
           white panel that floats above the page background. The section

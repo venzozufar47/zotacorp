@@ -1001,9 +1001,11 @@ export async function getMyOpenTicketsSummary(): Promise<{
   openCount: number;
   awaitingConfirmation: number;
   assignedToMe: number;
+  /** Dari assignedToMe, berapa yang mendesak. */
+  assignedUrgent: number;
 }> {
   const user = await getCurrentUser();
-  if (!user) return { openCount: 0, awaitingConfirmation: 0, assignedToMe: 0 };
+  if (!user) return { openCount: 0, awaitingConfirmation: 0, assignedToMe: 0, assignedUrgent: 0 };
   const admin = createAdminClient() as any;
   const { data } = await admin
     .from("tickets")
@@ -1014,23 +1016,73 @@ export async function getMyOpenTicketsSummary(): Promise<{
   const rows = (data ?? []) as any[];
   const openCount = rows.filter((r) => ["open", "in_progress", "escalated", "owner_handling"].includes(r.status)).length;
   const awaitingConfirmation = rows.filter((r) => r.status === "resolved" && !r.confirmed_at).length;
-  const assigned = (await getAssignedToMe()).filter((t) => t.status === "open" || t.status === "in_progress").length;
-  return { openCount, awaitingConfirmation, assignedToMe: assigned };
+  const assigned = (await getAssignedToMe()).filter((t) => t.status === "open" || t.status === "in_progress");
+  return {
+    openCount,
+    awaitingConfirmation,
+    assignedToMe: assigned.length,
+    assignedUrgent: assigned.filter((t) => t.priority === "urgent").length,
+  };
 }
 
-/** Jumlah tiket yang menunggu tindakan SAYA sebagai penanggung jawab tingkat (kartu dashboard). */
-export async function getStudioQueueCount(): Promise<number> {
+/** Tiket yang menunggu tindakan SAYA sebagai penanggung jawab tingkat, dan berapa yang mendesak (kartu dashboard). */
+export async function getStudioQueueStats(): Promise<{ count: number; urgent: number }> {
   const gate = await requireTicketManager();
-  if (!gate.ok) return 0;
+  if (!gate.ok) return { count: 0, urgent: 0 };
   const admin = createAdminClient() as any;
   const { data } = await admin
     .from("tickets")
-    .select("handler_id, handler_level")
+    .select("handler_id, handler_level, priority")
     .eq("direction", "up")
     .in("status", ["open", "in_progress"]);
+  const rows = ((data ?? []) as any[]).filter((r) =>
+    gate.isAdmin ? Number(r.handler_level) >= OWNER_LEVEL : r.handler_id === gate.userId
+  );
+  return { count: rows.length, urgent: rows.filter((r) => r.priority === "urgent").length };
+}
+
+/** Jumlah tiket yang menunggu tindakan SAYA sebagai penanggung jawab tingkat (badge menu). */
+export async function getStudioQueueCount(): Promise<number> {
+  return (await getStudioQueueStats()).count;
+}
+
+export interface BranchTicketOverview {
+  /** Nama cabang bila hanya satu, selain itu "cabangmu". */
+  label: string;
+  total: number;
+  /** Jumlah per status aktif; tiket selesai/dibatalkan tidak dihitung. */
+  counts: Record<"open" | "in_progress" | "escalated" | "owner_handling", number>;
+  /** Dua judul terbaru, urgent didahulukan. */
+  latest: Array<{ id: string; title: string; urgent: boolean }>;
+}
+
+/** Ringkasan tiket aktif di cabang-cabang saya (semua arah, termasuk milik saya). Null = tidak punya cabang. */
+export async function getBranchTicketOverview(): Promise<BranchTicketOverview | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const branches = await branchesOfEmployee(user.id);
+  if (branches.length === 0) return null;
+  const admin = createAdminClient() as any;
+  const { data } = await admin
+    .from("tickets")
+    .select("id, title, status, priority, created_at")
+    .in("branch_id", branches.map((b) => b.id))
+    .in("status", OPEN_TICKET_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(500);
   const rows = (data ?? []) as any[];
-  if (gate.isAdmin) return rows.filter((r) => Number(r.handler_level) >= OWNER_LEVEL).length;
-  return rows.filter((r) => r.handler_id === gate.userId).length;
+  const counts = { open: 0, in_progress: 0, escalated: 0, owner_handling: 0 };
+  for (const r of rows) if (r.status in counts) counts[r.status as keyof typeof counts]++;
+  const latest = [...rows]
+    .sort((a, b) => Number(b.priority === "urgent") - Number(a.priority === "urgent"))
+    .slice(0, 2)
+    .map((r) => ({ id: r.id as string, title: r.title as string, urgent: r.priority === "urgent" }));
+  return {
+    label: branches.length === 1 ? branches[0].label : "cabangmu",
+    total: rows.length,
+    counts,
+    latest,
+  };
 }
 
 /**
