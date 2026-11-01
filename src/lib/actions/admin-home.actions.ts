@@ -171,6 +171,8 @@ function tzDayRangeUtc(dateIso: string, tz: string): { startIso: string; endIso:
 export interface ClockedInEmployee {
   userId: string;
   fullName: string;
+  /** Nama panggilan (profiles.nickname); dipakai roster karyawan sebelum jatuh ke nama depan. */
+  nickname?: string | null;
   avatarUrl: string | null;
   avatarSeed: string | null;
   /** Unit kerja (Haengbocake Pare, Yeobo, dll). Null kalau profile
@@ -713,7 +715,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
   const { data } = await supabase
     .from("attendance_logs")
     .select(
-      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit, is_active)"
+      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, nickname, avatar_url, avatar_seed, business_unit, is_active)"
     )
     .eq("date", todayIso)
     .eq("profiles.is_active", true);
@@ -724,6 +726,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
     checked_out_at: string | null;
     profiles: {
       full_name: string | null;
+      nickname: string | null;
       avatar_url: string | null;
       avatar_seed: string | null;
       business_unit: string | null;
@@ -735,6 +738,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
     .map((l) => ({
       userId: l.user_id,
       fullName: l.profiles.full_name ?? "(tanpa nama)",
+      nickname: l.profiles.nickname,
       avatarUrl: l.profiles.avatar_url,
       avatarSeed: l.profiles.avatar_seed,
       businessUnit: l.profiles.business_unit,

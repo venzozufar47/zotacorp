@@ -58,8 +58,8 @@ export function FloorTodayCard({
               )}
             </span>
             <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
-              <span className="font-semibold">{onDuty.length} di kantor</span>
-              <span className="text-muted-foreground"> · {people.length} sign-in</span>
+              <span className="font-semibold tabular-nums">{onDuty.length}/{people.length}</span>
+              <span className="text-muted-foreground"> sign-in</span>
             </span>
             <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
           </summary>
@@ -70,10 +70,10 @@ export function FloorTodayCard({
               return (
                 <p key={unit} className="text-muted-foreground">
                   <span className="font-medium text-foreground">{unit}</span>{" "}
-                  {on.map((p) => firstName(p.fullName)).join(", ")}
+                  {on.map(firstName).join(", ")}
                   {off.length > 0 && (
                     <span className="text-muted-foreground/70">
-                      {on.length > 0 ? " · " : ""}pulang: {off.map((p) => firstName(p.fullName)).join(", ")}
+                      {on.length > 0 ? " · " : ""}pulang: {off.map(firstName).join(", ")}
                     </span>
                   )}
                 </p>
@@ -86,8 +86,9 @@ export function FloorTodayCard({
   );
 }
 
-function firstName(full: string): string {
-  return full.split(/\s+/)[0] ?? full;
+function firstName(p: ClockedInEmployee): string {
+  const nick = p.nickname?.trim();
+  return nick || p.fullName.split(/\s+/)[0] || p.fullName;
 }
 
 /**
