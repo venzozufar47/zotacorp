@@ -1,4 +1,5 @@
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { cn } from "@/lib/utils";
 import type { ClockedInEmployee } from "@/lib/actions/admin-home.actions";
 
 /**
@@ -22,70 +23,42 @@ export function FloorTodayCard({
   const onDuty = people.filter((p) => !p.checkedOut);
   const groups = groupByUnit(people);
   return (
-    <section
-      aria-label="Karyawan hari ini"
-      className="animate-fade-up animate-fade-up-delay-2"
-    >
-      <div className="flex items-center justify-between px-1 mb-2.5">
-        <span className="eyebrow text-muted-foreground">Masuk hari ini</span>
-        <span
-          aria-hidden
-          className="h-px flex-1 ml-3 bg-gradient-to-r from-border to-transparent"
-        />
-      </div>
-      <div className="panel-sticker p-5">
-        <div className="flex items-baseline justify-between mb-3">
-          <h3 className="text-base font-semibold text-foreground">
-            Siapa di kantor
-          </h3>
-          <p className="text-[12.5px] text-muted-foreground">
-            {people.length === 0
-              ? "Belum ada yang sign-in"
-              : `${onDuty.length} on duty · ${people.length} sign-in hari ini`}
+    <section aria-label="Karyawan hari ini" className="animate-fade-up animate-fade-up-delay-2">
+      {/* Ringkas: satu kartu rapat tanpa judul seksi terpisah. Info tetap lengkap (siapa, unit, on duty / sudah pulang). */}
+      <div className="panel-sticker px-3.5 py-3">
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h3 className="text-[13px] font-semibold text-foreground">Siapa di kantor hari ini</h3>
+          <p className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
+            {people.length === 0 ? "Belum ada yang sign-in" : `${onDuty.length} on duty · ${people.length} sign-in`}
           </p>
         </div>
         {people.length === 0 ? (
-          <p className="text-[12.5px] text-muted-foreground">
-            Belum ada karyawan yang check-in hari ini.
-          </p>
+          <p className="text-[12px] text-muted-foreground">Belum ada karyawan yang check-in hari ini.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             {groups.map(({ unit, members }) => (
-              <div key={unit}>
-                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold mb-1.5">
-                  {unit}{" "}
-                  <span className="text-muted-foreground/60 tabular-nums">
-                    · {members.length}
+              <div key={unit} className="flex flex-wrap items-center gap-1">
+                <span className="mr-0.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {unit} <span className="tabular-nums text-muted-foreground/60">{members.length}</span>
+                </span>
+                {members.map((p) => (
+                  <span
+                    key={p.userId}
+                    className={`inline-flex h-6 items-center gap-1 rounded-full border border-border/60 pl-0.5 pr-2 text-[11.5px] ${
+                      p.checkedOut ? "bg-muted/30 text-muted-foreground opacity-60" : "bg-muted/50 text-foreground"
+                    }`}
+                    title={p.checkedOut ? `Sudah sign-out · ${p.status}` : `On duty · ${p.status}`}
+                  >
+                    <EmployeeAvatar
+                      size="sm"
+                      full_name={p.fullName}
+                      avatar_url={p.avatarUrl}
+                      avatar_seed={p.avatarSeed}
+                      className={cn("data-[size=sm]:size-5 border", p.checkedOut && "grayscale")}
+                    />
+                    <span className="max-w-[96px] truncate">{firstName(p.fullName)}</span>
                   </span>
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {members.map((p) => (
-                    <div
-                      key={p.userId}
-                      className={`inline-flex items-center gap-2 pl-1 pr-3 h-8 rounded-full border border-border/60 text-[12px] ${
-                        p.checkedOut
-                          ? "bg-muted/30 text-muted-foreground opacity-60"
-                          : "bg-muted/50 text-foreground"
-                      }`}
-                      title={
-                        p.checkedOut
-                          ? `Sudah sign-out · ${p.status}`
-                          : `On duty · ${p.status}`
-                      }
-                    >
-                      <EmployeeAvatar
-                        size="sm"
-                        full_name={p.fullName}
-                        avatar_url={p.avatarUrl}
-                        avatar_seed={p.avatarSeed}
-                        className={p.checkedOut ? "grayscale" : undefined}
-                      />
-                      <span className="truncate max-w-[120px]">
-                        {firstName(p.fullName)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                ))}
               </div>
             ))}
           </div>
