@@ -5,6 +5,7 @@ import { AlertTriangle, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { markSelfieOverrideReviewed } from "@/lib/actions/attendance-selfie.actions";
+import { UNCHECKED_EXPLAIN, uncheckedReason } from "@/lib/attendance/selfie-unchecked";
 import {
   Dialog,
   DialogContent,
@@ -149,7 +150,7 @@ export function SelfiePreviewDialog({
           </div>
         )}
         {aiVerdict === "unchecked" && (
-          <p className="text-xs text-muted-foreground">AI tidak sempat memeriksa foto ini; absen lolos tanpa pemeriksaan.</p>
+          <p className="text-xs text-muted-foreground">{UNCHECKED_EXPLAIN[uncheckedReason(aiNote)]}</p>
         )}
 
         {aiFlag === "anomaly" && (

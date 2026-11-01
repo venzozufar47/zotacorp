@@ -1,10 +1,11 @@
 import { CheckCircle2, ScanFace, TriangleAlert } from "lucide-react";
+import { UNCHECKED_EXPLAIN, UNCHECKED_LABEL, uncheckedReason } from "@/lib/attendance/selfie-unchecked";
 
 /**
  * Lencana hasil filter selfie AI (migrasi 192) untuk admin.
  *  - ok         → AI menyetujui
  *  - overridden → AI menolak, karyawan memilih tetap absen (perlu ditinjau admin)
- *  - unchecked  → AI tak sempat/error/batas harian; absen lolos tanpa pemeriksaan
+ *  - unchecked  → tidak diperiksa AI; absen lolos. Alasannya (batas harian / AI gagal) ada di `note`
  * Verdict kosong (unit bisnis tanpa filter / absen lama) tidak menampilkan apa-apa.
  */
 export function SelfieAiBadge({
@@ -39,12 +40,13 @@ export function SelfieAiBadge({
     );
   }
   if (verdict === "unchecked") {
+    const reason = uncheckedReason(note);
     return (
       <span
-        title="AI tidak sempat memeriksa foto ini"
-        className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground"
+        title={UNCHECKED_EXPLAIN[reason]}
+        className={`inline-flex items-center gap-1 text-[10px] font-semibold ${reason === "error" ? "text-warning" : "text-muted-foreground"}`}
       >
-        <ScanFace size={11} /> AI tidak sempat
+        <ScanFace size={11} /> {UNCHECKED_LABEL[reason]}
       </span>
     );
   }

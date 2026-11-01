@@ -88,7 +88,9 @@ function resolveSelfieGate(
     if (!override) return { error: "Foto selfie belum sesuai. Foto ulang, atau pilih Tetap absen." };
     return { verdict: "overridden", note: row.message, soft: isSoftSelfieIssueSet(row.issues), attempts, firstAttemptAt };
   }
-  return { verdict: "unchecked", note: null, attempts, firstAttemptAt };
+  // Alasan tidak diperiksa disimpan di `selfie_ai_note` sebagai kode (untuk verdict unchecked kolom ini tak dipakai
+  // lain): "cap" = batas harian tercapai, "error" = AI gagal/lambat. Lihat selfie-unchecked.ts.
+  return { verdict: "unchecked", note: row.verdict === "skipped" ? "cap" : "error", attempts, firstAttemptAt };
 }
 
 /**
