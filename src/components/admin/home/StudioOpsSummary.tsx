@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Camera } from "lucide-react";
-import type { StudioHeadRecentResolutionKpi } from "@/lib/actions/tickets.actions";
+import type { AdminTicketSummary, StudioHeadRecentResolutionKpi } from "@/lib/actions/tickets.actions";
 import { formatDuration, RECENT_RESOLUTION_TARGET_MS } from "@/lib/tickets/types";
 
 /**
@@ -19,10 +19,13 @@ const TONE_CLASS = {
 
 export function StudioOpsSummary({
   ticketKpi,
+  ticketSummary,
   cleaningReviewQuickAccess,
   footer,
 }: {
   ticketKpi?: StudioHeadRecentResolutionKpi | null;
+  /** Tiket yang menunggu tindakan owner; null = tidak dimuat (baris disembunyikan). */
+  ticketSummary?: AdminTicketSummary | null;
   cleaningReviewQuickAccess?: { freshUnreviewedCount: number } | null;
   /** Slot baris kecil di bawah, dipisah garis — dipakai
    *  RevenueDashboardViewersManager (collapsed, cuma satu link teks) yang
@@ -45,8 +48,40 @@ export function StudioOpsSummary({
       }}
     >
       <div className="px-4 sm:px-5 pt-4 pb-1">
-        {kpi && (
+        {ticketSummary && (
           <div className="pb-3 flex items-baseline justify-between gap-3">
+            <div className="min-w-0">
+              <Link
+                href="/admin/tickets"
+                className="text-[13px] font-medium text-foreground underline-offset-2 hover:underline hover:text-primary"
+              >
+                Tiket menunggu
+              </Link>
+              <span className="block text-[11px] text-muted-foreground">
+                {ticketSummary.attention === 0 && ticketSummary.inChain === 0
+                  ? "Tidak ada tiket aktif"
+                  : [
+                      ticketSummary.escalated > 0 ? `${ticketSummary.escalated} menunggu keputusanmu` : null,
+                      ticketSummary.ownerHandling > 0 ? `${ticketSummary.ownerHandling} kamu tangani` : null,
+                      ticketSummary.awaitingConfirmation > 0 ? `${ticketSummary.awaitingConfirmation} menunggu konfirmasimu` : null,
+                      ticketSummary.inChain > 0 ? `${ticketSummary.inChain} masih di cabang` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+              </span>
+            </div>
+            <span
+              className={`font-display text-lg font-extrabold tabular-nums whitespace-nowrap ${
+                ticketSummary.attention > 0 ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {ticketSummary.attention}
+            </span>
+          </div>
+        )}
+
+        {kpi && (
+          <div className={`pb-3 flex items-baseline justify-between gap-3 ${ticketSummary ? "pt-3 border-t border-border/60" : ""}`}>
             <div className="min-w-0">
               <Link
                 href="/admin/tickets"

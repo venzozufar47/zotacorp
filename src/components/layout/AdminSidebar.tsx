@@ -36,6 +36,7 @@ export function AdminSidebar({
   pendingCount = 0,
   disputesCount = 0,
   cleaningCount = 0,
+  ticketCount = 0,
   profile,
   scope = "full",
   isAdminZota = false,
@@ -43,6 +44,7 @@ export function AdminSidebar({
   pendingCount?: number;
   disputesCount?: number;
   cleaningCount?: number;
+  ticketCount?: number;
   profile?: Pick<
     Profile,
     "id" | "full_name" | "email" | "avatar_url" | "avatar_seed"
@@ -85,11 +87,12 @@ export function AdminSidebar({
         pendingCount,
         disputesCount,
         cleaningCount,
+        ticketCount,
         scope,
         isAdminZota,
         t,
       }),
-    [pendingCount, disputesCount, cleaningCount, scope, isAdminZota, t]
+    [pendingCount, disputesCount, cleaningCount, ticketCount, scope, isAdminZota, t]
   );
 
   const activeHref = useMemo(

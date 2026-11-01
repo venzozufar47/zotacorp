@@ -79,6 +79,8 @@ export interface BuildAdminNavArgs {
   pendingCount?: number;
   disputesCount?: number;
   cleaningCount?: number;
+  /** Tiket yang menunggu tindakan owner (angka penanda menu Tiket). */
+  ticketCount?: number;
   scope?: AdminNavScope;
   /** Global admin Zota — gates the Yeobo Booth "Akses Admin" child. */
   isAdminZota?: boolean;
@@ -109,6 +111,7 @@ export function buildAdminNav({
   pendingCount = 0,
   disputesCount = 0,
   cleaningCount = 0,
+  ticketCount = 0,
   scope = "full",
   isAdminZota = false,
   t,
@@ -153,6 +156,7 @@ export function buildAdminNav({
           href: "/admin/tickets",
           icon: Ticket,
           label: "Tiket",
+          badge: ticketCount || undefined,
           color: "bg-tertiary",
         },
         {

@@ -9,6 +9,7 @@ import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/ca
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import { getCleaningMisses } from "@/lib/actions/admin-home.actions";
+import { getAdminTicketSummary } from "@/lib/actions/tickets.actions";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 import { isMetaAdsViewer } from "@/lib/meta-ads/access";
@@ -96,13 +97,16 @@ export default async function AdminLayout({
     );
   }
 
-  const [pendingConfirmations, disputes, profile, cleaningExceptions] =
+  const [pendingConfirmations, disputes, profile, cleaningExceptions, ticketSummary] =
     await Promise.all([
       getPendingConfirmations(),
       listOpenPayslipDisputes(),
       getCurrentProfile(),
       getCleaningMisses(),
+      // Penanda menu Tiket: gagal tidak boleh menjatuhkan layout admin.
+      getAdminTicketSummary().catch(() => null),
     ]);
+  const ticketCount = ticketSummary?.attention ?? 0;
 
   // Badge menu Kehadiran HANYA untuk yang diselesaikan di halaman absensi
   // (late proof + overtime). `pendingConfirmations` juga memuat langganan,
@@ -120,6 +124,7 @@ export default async function AdminLayout({
         pendingCount={attendancePendingCount}
         disputesCount={disputes.length}
         cleaningCount={cleaningExceptions.length}
+        ticketCount={ticketCount}
         isAdminZota
         profile={profile}
       />
@@ -127,6 +132,7 @@ export default async function AdminLayout({
         pendingCount={attendancePendingCount}
         disputesCount={disputes.length}
         cleaningCount={cleaningExceptions.length}
+        ticketCount={ticketCount}
         profile={profile}
         isAdminZota
       />

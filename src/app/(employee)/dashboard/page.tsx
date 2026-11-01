@@ -436,6 +436,16 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
         />
       )}
 
+      {myTicketsSummary.assignedToMe > 0 && (
+        <NoticeCard
+          href="/tickets"
+          tone="warn"
+          icon={<TicketIcon size={20} />}
+          title={`${myTicketsSummary.assignedToMe} tiket ditugaskan untukmu`}
+          body="Ditugaskan untukmu atau cabangmu — ketuk untuk mengerjakan dan kirim bukti foto."
+        />
+      )}
+
       {myTicketsSummary.awaitingConfirmation > 0 && (
         <NoticeCard
           href="/tickets"

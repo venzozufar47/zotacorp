@@ -23,6 +23,7 @@ export function BottomNav({
   has360Eval = false,
   hasTeam = false,
   assignmentCount = 0,
+  ticketCount = 0,
   me = null,
 }: {
   hasFinance?: boolean;
@@ -46,6 +47,8 @@ export function BottomNav({
   /** Menu "Tim" untuk Team leader (punya >= 1 anggota) — read-only. */
   hasTeam?: boolean;
   assignmentCount?: number;
+  /** Tiket yang menunggu tindakan saya (angka penanda menu Tiket). */
+  ticketCount?: number;
   me?: MenuViewer | null;
 }) {
   const pathname = usePathname();
@@ -56,7 +59,7 @@ export function BottomNav({
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     ...(hasTickets
-      ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary", badge: ticketCount }]
       : []),
     ...(hasSosmed
       ? [{ href: "/sosmed", icon: Megaphone, label: "Sosmed", color: "bg-pop-pink" }]

@@ -28,6 +28,7 @@ import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { getScorecardHome } from "@/lib/actions/unit-scorecard.actions";
 import { getMyPendingVerifications } from "@/lib/actions/verifications.actions";
+import { getAdminTicketSummary } from "@/lib/actions/tickets.actions";
 import { VerificationInbox } from "@/components/verification/VerificationInbox";
 
 /**
@@ -60,6 +61,7 @@ export default async function AdminHomeRoute() {
     cleaningReviewQuickAccess,
     unitScorecard,
     pendingVerifications,
+    ticketSummary,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -82,6 +84,7 @@ export default async function AdminHomeRoute() {
     getCleaningReviewQuickAccess().catch(() => ({ freshUnreviewedCount: 0 })),
     getScorecardHome(null).catch(() => null),
     getMyPendingVerifications().catch(() => []),
+    getAdminTicketSummary().catch(() => null),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -133,6 +136,7 @@ export default async function AdminHomeRoute() {
         revenueViewers={revenueViewers}
         revenueViewerCandidates={revenueViewerCandidates}
         cleaningReviewQuickAccess={cleaningReviewQuickAccess}
+        ticketSummary={ticketSummary}
         unitScorecard={unitScorecard?.ok ? unitScorecard.data ?? null : null}
       />
       <div className="mt-5">

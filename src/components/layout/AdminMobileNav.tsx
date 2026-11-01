@@ -39,6 +39,7 @@ export function AdminMobileNav({
   pendingCount = 0,
   disputesCount = 0,
   cleaningCount = 0,
+  ticketCount = 0,
   scope = "full",
   isAdminZota = false,
   profile = null,
@@ -47,6 +48,7 @@ export function AdminMobileNav({
   pendingCount?: number;
   disputesCount?: number;
   cleaningCount?: number;
+  ticketCount?: number;
   scope?: AdminNavScope;
   isAdminZota?: boolean;
   /** Akun aktif — untuk menu ganti akun di sheet. */
@@ -64,11 +66,12 @@ export function AdminMobileNav({
         pendingCount,
         disputesCount,
         cleaningCount,
+        ticketCount,
         scope,
         isAdminZota,
         t,
       }),
-    [pendingCount, disputesCount, cleaningCount, scope, isAdminZota, t]
+    [pendingCount, disputesCount, cleaningCount, ticketCount, scope, isAdminZota, t]
   );
 
   const activeHref = useMemo(

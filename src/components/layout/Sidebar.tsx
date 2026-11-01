@@ -24,6 +24,7 @@ export function Sidebar({
   has360Eval = false,
   hasTeam = false,
   assignmentCount = 0,
+  ticketCount = 0,
   me = null,
 }: {
   className?: string;
@@ -53,6 +54,8 @@ export function Sidebar({
   hasTeam?: boolean;
   /** Jumlah transaksi yang di-assign ke user & masih "Needs Assignment". */
   assignmentCount?: number;
+  /** Tiket yang menunggu tindakan saya (angka penanda menu Tiket). */
+  ticketCount?: number;
   me?: MenuViewer | null;
 }) {
   const pathname = usePathname();
@@ -63,7 +66,7 @@ export function Sidebar({
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     ...(hasTickets
-      ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary", badge: ticketCount }]
       : []),
     ...(hasSosmed
       ? [{ href: "/sosmed", icon: Megaphone, label: "Sosmed", color: "bg-pop-pink" }]

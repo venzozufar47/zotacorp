@@ -42,6 +42,7 @@ import type {
   CleaningExceptionRow,
 } from "@/lib/actions/admin-home.actions";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
+import type { AdminTicketSummary } from "@/lib/actions/tickets.actions";
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
@@ -93,6 +94,7 @@ export function AdminHomePage({
   revenueViewers,
   revenueViewerCandidates,
   cleaningReviewQuickAccess,
+  ticketSummary,
 }: {
   greetingName: string;
   today: AdminHomeToday;
@@ -119,6 +121,8 @@ export function AdminHomePage({
   revenueViewerCandidates: { id: string; full_name: string | null; email: string | null }[];
   /** Quick-access "review foto kebersihan" — lihat getCleaningReviewQuickAccess. */
   cleaningReviewQuickAccess?: { freshUnreviewedCount: number } | null;
+  /** Tiket yang menunggu owner (kartu "Tiket menunggu"). */
+  ticketSummary?: AdminTicketSummary | null;
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
   const [kindFilter, setKindFilter] = useState<NotifKind | "all">("all");
@@ -274,6 +278,7 @@ export function AdminHomePage({
 
       <StudioOpsSummary
         ticketKpi={opsMetrics.ticketKpi}
+        ticketSummary={ticketSummary}
         cleaningReviewQuickAccess={cleaningReviewQuickAccess}
         footer={
           <RevenueDashboardViewersManager

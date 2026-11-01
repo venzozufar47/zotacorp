@@ -8,6 +8,7 @@ import { getMyCakeAccess, isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { isMetaAdsViewer } from "@/lib/meta-ads/access";
 import { canFileTickets } from "@/lib/tickets/access";
+import { getTicketNavBadge } from "@/lib/actions/tickets.actions";
 import { isSocialReportEditor } from "@/lib/social/access";
 import { isSimPic } from "@/lib/sim-cards/access";
 import { isSopOwner } from "@/lib/cleaning/owner-access";
@@ -32,7 +33,7 @@ export default async function EmployeeLayout({
     assignmentCount,
     hasYeoboBooth,
     hasCash,
-    hasTickets,
+    ticketNav,
     hasSosmed,
     hasSimCards,
     hasProcurement,
@@ -49,7 +50,11 @@ export default async function EmployeeLayout({
     countMyAssignments(),
     isYeoboBoothAdmin(),
     hasAssignedCashDashboard(),
-    canFileTickets(),
+    // Angka penanda dihitung hanya bila menu Tiket tampil; gagal menghitung tidak boleh menjatuhkan layout.
+    canFileTickets().then(async (ok) => ({
+      ok,
+      count: ok ? await getTicketNavBadge().catch(() => 0) : 0,
+    })),
     isSocialReportEditor(),
     isSimPic(),
     isProcurementStaff(),
@@ -59,6 +64,7 @@ export default async function EmployeeLayout({
     isTeamLeader().then((leader) => leader || FEATURES.pengaduan),
     isSopOwner(),
   ]);
+  const hasTickets = ticketNav.ok;
   const hasFinance = assignedIds.length > 0;
   const me = profile
     ? {
@@ -89,6 +95,7 @@ export default async function EmployeeLayout({
         has360Eval={has360Eval}
         hasTeam={hasTeam}
         assignmentCount={assignmentCount}
+        ticketCount={ticketNav.count}
         me={me}
       />
       <main className="flex-1 min-w-0">
@@ -112,6 +119,7 @@ export default async function EmployeeLayout({
         has360Eval={has360Eval}
         hasTeam={hasTeam}
         assignmentCount={assignmentCount}
+        ticketCount={ticketNav.count}
         me={me}
       />
     </div>

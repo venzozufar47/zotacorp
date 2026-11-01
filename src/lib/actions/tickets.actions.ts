@@ -982,6 +982,61 @@ export async function getStudioQueueCount(): Promise<number> {
   return rows.filter((r) => r.handler_id === gate.userId).length;
 }
 
+/**
+ * Angka penanda menu "Tiket" untuk karyawan: tiket yang menunggu tindakan SAYA — tiket buatan saya yang sudah ditandai
+ * selesai tetapi belum saya konfirmasi, tiket 'turun' yang ditugaskan kepada saya (atau cabang saya) dan belum selesai,
+ * serta antrean tingkat yang saya pegang (kepala studio / atasan). Hitungan ringan (count saja) karena dipanggil layout.
+ */
+export async function getTicketNavBadge(): Promise<number> {
+  const user = await getCurrentUser();
+  if (!user) return 0;
+  const admin = createAdminClient() as any;
+  const myBranches = (await branchesOfEmployee(user.id)).map((b) => b.id);
+  const ors = [`assignee_id.eq.${user.id}`];
+  if (myBranches.length > 0) ors.push(`and(assignee_id.is.null,branch_id.in.(${myBranches.join(",")}))`);
+  const [awaiting, assigned, queue] = await Promise.all([
+    admin.from("tickets").select("id", { count: "exact", head: true }).eq("created_by", user.id).eq("status", "resolved").is("confirmed_at", null),
+    admin.from("tickets").select("id", { count: "exact", head: true }).eq("direction", "down").in("status", ["open", "in_progress"]).or(ors.join(",")),
+    getStudioQueueCount(),
+  ]);
+  return (awaiting.count ?? 0) + (assigned.count ?? 0) + queue;
+}
+
+export interface AdminTicketSummary {
+  /** Eskalasi yang menunggu keputusan owner. */
+  escalated: number;
+  /** Sedang ditangani owner (termasuk tiket naik yang pemegangnya owner). */
+  ownerHandling: number;
+  /** Aktif di tingkat cabang/atasan (pemantauan, belum perlu owner). */
+  inChain: number;
+  /** Tiket buatan owner yang sudah ditandai selesai dan menunggu konfirmasi owner. */
+  awaitingConfirmation: number;
+  /** Yang perlu tindakan owner: eskalasi + ditangani owner + menunggu konfirmasi (angka penanda menu). */
+  attention: number;
+}
+
+/** Ringkasan tiket untuk Beranda admin dan angka penanda menu admin. Null untuk non-admin. */
+export async function getAdminTicketSummary(): Promise<AdminTicketSummary | null> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return null;
+  const admin = createAdminClient() as any;
+  const [open, awaiting] = await Promise.all([
+    admin.from("tickets").select("status, handler_level, direction").eq("direction", "up").in("status", OPEN_TICKET_STATUSES).limit(1000),
+    admin.from("tickets").select("id", { count: "exact", head: true }).eq("created_by", gate.userId).eq("status", "resolved").is("confirmed_at", null),
+  ]);
+  let escalated = 0;
+  let ownerHandling = 0;
+  let inChain = 0;
+  for (const r of (open.data ?? []) as any[]) {
+    const atOwner = Number(r.handler_level) >= OWNER_LEVEL;
+    if (atOwner && r.status === "escalated") escalated++;
+    else if (atOwner) ownerHandling++; // owner_handling, atau open/in_progress yang pemegangnya owner
+    else inChain++;
+  }
+  const awaitingConfirmation = awaiting.count ?? 0;
+  return { escalated, ownerHandling, inChain, awaitingConfirmation, attention: escalated + ownerHandling + awaitingConfirmation };
+}
+
 // ─── Foto (signed URL) ──────────────────────────────────────────────────────
 export async function getTicketAttachmentSignedUrl(path: string): Promise<ActionResult<{ url: string }>> {
   const actor = await getActor();
