@@ -11,6 +11,8 @@ import {
 } from "@/lib/procurement/access";
 import { startMaterialOpname } from "@/lib/actions/procurement.actions";
 import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
+import { OFF_WORKDAY_MESSAGE, offWorkdayUserIds } from "@/lib/procurement/workday";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { MaterialOpnameForm, type CountMeta } from "@/components/procurement/MaterialOpnameForm";
 
 /**
@@ -34,6 +36,19 @@ export default async function OpnameBahanPage({
   const brands = await myProcurementBusinessUnits();
   const activeBrand = bu && (isAdmin || brands.includes(bu)) ? bu : brands[0];
   if (!activeBrand) redirect(isAdmin ? "/admin/costing/pengadaan" : "/pengadaan");
+
+  // Di luar hari kerja petugas, opname dimatikan sepenuhnya (termasuk ?semua=1). Owner tidak dibatasi.
+  if (!isAdmin && (await offWorkdayUserIds(createAdminClient(), [user.id])).has(user.id)) {
+    return (
+      <div className="mx-auto max-w-xl space-y-3 py-10 text-center">
+        <p className="font-display text-lg font-bold">Opname libur hari ini</p>
+        <p className="text-sm text-muted-foreground">{OFF_WORKDAY_MESSAGE}</p>
+        <Link href="/pengadaan" className="inline-block text-sm font-semibold text-primary hover:underline">
+          Kembali ke Pengadaan
+        </Link>
+      </div>
+    );
+  }
 
   // Cabang dengan ritme harian: tampilkan daftar "Opname hari ini"; ?semua=1 membuka semua bahan.
   const planRes = semua ? null : await getTodayCountPlan(activeBrand);

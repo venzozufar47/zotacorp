@@ -4,6 +4,7 @@ import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { computeCountPlan } from "./count-plan";
 import { CYCLE_COUNT_BRANDS } from "./cycle-count";
+import { offWorkdayUserIds } from "./workday";
 
 export interface OpnameReminderSummary {
   brands: number;
@@ -29,7 +30,9 @@ export async function runOpnameReminders(stage: 1 | 2): Promise<OpnameReminderSu
     if (!plan.enabled || plan.total === 0 || plan.doneCount >= plan.total) continue;
 
     const { data: assigned } = await admin.from("procurement_assignments").select("user_id").eq("business_unit", brand);
-    const staffIds = (assigned ?? []).map((a) => a.user_id);
+    // Petugas yang hari ini bukan hari kerjanya tidak diingatkan (walau kebetulan absen masuk).
+    const off = await offWorkdayUserIds(admin, (assigned ?? []).map((a) => a.user_id));
+    const staffIds = (assigned ?? []).map((a) => a.user_id).filter((id) => !off.has(id));
     if (staffIds.length === 0) continue;
     const { data: logs } = await admin
       .from("attendance_logs")

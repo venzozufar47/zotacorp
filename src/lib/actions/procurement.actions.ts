@@ -27,6 +27,8 @@ import {
   type ProcurementRow,
 } from "@/lib/procurement/rows";
 import { myProcurementBusinessUnits } from "@/lib/procurement/access";
+import { OFF_WORKDAY_MESSAGE, offWorkdayUserIds } from "@/lib/procurement/workday";
+import { getCurrentRole, getCurrentUser } from "@/lib/supabase/cached";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { isVarianceReason, varianceCheck } from "@/lib/procurement/cycle-count";
 import { brandBelongsToMaterial, rebuildBrandUsage } from "@/lib/procurement/brand-store";
@@ -320,6 +322,10 @@ export async function startMaterialOpname(
 ): Promise<ActionResult<ProcurementRow[]>> {
   const gate = await requireProcurementForBu(businessUnit);
   if (!gate.ok) return { ok: false, error: gate.error };
+  // Opname hanya di hari kerja petugas (owner tidak dibatasi).
+  if (!gate.isAdmin && (await offWorkdayUserIds(adminClient(), [gate.userId])).has(gate.userId)) {
+    return { ok: false, error: OFF_WORKDAY_MESSAGE };
+  }
   const { rows } = await loadBrandProcurement(adminClient(), { businessUnit });
   return {
     ok: true,
@@ -349,6 +355,9 @@ export async function submitMaterialOpname(input: {
 > {
   const gate = await requireProcurementForBu(input.businessUnit);
   if (!gate.ok) return { ok: false, error: gate.error };
+  if (!gate.isAdmin && (await offWorkdayUserIds(adminClient(), [gate.userId])).has(gate.userId)) {
+    return { ok: false, error: OFF_WORKDAY_MESSAGE };
+  }
   if (!Array.isArray(input.items) || input.items.length === 0)
     return { ok: false, error: "Tidak ada bahan untuk diopname" };
   for (const it of input.items) {
@@ -518,6 +527,9 @@ export async function getProcurementDashboardBadge(): Promise<
   const bus = await myProcurementBusinessUnits();
   if (bus.length === 0) return { ok: true, data: { needBuy: 0, staleDays: null, items: [] } };
   const supabase = adminClient();
+  // Di luar hari kerja, "opname sudah N hari lalu" tidak ditampilkan (peringatan belanja tetap).
+  const me = await getCurrentUser();
+  const offDay = !!me && (await getCurrentRole()) !== "admin" && (await offWorkdayUserIds(supabase, [me.id])).has(me.id);
   const items: ProcurementBadgeItem[] = [];
   let needBuy = 0;
   let oldest: number | null = null;
@@ -547,7 +559,7 @@ export async function getProcurementDashboardBadge(): Promise<
     ok: true,
     data: {
       needBuy,
-      staleDays: oldest == null ? null : Math.floor(oldest),
+      staleDays: offDay || oldest == null ? null : Math.floor(oldest),
       // Paling mendesak dulu (habis → kritis → menipis); banner hanya menampilkan beberapa nama.
       items: items.sort((a, b) => URGENCY[a.status] - URGENCY[b.status]).slice(0, 5),
     },

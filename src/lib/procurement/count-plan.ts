@@ -40,6 +40,8 @@ export interface CountPlan {
   total: number;
   /** Perkiraan menit untuk bahan yang BELUM dihitung hari ini. */
   minutesLeft: number;
+  /** Hari ini bukan hari kerja petugas yang meminta: opname dimatikan (daftar kosong). */
+  offDay?: boolean;
 }
 
 export const isCycleCountBrand = (businessUnit: string) => CYCLE_COUNT_BRANDS.includes(businessUnit);
