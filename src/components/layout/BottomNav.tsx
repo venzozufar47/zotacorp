@@ -6,6 +6,7 @@ import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, 
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
+import { RefreshButton } from "./RefreshButton";
 
 export function BottomNav({
   hasFinance = false,
@@ -227,6 +228,7 @@ export function BottomNav({
             selalu terlihat (anchor kanan), tidak ikut scroll bersama
             tabs lain. */}
         <div className="shrink-0 flex items-center pl-1 border-l border-border/60">
+          <RefreshButton />
           <HamburgerMenu variant="bottom" me={me} />
         </div>
       </div>
