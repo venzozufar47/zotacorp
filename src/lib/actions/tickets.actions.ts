@@ -859,8 +859,9 @@ export async function getBranchQueue(): Promise<TicketQueueSummary[]> {
     .select("id, created_by, branch, direction, assignee_id, category, priority, title, status, created_at")
     .in("branch_id", myBranches)
     .in("status", OPEN_TICKET_STATUSES)
-    // Tiket 'down' hanya terlihat rekan bila ditujukan ke seluruh cabang (sama dengan policy RLS).
-    .or("direction.eq.up,assignee_id.is.null")
+    // Hanya laporan rekan (tiket 'naik'). Tugas dari owner (tiket 'turun', termasuk yang ditujukan ke seluruh cabang)
+    // sudah tampil di kartu "ditugaskan untukmu" lewat getAssignedToMe, jadi tidak diulang di antrean cabang.
+    .eq("direction", "up")
     .neq("created_by", actor.userId)
     .order("created_at", { ascending: false })
     .limit(100);

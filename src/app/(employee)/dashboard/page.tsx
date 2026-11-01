@@ -475,7 +475,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Termasuk yang diajukan admin/owner atau rekan kerja lain.
+            Laporan rekan kerja di cabangmu.
           </p>
           {branchQueue.slice(0, 5).map((t) => (
             <BranchQueueCard key={t.id} ticket={t} />
