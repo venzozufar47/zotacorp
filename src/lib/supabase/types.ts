@@ -2760,6 +2760,8 @@ export type Database = {
           effective_period_year: number | null
           id: string
           notes: string | null
+          original_description: string | null
+          reference: string | null
           running_balance: number | null
           sort_order: number
           source_destination: string | null
@@ -2785,6 +2787,8 @@ export type Database = {
           effective_period_year?: number | null
           id?: string
           notes?: string | null
+          original_description?: string | null
+          reference?: string | null
           running_balance?: number | null
           sort_order?: number
           source_destination?: string | null
@@ -2810,6 +2814,8 @@ export type Database = {
           effective_period_year?: number | null
           id?: string
           notes?: string | null
+          original_description?: string | null
+          reference?: string | null
           running_balance?: number | null
           sort_order?: number
           source_destination?: string | null

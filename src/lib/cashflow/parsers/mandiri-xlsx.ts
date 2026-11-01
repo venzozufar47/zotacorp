@@ -23,6 +23,8 @@ import * as XLSX from "xlsx";
 import type { ParsedStatement, ParsedTransaction } from "../types";
 import { PdfPasswordRequiredError } from "../pdf-extract";
 import { parseIndoAmount, parseIndoDate } from "./shared";
+import { splitKeterangan } from "./mandiri-text";
+import { checkStatementIntegrity } from "./statement-integrity";
 
 // Fixed column offsets from the sample file layout. If Mandiri ever
 // reshuffles columns we'll need to detect the header row instead.
@@ -123,7 +125,7 @@ export async function parseMandiriXlsxStatement(
     const time = timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : undefined;
 
     const keterangan = String(row[COL_KETERANGAN] ?? "").trim();
-    const { transactionDetails, sourceDestination, notes, description } =
+    const { transactionDetails, sourceDestination, notes, reference, description } =
       splitKeterangan(keterangan);
 
     const credit = asAmount(row[COL_CREDIT]);
@@ -141,6 +143,7 @@ export async function parseMandiriXlsxStatement(
       sourceDestination,
       transactionDetails,
       notes,
+      reference,
       description,
       debit,
       credit,
@@ -154,6 +157,17 @@ export async function parseMandiriXlsxStatement(
     );
   }
 
+  // Pemeriksaan integritas per baris (rantai saldo, baris terlewat, rekonsiliasi). Hasilnya tampil sebagai peringatan di
+  // pratinjau unggah, sebelum data masuk.
+  warnings.push(
+    ...checkStatementIntegrity({
+      openingBalance,
+      closingBalance,
+      transactions,
+      sourceRowCount: rows.filter((r) => typeof r[COL_NO] === "number").length,
+    })
+  );
+
   // Infer period from the transaction dates rather than parsing the
   // header — more resilient to template wording changes.
   const period = inferPeriodFromTxs(transactions);
@@ -166,84 +180,6 @@ export async function parseMandiriXlsxStatement(
     transactions,
     warnings,
   };
-}
-
-/**
- * Break a multi-line Mandiri keterangan into our four fields.
- *
- * Heuristik:
- *   1 line:  transactionDetails = line, lain kosong.
- *   2 lines: transactionDetails = line 1, sourceDestination = line 2.
- *   3+ lines: line 1 = details; line terakhir di-cek apakah
- *     "looks like notes" — bebas dari ID numerik panjang (≥ 6 digit
- *     berturut-turut). Account number / reference biasanya gagal cek
- *     ini, jadi tetap ikut sourceDestination.
- *
- * Catatan: sebelumnya threshold-nya `rest.length >= 3` (butuh ≥ 4
- * baris keterangan), tapi Mandiri sering nge-pack nama + nomor rekening
- * di satu baris sehingga free-text notes muncul di baris ke-3 dari
- * keterangan 3-baris. Lower threshold ke 2 biar kasus 3-baris juga
- * terdeteksi.
- */
-function splitKeterangan(raw: string): {
-  transactionDetails: string | undefined;
-  sourceDestination: string | undefined;
-  notes: string | undefined;
-  description: string;
-} {
-  const lines = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) {
-    return {
-      transactionDetails: undefined,
-      sourceDestination: undefined,
-      notes: undefined,
-      description: "Transaksi",
-    };
-  }
-  const description = lines.join(" · ");
-  if (lines.length === 1) {
-    return {
-      transactionDetails: lines[0],
-      sourceDestination: undefined,
-      notes: undefined,
-      description,
-    };
-  }
-  const [details, ...rest] = lines;
-  if (rest.length >= 2) {
-    const last = rest[rest.length - 1];
-    const looksLikeNotes = last.length > 0 && !/\d{6,}/.test(last);
-    if (looksLikeNotes) {
-      return {
-        transactionDetails: details,
-        sourceDestination: stripAccountNumber(rest.slice(0, -1).join(" ")),
-        notes: last,
-        description,
-      };
-    }
-  }
-  return {
-    transactionDetails: details,
-    sourceDestination: stripAccountNumber(rest.join(" ")),
-    notes: undefined,
-    description,
-  };
-}
-
-/**
- * Buang token nomor rekening dari source_destination — angka ≥ 6 digit
- * yang berdiri sendiri (tidak menempel pada kata) di-strip. Nama bank
- * + nama pemilik tetap. Contoh:
- *   "FLIPTECH LENTERA INS 1570006217393" → "FLIPTECH LENTERA INS"
- *   "DANA001031280474060"                → "DANA001031280474060"  (menempel, tidak di-strip)
- */
-function stripAccountNumber(s: string): string | undefined {
-  if (!s) return undefined;
-  const cleaned = s
-    .replace(/\s+\d{6,}\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return cleaned || undefined;
 }
 
 function asAmount(cell: Cell): number {

@@ -49,6 +49,7 @@ interface PreviewTx {
   sourceDestination?: string | null;
   transactionDetails?: string | null;
   notes?: string | null;
+  reference?: string | null;
   description: string;
   debit: number;
   credit: number;

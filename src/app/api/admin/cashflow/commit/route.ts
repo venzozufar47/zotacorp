@@ -29,6 +29,8 @@ interface CommitTransaction {
   sourceDestination?: string | null;
   transactionDetails?: string | null;
   notes?: string | null;
+  /** Kode referensi/ID pembayaran dari keterangan bank (kolom `reference`). */
+  reference?: string | null;
   description: string;
   debit: number;
   credit: number;
@@ -373,6 +375,7 @@ export async function POST(req: Request) {
         source_destination: t.sourceDestination?.trim() || null,
         transaction_details: t.transactionDetails?.trim() || null,
         notes: t.notes?.trim() || null,
+        reference: t.reference?.trim() || null,
         description: t.description.trim(),
         debit: t.debit,
         credit: t.credit,

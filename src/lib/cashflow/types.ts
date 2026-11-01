@@ -27,6 +27,8 @@ export interface ParsedTransaction {
   transactionDetails?: string;
   /** Notes column from the PDF (free-text memo the admin/transactor typed). */
   notes?: string;
+  /** Kode referensi/ID pembayaran dari keterangan bank (dipisah dari sourceDestination). */
+  reference?: string;
   /** Legacy / fallback flattened text of the row, kept for backward compat
    *  with rows ingested before the structured columns existed. */
   description: string;
