@@ -21,6 +21,7 @@ export function ScorecardRangesInfo({
   label,
   ranges,
   note,
+  detail,
   lines,
   groups,
   footnote,
@@ -30,6 +31,8 @@ export function ScorecardRangesInfo({
   label: string;
   ranges?: { band: ScorecardBand; text: string }[];
   note?: string;
+  /** Rincian angka metrik ini (mis. "Terkumpul Rp… dari target Rp…"), tampil di bagian ATAS popup di atas rentang warna. */
+  detail?: string;
   /** Keterangan bebas, satu baris per elemen (mis. rincian angka). */
   lines?: string[];
   /** Beberapa metrik dalam satu ubin: judul + rentang warna ringkas per metrik. Popup dibuat lebih lebar. */
@@ -72,7 +75,7 @@ export function ScorecardRangesInfo({
     };
   }, [open]);
 
-  if (!ranges?.length && !note && !lines?.length && !groups?.length && !settings) return null;
+  if (!ranges?.length && !note && !detail && !lines?.length && !groups?.length && !settings) return null;
 
   return (
     <span
@@ -123,6 +126,7 @@ export function ScorecardRangesInfo({
           className={groups?.length ? "absolute -right-2 top-4 z-50 w-[18.5rem] max-w-[calc(100vw-1rem)] pb-1 pl-0 pr-4 pt-6" : "absolute -right-2 left-0 top-4 z-50 pb-1 pl-2 pr-4 pt-6"}
         >
           <span className="block space-y-1.5 rounded-xl border-2 border-foreground bg-card p-3 text-[11.5px] font-normal text-foreground shadow-hard">
+          {detail && <span className="block border-b border-border pb-1.5 font-medium leading-snug">{detail}</span>}
           {groups?.length ? (
             groups.map((g) => (
               <span key={g.title} className="block">
