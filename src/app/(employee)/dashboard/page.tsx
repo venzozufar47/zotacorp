@@ -74,6 +74,7 @@ import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, FlaskConical } from "lucide-react";
 import { NoticeCard } from "@/components/dashboard/NoticeCard";
+import { ShortcutsCard } from "@/components/dashboard/ShortcutsCard";
 import { SocialScorecardSection } from "@/components/social/SocialScorecardSection";
 import { isSocialReportEditor } from "@/lib/social/access";
 import { ScorecardSection, ScorecardSectionSkeleton } from "@/components/scorecard/ScorecardSection";
@@ -459,56 +460,6 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
         />
       )}
 
-      {FEATURES.pengaduan && (
-      <NoticeCard
-        href="/tim?bagian=pengaduan"
-        icon={<ShieldQuestion size={20} />}
-        title="Pengaduan"
-        badge={
-          <span className="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-semibold">
-            <Lock size={10} aria-hidden /> Boleh anonim
-          </span>
-        }
-        body="Lapor masalah — dijaga kerahasiaannya."
-      />
-      )}
-
-      {FEATURES.persetujuan && (
-      <NoticeCard
-        href="/persetujuan"
-        icon={<Inbox size={20} />}
-        title="Persetujuan ke Owner"
-        body="Ajukan usulan atau lihat status permintaanmu."
-      />
-      )}
-
-      {FEATURES.bonus && (
-      <NoticeCard
-        href="/bonus"
-        icon={<BonusIcon size={20} />}
-        title="Bonus tim"
-        body="Lihat rincian bonusmu dan cara hitungnya."
-      />
-      )}
-
-      {FEATURES.risetProduk && canFileComplaintFlag && (
-        <NoticeCard
-          href="/riset-produk"
-          icon={<FlaskConical size={20} />}
-          title="Riset produk"
-          body="Usulkan ide, catat percobaan, kelola tester dan kartu produk."
-        />
-      )}
-
-      {FEATURES.keluhan && canFileComplaintFlag && (
-        <NoticeCard
-          href="/keluhan"
-          icon={<MessageSquareWarning size={20} />}
-          title="Keluhan & insiden pelanggan"
-          body="Catat keluhan baru atau tutup yang masih terbuka."
-        />
-      )}
-
       {/* Kartu Omzet admin, ditunjukkan ke karyawan yang di-assign admin
           (revenue_dashboard_viewers) — data sama, reuse komponen admin
           apa adanya. Haengbocake & Yeobo di-assign TERPISAH (scope
@@ -565,6 +516,38 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
       </section>
 
       <FloorTodayCard people={floorToday} />
+
+      <ShortcutsCard
+        items={[
+          ...(FEATURES.pengaduan
+            ? [
+                {
+                  href: "/tim?bagian=pengaduan",
+                  icon: <ShieldQuestion />,
+                  title: "Pengaduan",
+                  badge: (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      <Lock size={10} aria-hidden /> Boleh anonim
+                    </span>
+                  ),
+                  body: "Lapor masalah, dijaga kerahasiaannya",
+                },
+              ]
+            : []),
+          ...(FEATURES.persetujuan
+            ? [{ href: "/persetujuan", icon: <Inbox />, title: "Persetujuan ke Owner", body: "Ajukan usulan atau lihat statusnya" }]
+            : []),
+          ...(FEATURES.bonus
+            ? [{ href: "/bonus", icon: <BonusIcon />, title: "Bonus tim", body: "Rincian bonusmu dan cara hitungnya" }]
+            : []),
+          ...(FEATURES.risetProduk && canFileComplaintFlag
+            ? [{ href: "/riset-produk", icon: <FlaskConical />, title: "Riset produk", body: "Usulkan ide, catat percobaan, kelola tester" }]
+            : []),
+          ...(FEATURES.keluhan && canFileComplaintFlag
+            ? [{ href: "/keluhan", icon: <MessageSquareWarning />, title: "Keluhan & insiden pelanggan", body: "Catat keluhan baru atau tutup yang terbuka" }]
+            : []),
+        ]}
+      />
     </div>
   );
 }

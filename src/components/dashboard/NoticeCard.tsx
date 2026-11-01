@@ -38,12 +38,12 @@ export function NoticeCard({
     <Link
       href={href}
       className={cn(
-        "group flex items-center gap-3 rounded-2xl border-2 border-foreground bg-gradient-to-br px-3.5 py-3 shadow-hard-sm transition duration-200",
-        "hover:-translate-y-0.5 active:translate-y-0 active:shadow-none",
+        "group flex items-center gap-3 rounded-2xl border border-border/70 bg-gradient-to-br px-3.5 py-3 transition duration-200",
+        "active:opacity-90",
         t.card
       )}
     >
-      <span aria-hidden className={cn("grid size-11 shrink-0 place-items-center rounded-xl border-2 border-foreground", t.icon)}>
+      <span aria-hidden className={cn("grid size-11 shrink-0 place-items-center rounded-xl border border-foreground/20", t.icon)}>
         {icon}
       </span>
       <span className="min-w-0 flex-1">
