@@ -5,7 +5,10 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ClipboardCheck, Plus, X } from "lucide-react";
 import { toast } from "sonner";
-import type { OpnameFormSku } from "@/lib/actions/pos-stock.actions";
+import type {
+  OpnameDiscrepancySku,
+  OpnameFormSku,
+} from "@/lib/actions/pos-stock.actions";
 import { createStockOpname } from "@/lib/actions/pos-stock.actions";
 import {
   authorizerNames,
@@ -114,8 +117,8 @@ export function StockOpnameForm({
   // sudah lulus saat modal muncul, jadi follow-up call (Bayar
   // selisih) tidak butuh PIN lagi.
   const [discrepancy, setDiscrepancy] = useState<
-    | { kind: "shortfall"; shortfallValue: number }
-    | { kind: "surplus" }
+    | { kind: "shortfall"; shortfallValue: number; skus: OpnameDiscrepancySku[] }
+    | { kind: "surplus"; skus: OpnameDiscrepancySku[] }
     | null
   >(null);
   const [resolvedPin, setResolvedPin] = useState<string | undefined>(undefined);
@@ -147,9 +150,10 @@ export function StockOpnameForm({
           setDiscrepancy({
             kind: "shortfall",
             shortfallValue: res.data.discrepancy.shortfallValue,
+            skus: res.data.discrepancy.skus,
           });
         } else {
-          setDiscrepancy({ kind: "surplus" });
+          setDiscrepancy({ kind: "surplus", skus: res.data.discrepancy.skus });
         }
         return;
       }
@@ -373,8 +377,8 @@ export function StockOpnameForm({
 }
 
 /**
- * Modal konfirmasi selisih opname. Sengaja tidak menampilkan
- * expected_count atau per-SKU diff — hanya total Rp shortfall —
+ * Modal konfirmasi selisih opname. Menampilkan NAMA SKU yang selisih,
+ * tapi sengaja tidak expected_count / qty selisih per SKU — hanya total Rp shortfall —
  * supaya blind-count invariant tetap utuh.
  */
 function OpnameDiscrepancyDialog({
@@ -384,8 +388,8 @@ function OpnameDiscrepancyDialog({
   onRecount,
 }: {
   discrepancy:
-    | { kind: "shortfall"; shortfallValue: number }
-    | { kind: "surplus" };
+    | { kind: "shortfall"; shortfallValue: number; skus: OpnameDiscrepancySku[] }
+    | { kind: "surplus"; skus: OpnameDiscrepancySku[] };
   pending: boolean;
   onPayShortfall: () => void;
   onRecount: () => void;
@@ -409,7 +413,7 @@ function OpnameDiscrepancyDialog({
               ? "Stok fisik kurang dari seharusnya"
               : "Stok fisik lebih dari seharusnya"}
           </h2>
-          {isShortfall && (
+          {isShortfall && discrepancy.shortfallValue > 0 && (
             <p className="mt-2 text-sm text-foreground">
               Total nilai selisih:{" "}
               <strong className="tabular-nums">
@@ -417,6 +421,17 @@ function OpnameDiscrepancyDialog({
               </strong>
             </p>
           )}
+          <p className="mt-3 text-xs font-medium text-foreground">
+            SKU yang selisih — hitung ulang yang ini:
+          </p>
+          <ul className="mt-1 space-y-0.5 text-sm text-foreground">
+            {discrepancy.skus.map((s) => (
+              <li key={`${s.productName}-${s.variantName ?? ""}`}>
+                • {s.productName}
+                {s.variantName ? ` (${s.variantName})` : ""}
+              </li>
+            ))}
+          </ul>
           <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
             {isShortfall
               ? "Pilih: (1) bayar selisih agar opname tetap tersimpan dan saldo kas bertambah sesuai uang yang disetor, atau (2) hitung ulang stok fisik untuk verifikasi."
@@ -435,7 +450,7 @@ function OpnameDiscrepancyDialog({
               {pending && (
                 <span className="size-4 border-2 border-white border-r-transparent rounded-full animate-spin" />
               )}
-              Bayar selisih
+              {discrepancy.shortfallValue > 0 ? "Bayar selisih" : "Catat selisih"}
             </button>
           )}
           <button

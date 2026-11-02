@@ -70,9 +70,9 @@ export function StockOpnameResult({ detail, basePath }: Props) {
           <tbody>
             {items.map((it) => {
               const diffColor =
-                it.diffValue < 0
+                it.diffQty < 0
                   ? "text-destructive"
-                  : it.diffValue > 0
+                  : it.diffQty > 0
                   ? "text-success"
                   : "text-muted-foreground";
               return (

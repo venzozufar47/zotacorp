@@ -496,8 +496,16 @@ export async function deleteStockMovement(input: {
 
 export type OpnameDiscrepancyKind = "shortfall" | "surplus";
 
+/** SKU yang selisih — nama saja, tanpa qty, supaya blind-count tetap utuh. */
+export interface OpnameDiscrepancySku {
+  productName: string;
+  variantName: string | null;
+}
+
 export interface OpnameDiscrepancyResult {
   kind: OpnameDiscrepancyKind;
+  /** SKU yang perlu dihitung ulang. */
+  skus: OpnameDiscrepancySku[];
   /** Total nilai Rp shortfall (untuk kind="shortfall"). Surplus
    *  return 0 — kami tidak reveal nominal supaya tidak silently
    *  menutupi error produksi yang belum tercatat. */
@@ -639,14 +647,26 @@ export async function createStockOpname(input: {
   // produksi belum tercatat). Shortfall = fisik < expected (loss /
   // ada hilang). Modal client menampilkan ringkasan minimal.
   let shortfallValue = 0;
+  let hasShortfall = false;
   let hasSurplus = false;
+  const shortfallSkus: OpnameDiscrepancySku[] = [];
+  const surplusSkus: OpnameDiscrepancySku[] = [];
   for (let i = 0; i < input.items.length; i++) {
     const it = input.items[i];
     const sku = skus[i];
     const exp = expected.get(skuKey(it.productId, it.variantId ?? null)) ?? 0;
     const diff = it.physicalCount - exp;
-    if (diff < 0) shortfallValue += -diff * sku.unitPrice;
-    else if (diff > 0) hasSurplus = true;
+    const label = { productName: sku.productName, variantName: sku.variantName };
+    // Gate berbasis QTY, bukan nilai Rp: SKU berharga 0 (mis. Croissant)
+    // punya selisih nilai 0 sehingga dulu lolos tanpa gate.
+    if (diff < 0) {
+      hasShortfall = true;
+      shortfallValue += -diff * sku.unitPrice;
+      shortfallSkus.push(label);
+    } else if (diff > 0) {
+      hasSurplus = true;
+      surplusSkus.push(label);
+    }
   }
 
   // Surplus jangan tutupi error produksi — paksa kasir hitung ulang
@@ -657,16 +677,20 @@ export async function createStockOpname(input: {
     // bukan error karena ini gate-konfirmasi, bukan kegagalan.
     return {
       ok: true,
-      data: { discrepancy: { kind: "surplus", shortfallValue: 0 } },
+      data: {
+        discrepancy: { kind: "surplus", shortfallValue: 0, skus: surplusSkus },
+      },
     };
   }
 
   // Shortfall → blok submit kecuali user explicit konfirmasi via
   // modal "Bayar selisih" / "Hitung ulang".
-  if (shortfallValue > 0 && !input.allowDiscrepancy) {
+  if (hasShortfall && !input.allowDiscrepancy) {
     return {
       ok: true,
-      data: { discrepancy: { kind: "shortfall", shortfallValue } },
+      data: {
+        discrepancy: { kind: "shortfall", shortfallValue, skus: shortfallSkus },
+      },
     };
   }
 
