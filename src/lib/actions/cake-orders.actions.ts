@@ -26,6 +26,7 @@ import { insertCakePaymentLeg } from "@/lib/cake-orders/payment-write";
 import { resolveBasePrice } from "@/lib/cake-orders/pricing";
 import {
   isReadyCakeInStock,
+  isReadyCakeSoldViaPos,
   recordReadyCakeExit,
   recordReadyCakeProduced,
   retractReadyCakeProduced,
@@ -100,6 +101,9 @@ function computeDiscountIdr(
 function resolveIsReadyStock(input: Pick<CreateCakeOrderInput, "isReadyStock" | "customerName">): boolean {
   return !!input.isReadyStock || /^s*ready(s|$)/i.test(input.customerName ?? "");
 }
+
+const READY_CAKE_SOLD_MESSAGE =
+  "Kue ini sudah terjual lewat POS. Batalkan penjualannya di POS kalau perlu mengembalikannya.";
 
 const READY_CAKE_LOCK_MESSAGE =
   "Ready cake yang sudah masuk stok hanya bisa dikeluarkan lewat penarikan di POS (kasir toko / koordinator toko).";
@@ -1067,6 +1071,7 @@ export async function discardCakeOrder(id: string): Promise<ActionResult> {
     .maybeSingle();
   const current = (row as unknown as { status?: string } | null)?.status;
   if (!current) return { ok: false, error: "Order tidak ditemukan" };
+  if (await isReadyCakeSoldViaPos(supabase, id)) return { ok: false, error: READY_CAKE_SOLD_MESSAGE };
   if (await readyCakeLockedForCaller(supabase, id)) return { ok: false, error: READY_CAKE_LOCK_MESSAGE };
   if (
     current !== "in_progress" &&
@@ -1120,6 +1125,7 @@ export async function setCakeOrderStatus(
   } | null;
   const current = row?.status;
   if (!current) return { ok: false, error: "Order tidak ditemukan" };
+  if (await isReadyCakeSoldViaPos(supabase, id)) return { ok: false, error: READY_CAKE_SOLD_MESSAGE };
   if (status === "cancelled" && (await readyCakeLockedForCaller(supabase, id))) {
     return { ok: false, error: READY_CAKE_LOCK_MESSAGE };
   }

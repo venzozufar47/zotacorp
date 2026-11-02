@@ -332,6 +332,8 @@ export async function listCakePickupsForPos(
     )
     .eq("branch", branch)
     .eq("status", "ready")
+    // Ready cake dijual lewat tombol Ready Cake di keranjang POS, bukan lewat tab Pesanan.
+    .eq("is_ready_stock", false)
     .is("archived_at", null)
     .in("delivery_option_id", pickupIds)
     .order("scheduled_at", { ascending: true });

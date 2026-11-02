@@ -152,6 +152,8 @@ export async function getCakeFinanceRecapMonth(
       .lt("created_at", monthEnd)
       .neq("status", "cancelled")
       .neq("status", "discarded")
+      // Ready cake yang dijual lewat POS dibukukan sebagai penjualan POS; jangan dihitung dua kali di sini.
+      .is("sold_pos_sale_id", null)
       .order("created_at")
       .order("id")
       .range(offset, offset + PAGE - 1);

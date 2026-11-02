@@ -107,16 +107,9 @@ export default async function PosPage({
     stockByKey[key] = s.onHand;
   }
 
-  // Panel Ready Cake hanya ada bila cabang ini punya SKU-nya (jumlah resmi dari stok, bukan dari daftar kue).
-  const readyCakeSkus = onHand.filter((s) => s.productName === READY_CAKE_PRODUCT_NAME);
-  const readyCake =
-    readyCakeSkus.length > 0
-      ? {
-          regular: readyCakeSkus.filter((s) => s.variantName !== "DIY").reduce((a, s) => a + s.onHand, 0),
-          diy: readyCakeSkus.filter((s) => s.variantName === "DIY").reduce((a, s) => a + s.onHand, 0),
-          items: readyCakeItems,
-        }
-      : null;
+  // Tombol Ready Cake hanya ada bila cabang ini punya SKU-nya; daftar kue dari pesanan kue yang produksinya berjalan.
+  const hasReadyCakeSku = onHand.some((s) => s.productName === READY_CAKE_PRODUCT_NAME);
+  const readyCake = hasReadyCakeSku ? { items: readyCakeItems } : null;
 
   return (
     <POSClient

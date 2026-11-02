@@ -62,7 +62,8 @@ import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { DailyRevenueTargetCard } from "@/components/pos/DailyRevenueTargetCard";
 import { FeedbackTargetCard } from "@/components/pos/FeedbackTargetCard";
-import { ReadyCakePanel, type ReadyCakeSummary } from "@/components/pos/ReadyCakePanel";
+import { ReadyCakePicker, ReadyCakeTile, type ReadyCakeSummary } from "@/components/pos/ReadyCakePicker";
+import type { ReadyCakeItem } from "@/lib/actions/pos-ready-cake.actions";
 import type { PosFeedbackToday } from "@/lib/actions/feedback.actions";
 import type { PosDailyRevenueSummary } from "@/lib/actions/pos.actions";
 import {
@@ -97,7 +98,7 @@ interface Props {
    *  admin / gagal dibaca — kartu tidak dirender. */
   dailyRevenue?: PosDailyRevenueSummary | null;
   feedbackToday?: PosFeedbackToday | null;
-  /** Stok + daftar ready cake cabang ini; null = cabang tanpa SKU Ready Cake (panel tidak dirender). */
+  /** Daftar ready cake cabang ini; null = cabang tanpa SKU Ready Cake (tombol Ready Cake tidak dirender). */
   readyCake?: ReadyCakeSummary | null;
   /** Konten struk bersama (server, per rekening). */
   receiptContent: ReceiptContent;
@@ -110,6 +111,14 @@ interface Props {
   /** Kampanye diskon aktif yang tanggalnya mencakup hari ini untuk rekening ini. Layar menyaring "berlaku sekarang"
    *  (jam & hari) dengan jam perangkat; server tetap menentukan hasil akhir saat bayar. */
   campaigns?: PosDiscountCampaign[];
+}
+
+/** Ready cake yang dipilih kasir ke keranjang (satu kue = satu baris, harga dari pesanan kue). */
+interface ReadyLine {
+  orderId: string;
+  name: string;
+  price: number;
+  isDiy: boolean;
 }
 
 interface CustomLine {
@@ -238,6 +247,8 @@ export function POSClient({
   }, [campaigns.length]);
   const liveNow = useMemo(() => jakartaNowParts(new Date(clock)), [clock]);
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
+  const [readyLines, setReadyLines] = useState<ReadyLine[]>([]);
+  const [readyPickerOpen, setReadyPickerOpen] = useState(false);
   // QRIS: kasir memilih "ada verifikasi bunyi BukuPay" (tanpa foto) atau "tidak ada bunyi" (foto bukti
   // wajib) — state-nya di-reset setiap kali konfirmasi dibuka/ditutup.
   const [qrisVerification, setQrisVerification] = useState<QrisVerification | null>(null);
@@ -334,6 +345,8 @@ export function POSClient({
       qty: number;
       subtotal: number;
       custom: boolean;
+      /** Ready cake dari stok toko: qty tetap 1, tanpa diskon/override. */
+      ready: boolean;
       /** Harga satuan efektif (sudah diskon bila ada). */
       unitPrice: number;
       /** Harga normal; non-null hanya bila baris ini didiskon. */
@@ -366,6 +379,7 @@ export function POSClient({
         qty,
         subtotal,
         custom: false,
+        ready: false,
         unitPrice,
         originalPrice: discounted != null ? info.price : null,
       });
@@ -386,12 +400,29 @@ export function POSClient({
         qty: c.qty,
         subtotal,
         custom: true,
+        ready: false,
         unitPrice: c.price,
         originalPrice: null,
       });
     }
+    for (const r of readyLines) {
+      total += r.price;
+      itemCount += 1;
+      cartLines.push({
+        key: `r:${r.orderId}`,
+        name: `Ready Cake — ${r.name}${r.isDiy ? " (DIY)" : ""}`,
+        baseName: `Ready Cake — ${r.name}`,
+        sugarLabel: null,
+        qty: 1,
+        subtotal: r.price,
+        custom: false,
+        ready: true,
+        unitPrice: r.price,
+        originalPrice: null,
+      });
+    }
     return { total, itemCount, cartLines, qtyByProductId };
-  }, [cart, customItems, lineByKey, discountByKey]);
+  }, [cart, customItems, readyLines, lineByKey, discountByKey]);
 
   // Concept-b: filter produk by case-insensitive substring of nama
   // (sederhana, sesuai design — chips kategori belum ada karena model
@@ -598,9 +629,18 @@ export function POSClient({
     setCustomItems((arr) => arr.filter((c) => c.localId !== localId));
   }
 
+  function addReadyCake(it: ReadyCakeItem) {
+    setReadyLines((arr) =>
+      arr.some((r) => r.orderId === it.id)
+        ? arr
+        : [...arr, { orderId: it.id, name: it.name, price: it.priceIdr, isDiy: it.isDiy }]
+    );
+  }
+
   function resetCart() {
     setCart({});
     setCustomItems([]);
+    setReadyLines([]);
     setDiscountByKey({});
     setChosenCampaignId(null);
   }
@@ -633,6 +673,7 @@ export function POSClient({
             }
           : { customName: c.name, customPrice: c.price, qty: c.qty }
       ),
+      ...readyLines.map((r) => ({ readyCakeOrderId: r.orderId, qty: 1 })),
     ];
     if (items.length === 0) return;
     if (!customerName.trim()) {
@@ -907,6 +948,7 @@ export function POSClient({
             // Catalog line punya entry di lineByKey — pakai key untuk
             // inc/dec via cart record. Custom line keys-nya `c:<localId>`
             // — render dengan handler customItems.
+            const isReady = line.ready;
             const isCustom = line.key.startsWith("c:");
             const customId = isCustom ? line.key.slice(2) : null;
             // Per-item dine/TA override — hanya untuk catalog item
@@ -956,7 +998,7 @@ export function POSClient({
                     )}
                   </p>
                 </div>
-                {!isCustom && (
+                {!isCustom && !isReady && (
                   <button
                     type="button"
                     onClick={() => setDiscountFor(line.key)}
@@ -970,7 +1012,7 @@ export function POSClient({
                     %
                   </button>
                 )}
-                {!isCustom && (
+                {!isCustom && !isReady && (
                   <button
                     type="button"
                     onClick={toggleItemMode}
@@ -988,6 +1030,17 @@ export function POSClient({
                     {itemMode === "dine_in" ? "🍽️" : "🥡"}
                   </button>
                 )}
+                {isReady && (
+                  <button
+                    type="button"
+                    aria-label="Hapus"
+                    onClick={() => setReadyLines((arr) => arr.filter((r) => `r:${r.orderId}` !== line.key))}
+                    className="size-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center justify-center"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                {!isReady && (
                 <button
                   type="button"
                   aria-label="Kurangi"
@@ -1000,9 +1053,13 @@ export function POSClient({
                 >
                   <Minus size={12} />
                 </button>
+                )}
+                {!isReady && (
                 <span className="w-5 text-center text-sm font-semibold tabular-nums">
                   {line.qty}
                 </span>
+                )}
+                {!isReady && (
                 <button
                   type="button"
                   aria-label="Tambah"
@@ -1015,6 +1072,7 @@ export function POSClient({
                 >
                   <Plus size={12} />
                 </button>
+                )}
                 {isCustom && customId && (
                   <button
                     type="button"
@@ -1282,7 +1340,6 @@ export function POSClient({
             )}
           </div>
         )}
-        {readyCake && <ReadyCakePanel summary={readyCake} />}
         <DiscountBanner campaigns={campaigns} now={liveNow} picked={picked} chosenId={chosenCampaignId} onChoose={setChosenCampaignId} />
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
           <div className="relative">
@@ -1301,6 +1358,9 @@ export function POSClient({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
+          {readyCake && (searchQuery.trim() === "" || "ready cake".includes(searchQuery.trim().toLowerCase())) && (
+            <ReadyCakeTile summary={readyCake} inCart={readyLines.length} onOpen={() => setReadyPickerOpen(true)} />
+          )}
           {filteredProducts.map((p) => {
           const hasVariants = p.variants.length > 0;
           const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
@@ -1586,6 +1646,15 @@ export function POSClient({
         <CustomItemDialog
           onClose={() => setCustomOpen(false)}
           onAdd={addCustom}
+        />
+      )}
+
+      {readyPickerOpen && readyCake && (
+        <ReadyCakePicker
+          summary={readyCake}
+          pickedIds={new Set(readyLines.map((r) => r.orderId))}
+          onPick={addReadyCake}
+          onClose={() => setReadyPickerOpen(false)}
         />
       )}
 

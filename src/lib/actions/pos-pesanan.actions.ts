@@ -16,6 +16,7 @@ import {
   type StockQtyLine,
 } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
+import { releaseReadyCakesForSale } from "@/lib/cake-orders/ready-stock";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import type { FulfillmentType, SettleVia } from "./pos.actions";
 
@@ -221,7 +222,7 @@ export async function updatePesananItems(input: {
   const { data: existingRaw } = await sb
     .from("pos_sale_items")
     .select(
-      "id, product_id, product_name, variant_id, variant_name, sugar_level, unit_price, original_unit_price, qty, fulfillment_type"
+      "id, product_id, product_name, variant_id, variant_name, sugar_level, unit_price, original_unit_price, qty, fulfillment_type, ready_cake_order_id"
     )
     .eq("sale_id", sale.id);
   type ExistingItem = {
@@ -235,6 +236,7 @@ export async function updatePesananItems(input: {
     original_unit_price: number | null;
     qty: number;
     fulfillment_type: FulfillmentType | null;
+    ready_cake_order_id: string | null;
   };
   const existing = (existingRaw ?? []) as ExistingItem[];
   const existingById = new Map(existing.map((e) => [e.id, e]));
@@ -250,6 +252,8 @@ export async function updatePesananItems(input: {
     if (!row) return { ok: false, error: "Item lama tidak ditemukan di pesanan ini." };
     if (!Number.isInteger(k.qty) || k.qty <= 0)
       return { ok: false, error: `Qty "${row.product_name}" harus bilangan bulat > 0.` };
+    if (row.ready_cake_order_id && k.qty !== 1)
+      return { ok: false, error: `"${row.product_name}" adalah satu kue ready, qty tidak bisa diubah.` };
     if (seenIds.has(k.itemId))
       return { ok: false, error: `Item "${row.product_name}" disebut dua kali.` };
     seenIds.add(k.itemId);
@@ -426,6 +430,13 @@ export async function updatePesananItems(input: {
       ok: false,
       error: "Pesanan ini sudah dibayar atau dibatalkan orang lain — tidak jadi diedit.",
     };
+
+  // Ready cake yang barisnya dihapus dari pesanan kembali ke daftar ready.
+  await releaseReadyCakesForSale(
+    adminDb,
+    sale.id,
+    removedItems.map((r) => r.ready_cake_order_id).filter((v): v is string => !!v)
+  );
 
   // Delta stok per SKU: dihapus → negatif (restore), qty naik/turun pada
   // baris lama → selisihnya, baris baru → positif penuh (deduct).
@@ -761,6 +772,7 @@ export async function cancelPesanan(input: {
   // dalam kasus itu void saja tidak cukup (deduksi sudah terserap baseline
   // opname). Best-effort: kegagalan di sini tidak membatalkan void.
   const cust = sale.customer_name?.trim();
+  await releaseReadyCakesForSale(adminDb, sale.id);
   await restoreStockIfAbsorbedByOpname(
     adminDb,
     sale,

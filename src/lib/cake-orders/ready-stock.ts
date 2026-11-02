@@ -233,6 +233,19 @@ export async function discardOldestReadyCakes(
  * Ready cake yang sudah tercatat masuk stok dan belum keluar. Kue seperti ini hanya boleh dikeluarkan lewat
  * penarikan di POS (kasir toko / koordinator toko, dengan PIN); admin cake tidak boleh membuang atau membatalkannya.
  */
+export async function isReadyCakeSoldViaPos(db: Db, orderId: string): Promise<boolean> {
+  try {
+    const { data } = await db
+      .from("cake_orders" as never)
+      .select("sold_pos_sale_id")
+      .eq("id", orderId)
+      .maybeSingle();
+    return !!(data as unknown as { sold_pos_sale_id: string | null } | null)?.sold_pos_sale_id;
+  } catch {
+    return false;
+  }
+}
+
 export async function isReadyCakeInStock(db: Db, orderId: string): Promise<boolean> {
   try {
     const order = await loadOrder(db, orderId);
@@ -241,5 +254,118 @@ export async function isReadyCakeInStock(db: Db, orderId: string): Promise<boole
     return !(await movementExists(db, orderId, "withdrawal"));
   } catch {
     return false;
+  }
+}
+
+export interface ReadyCakeForSale {
+  orderId: string;
+  name: string;
+  priceIdr: number;
+  isDiy: boolean;
+  productId: string;
+  variantId: string | null;
+  productName: string;
+  variantName: string | null;
+}
+
+/**
+ * Validasi satu ready cake untuk dijual lewat keranjang POS rekening `bankAccountId`: kue harus ready (produksi selesai,
+ * tercatat masuk stok, belum keluar / terjual), milik cabang rekening itu, dan SKU stoknya ada. Harga SELALU dari
+ * pesanan (ditetapkan Tasya), tidak pernah dari klien. Mengembalikan pesan galat siap tampil bila tidak bisa dijual.
+ */
+export async function resolveReadyCakeForSale(
+  db: Db,
+  orderId: string,
+  bankAccountId: string
+): Promise<{ ok: true; cake: ReadyCakeForSale } | { ok: false; error: string }> {
+  const { data } = await db
+    .from("cake_orders" as never)
+    .select("id, customer_name, total_idr, is_diy, is_ready_stock, status, production_status, picked_up_at, sold_pos_sale_id, archived_at, branch")
+    .eq("id", orderId)
+    .maybeSingle();
+  const o = data as unknown as {
+    id: string;
+    customer_name: string;
+    total_idr: number;
+    is_diy: boolean;
+    is_ready_stock: boolean;
+    status: string;
+    production_status: string;
+    picked_up_at: string | null;
+    sold_pos_sale_id: string | null;
+    archived_at: string | null;
+    branch: "pare" | "semarang";
+  } | null;
+  if (!o || !o.is_ready_stock) return { ok: false, error: "Ready cake tidak ditemukan" };
+  const label = o.customer_name;
+  if (o.sold_pos_sale_id || o.picked_up_at || o.status === "done")
+    return { ok: false, error: `"${label}" sudah terjual` };
+  if (o.status !== "ready" || o.production_status !== "done" || o.archived_at)
+    return { ok: false, error: `"${label}" belum siap dijual` };
+  if (!(await isReadyCakeInStock(db, orderId))) return { ok: false, error: `"${label}" tidak tercatat di stok` };
+  const sku = await resolveSku(db, o);
+  if (!sku || sku.accountId !== bankAccountId) return { ok: false, error: `"${label}" bukan ready cake cabang ini` };
+  if (!(o.total_idr >= 0)) return { ok: false, error: `Harga "${label}" belum ditetapkan` };
+  const { data: prod } = await db.from("pos_products").select("name").eq("id", sku.productId).maybeSingle();
+  let variantName: string | null = null;
+  if (sku.variantId) {
+    const { data: v } = await db.from("pos_product_variants").select("name").eq("id", sku.variantId).maybeSingle();
+    variantName = v?.name ?? null;
+  }
+  return {
+    ok: true,
+    cake: {
+      orderId,
+      name: label,
+      priceIdr: Number(o.total_idr),
+      isDiy: o.is_diy,
+      productId: sku.productId,
+      variantId: sku.variantId,
+      productName: prod?.name ?? READY_CAKE_PRODUCT_NAME,
+      variantName,
+    },
+  };
+}
+
+/**
+ * Tandai kue terjual lewat penjualan POS `saleId`. Atomik: hanya satu penjualan yang bisa memegang kue (kalau dua kasir
+ * menjual kue yang sama, yang kedua gagal). TIDAK mencatat penarikan stok: stok turun lewat baris penjualan itu sendiri,
+ * dan TIDAK mencatat pembayaran di pesanan kue: uangnya dibukukan sebagai penjualan POS.
+ */
+export async function claimReadyCakeForSale(db: Db, orderId: string, saleId: string): Promise<boolean> {
+  try {
+    const { data } = await db
+      .from("cake_orders" as never)
+      .update({ status: "done", sold_pos_sale_id: saleId } as never)
+      .eq("id", orderId)
+      .eq("is_ready_stock", true)
+      .eq("status", "ready")
+      .is("picked_up_at", null)
+      .is("sold_pos_sale_id", null)
+      .select("id");
+    return ((data ?? []) as unknown[]).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Penjualan dibatalkan / baris dihapus: kue kembali ke daftar ready. `onlyOrderIds` membatasi ke kue tertentu (edit
+ * pesanan); tanpa itu semua kue milik penjualan itu dikembalikan. Best-effort dan idempoten.
+ */
+export async function releaseReadyCakesForSale(db: Db, saleId: string, onlyOrderIds?: string[]): Promise<void> {
+  try {
+    let q = db
+      .from("cake_orders" as never)
+      .update({ status: "ready", sold_pos_sale_id: null } as never)
+      .eq("sold_pos_sale_id", saleId)
+      .eq("is_ready_stock", true);
+    if (onlyOrderIds) {
+      if (onlyOrderIds.length === 0) return;
+      q = q.in("id", onlyOrderIds);
+    }
+    await q;
+  } catch {
+    /* best-effort */
   }
 }

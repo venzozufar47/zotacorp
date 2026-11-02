@@ -23,6 +23,12 @@ import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { createAdminClient as createShiftAdminClient } from "./_supabase-admin";
 import { saleShiftContext } from "@/lib/pos/shift-data";
 import { resolveLedgerAccountId } from "@/lib/pos/ledger";
+import {
+  claimReadyCakeForSale,
+  releaseReadyCakesForSale,
+  resolveReadyCakeForSale,
+  type ReadyCakeForSale,
+} from "@/lib/cake-orders/ready-stock";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -618,7 +624,9 @@ export type PosSaleItemInput =
       qty: number;
       sugarLevel?: SugarLevel | null;
     }
-  | { customName: string; customPrice: number; qty: number };
+  | { customName: string; customPrice: number; qty: number }
+  /** Ready cake dari stok toko: server mengambil harga dan SKU, dan memastikan kue masih ada. qty selalu 1. */
+  | { readyCakeOrderId: string; qty: number };
 
 type CatalogItemInput =
   | {
@@ -639,6 +647,10 @@ type CustomItemInput = { customName: string; customPrice: number; qty: number };
 
 function isCatalogItem(it: PosSaleItemInput): it is CatalogItemInput {
   return "productId" in it;
+}
+
+function isReadyCakeItem(it: PosSaleItemInput): it is { readyCakeOrderId: string; qty: number } {
+  return "readyCakeOrderId" in it;
 }
 
 export async function createPosSale(input: {
@@ -685,6 +697,11 @@ export async function createPosSale(input: {
   for (const it of input.items) {
     if (!Number.isInteger(it.qty) || it.qty <= 0)
       return { ok: false, error: "Qty harus bilangan bulat > 0" };
+    if (isReadyCakeItem(it)) {
+      if (!it.readyCakeOrderId) return { ok: false, error: "Ready cake tidak valid" };
+      if (it.qty !== 1) return { ok: false, error: "Ready cake dijual satuan (qty 1)" };
+      continue;
+    }
     if (isCatalogItem(it)) {
       if (!it.productId) return { ok: false, error: "productId kosong" };
       if (
@@ -840,10 +857,42 @@ export async function createPosSale(input: {
     }
   }
 
+  // 1b. Ready cake: harga + SKU stok dari server; kue harus masih ready dan milik cabang ini.
+  const readyDb = createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const readyById = new Map<string, ReadyCakeForSale>();
+  for (const it of input.items) {
+    if (!isReadyCakeItem(it)) continue;
+    if (readyById.has(it.readyCakeOrderId))
+      return { ok: false, error: "Kue yang sama masuk keranjang dua kali" };
+    const res = await resolveReadyCakeForSale(readyDb, it.readyCakeOrderId, input.bankAccountId);
+    if (!res.ok) return { ok: false, error: res.error };
+    readyById.set(it.readyCakeOrderId, res.cake);
+  }
+
   // 2. Hitung total server-side. Catalog items pakai harga DB (varian
   //    kalau ada), custom items pakai harga dari input.
   let total = 0;
   const itemsResolved = input.items.map((it) => {
+    if (isReadyCakeItem(it)) {
+      const cake = readyById.get(it.readyCakeOrderId)!;
+      total += cake.priceIdr;
+      return {
+        productId: cake.productId as string | null,
+        productName: cake.productName + " — " + cake.name,
+        variantId: cake.variantId,
+        variantName: cake.variantName,
+        sugarLevel: null,
+        unitPrice: cake.priceIdr,
+        originalUnitPrice: null,
+        qty: 1,
+        subtotal: cake.priceIdr,
+        readyCakeOrderId: cake.orderId as string | null,
+        readyCakeName: cake.name as string | null,
+      };
+    }
     if (isCatalogItem(it)) {
       const p = productMap.get(it.productId)!;
       const v = it.variantId ? variantMap.get(it.variantId)! : null;
@@ -865,6 +914,8 @@ export async function createPosSale(input: {
         originalUnitPrice: isDiscounted ? listPrice : null,
         qty: it.qty,
         subtotal,
+        readyCakeOrderId: null as string | null,
+        readyCakeName: null as string | null,
       };
     }
     const c = it as CustomItemInput;
@@ -881,6 +932,8 @@ export async function createPosSale(input: {
       originalUnitPrice: null,
       qty: c.qty,
       subtotal,
+      readyCakeOrderId: null as string | null,
+      readyCakeName: null as string | null,
     };
   });
   // `< 0` bukan `<= 0`: tiap unitPrice sudah divalidasi >= 0 di atas,
@@ -1002,12 +1055,24 @@ export async function createPosSale(input: {
         qty: it.qty,
         subtotal: it.subtotal,
         fulfillment_type: fulfillment,
+        ready_cake_order_id: it.readyCakeOrderId,
       };
     }) as never
   );
   if (itemsErr) {
     await supabase.from("pos_sales").delete().eq("id", sale.id);
     return { ok: false, error: itemsErr.message };
+  }
+
+  // 6b. Klaim tiap ready cake untuk sale ini (atomik; yang kalah balapan gagal dan semuanya dibatalkan).
+  for (const it of itemsResolved) {
+    if (!it.readyCakeOrderId) continue;
+    if (!(await claimReadyCakeForSale(readyDb, it.readyCakeOrderId, sale.id))) {
+      await releaseReadyCakesForSale(readyDb, sale.id);
+      await supabase.from("pos_sale_items").delete().eq("sale_id", sale.id);
+      await supabase.from("pos_sales").delete().eq("id", sale.id);
+      return { ok: false, error: '"' + (it.readyCakeName ?? "Ready cake") + '" baru saja terjual atau tidak tersedia lagi' };
+    }
   }
 
   // Untuk pesanan, lewati cashflow insert. Sale baru di-link ke
@@ -1048,6 +1113,7 @@ export async function createPosSale(input: {
       .select("id")
       .single();
     if (newErr || !newStmt) {
+      await releaseReadyCakesForSale(readyDb, sale.id);
       await supabase.from("pos_sale_items").delete().eq("sale_id", sale.id);
       await supabase.from("pos_sales").delete().eq("id", sale.id);
       return { ok: false, error: newErr?.message ?? "Gagal membuat statement" };
@@ -1110,6 +1176,7 @@ export async function createPosSale(input: {
     .select("id")
     .single();
   if (txErr || !tx) {
+    await releaseReadyCakesForSale(readyDb, sale.id);
     await supabase.from("pos_sale_items").delete().eq("sale_id", sale.id);
     await supabase.from("pos_sales").delete().eq("id", sale.id);
     return { ok: false, error: txErr?.message ?? "Gagal membuat transaksi" };
@@ -1132,6 +1199,7 @@ export async function createPosSale(input: {
     // Best-effort rollback semua; kalau ini pun gagal, sale tetap ada
     // tapi tanpa FK ke tx (kolom nullable).
     await supabase.from("cashflow_transactions").delete().eq("id", tx.id);
+    await releaseReadyCakesForSale(readyDb, sale.id);
     await supabase.from("pos_sale_items").delete().eq("sale_id", sale.id);
     await supabase.from("pos_sales").delete().eq("id", sale.id);
     return { ok: false, error: linkErr.message };
@@ -2076,6 +2144,8 @@ export async function voidPosSale(input: {
   }
 
   const cust = sale.customer_name?.trim();
+  // Ready cake yang terjual di transaksi ini kembali ke daftar ready.
+  await releaseReadyCakesForSale(adminDb, sale.id);
   await restoreStockIfAbsorbedByOpname(
     adminDb,
     sale,
