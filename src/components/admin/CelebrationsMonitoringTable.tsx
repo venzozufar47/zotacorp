@@ -8,7 +8,11 @@ import {
   MessageCircle,
   AlertTriangle,
   BellRing,
+  Search,
+  ChevronDown,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { needsPushVerification } from "@/lib/push/checkout-policy";
 import type { EmployeeMonitoringRow } from "@/lib/actions/employee-monitoring.actions";
 
 interface Props {
@@ -51,7 +55,7 @@ function relativeSince(iso: string | null): string {
 function pushHealthTier(r: EmployeeMonitoringRow): 0 | 1 | 2 | 3 {
   if (r.pushExempt) return 3;
   if (r.pushDeviceCount === 0) return 0;
-  if (!r.pushLastClickedAt) return 1;
+  if (needsPushVerification(r.pushLastClickedAt, false)) return 1;
   return 2;
 }
 
@@ -62,7 +66,12 @@ function pushHealthTier(r: EmployeeMonitoringRow): 0 | 1 | 2 | 3 {
  * bisa scan "siapa yang streaknya paling tinggi", "siapa ulang tahun
  * terdekat", dst dalam satu pandangan.
  */
-export function CelebrationsMonitoringTable({ rows }: Props) {
+export function CelebrationsMonitoringTable({ rows: allRows }: Props) {
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState("birthday");
+  const rows = useMemo(() => allRows.filter((r) =>
+    `${r.fullName} ${r.nickname ?? ""}`.toLocaleLowerCase("id").includes(query.trim().toLocaleLowerCase("id"))
+  ), [allRows, query]);
   const noticeRows = rows.filter((r) => r.notices.length > 0);
   const [notifQuery, setNotifQuery] = useState("");
 
@@ -144,7 +153,7 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
     });
   }, [notifLog, notifQuery]);
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
         <p className="text-sm text-muted-foreground">
@@ -156,13 +165,38 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Pantau karyawan</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{allRows.length} karyawan · Pilih kategori untuk melihat detail.</p>
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search aria-hidden="true" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input aria-label="Cari karyawan" type="search" placeholder="Cari nama karyawan…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-h-11 pl-10 text-base sm:text-sm" />
+        </div>
+      </div>
       {noticeRows.length > 0 && <NoticeSection rows={noticeRows} />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" aria-label="Kategori monitoring">
+        {[
+          { id: "birthday", label: "Ulang tahun", count: birthdayRows.length, icon: Cake },
+          { id: "anniversary", label: "Masa kerja", count: anniversaryRows.length, icon: Sparkles },
+          { id: "streak", label: "Streak presensi", count: streakRows.length, icon: Flame },
+          { id: "push", label: "Notifikasi push", count: pushHealthRows.filter((r) => pushHealthTier(r) <= 1).length, icon: BellRing },
+          { id: "history", label: "Riwayat pesan", count: notifLog.length, icon: MessageCircle },
+        ].map(({ id, label, count, icon: Icon }) => (
+          <button key={id} type="button" aria-pressed={active === id} aria-controls={`monitoring-${id}`} onClick={() => setActive(id)} className={`min-h-20 cursor-pointer rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active === id ? "border-primary bg-primary/5 text-primary" : "border-border bg-card text-muted-foreground hover:bg-muted/50"}`}>
+            <span className="flex items-center justify-between gap-2"><Icon size={18} aria-hidden="true" /><span className="text-xl font-semibold tabular-nums">{count}</span></span>
+            <span className="mt-2 block text-sm font-medium">{label}</span>
+          </button>
+        ))}
+      </div>
+      {query && <p role="status" className="text-sm text-muted-foreground">{rows.length} karyawan ditemukan untuk “{query}”.</p>}
+      <div>
         <CategoryCard
+          id="streak" hidden={active !== "streak"}
           title="Streak presensi"
           icon={<Flame size={14} />}
-          accent="bg-emerald-50/60 border-emerald-300"
           countLabel={`${streakRows.length} karyawan`}
         >
           {streakRows.length === 0 ? (
@@ -172,16 +206,16 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
               {streakRows.map((r) => (
                 <li
                   key={r.id}
-                  className="flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10"
+                  className="flex items-center flex-wrap justify-between gap-3 px-4 py-3 text-sm hover:bg-accent/10"
                 >
                   <span className="flex-1 min-w-0 truncate text-foreground font-medium">
                     {pickName(r)}
                   </span>
-                  <span className="font-mono tabular-nums text-foreground">
+                  <span className="tabular-nums text-foreground">
                     {r.streakCurrent} hari
                   </span>
-                  <span className="text-muted-foreground text-[10px] whitespace-nowrap">
-                    best {r.streakPersonalBest} · ms{" "}
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    Terbaik {r.streakPersonalBest} · Milestone{" "}
                     {r.streakLastMilestone || "—"}
                   </span>
                 </li>
@@ -191,9 +225,9 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
         </CategoryCard>
 
         <CategoryCard
+          id="birthday" hidden={active !== "birthday"}
           title="Ulang tahun"
           icon={<Cake size={14} />}
-          accent="bg-pink-50/60 border-pink-300"
           countLabel={`${birthdayRows.length} karyawan`}
         >
           {birthdayRows.length === 0 ? (
@@ -207,28 +241,28 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
                   <li
                     key={r.id}
                     className={
-                      "flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10 " +
-                      (soon ? "bg-pink-50/40" : "")
+                      "flex items-center flex-wrap justify-between gap-3 px-4 py-3 text-sm hover:bg-accent/10 " +
+                      (soon ? "bg-primary/5" : "")
                     }
                   >
                     <span className="flex-1 min-w-0 truncate text-foreground font-medium">
                       {pickName(r)}
                     </span>
-                    <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                    <span className="text-muted-foreground text-xs whitespace-nowrap">
                       {formatDate(r.birthdayThisYear)}
                     </span>
                     <span
                       className={
-                        "text-[10px] whitespace-nowrap font-semibold " +
-                        (soon ? "text-pink-700" : "text-muted-foreground")
+                        "text-xs whitespace-nowrap font-semibold " +
+                        (soon ? "text-primary" : "text-muted-foreground")
                       }
                     >
                       {relativeDays(r.daysToBirthday)}
                     </span>
-                    <span className="text-[9px] text-muted-foreground italic whitespace-nowrap">
+                    <span className="text-xs text-muted-foreground italic whitespace-nowrap">
                       {r.birthdayLastGreeted
-                        ? `greet ${formatDate(r.birthdayLastGreeted)}`
-                        : "blm greet"}
+                        ? `Disapa ${formatDate(r.birthdayLastGreeted)}`
+                        : "Belum disapa"}
                     </span>
                   </li>
                 );
@@ -238,9 +272,9 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
         </CategoryCard>
 
         <CategoryCard
+          id="anniversary" hidden={active !== "anniversary"}
           title="Anniversary tahun kerja"
           icon={<Sparkles size={14} />}
-          accent="bg-amber-50/60 border-amber-300"
           countLabel={`${anniversaryRows.length} karyawan`}
         >
           {anniversaryRows.length === 0 ? (
@@ -254,26 +288,26 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
                   <li
                     key={r.id}
                     className={
-                      "flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10 " +
-                      (soon ? "bg-amber-50/40" : "")
+                      "flex items-center flex-wrap justify-between gap-3 px-4 py-3 text-sm hover:bg-accent/10 " +
+                      (soon ? "bg-primary/5" : "")
                     }
                   >
                     <span className="flex-1 min-w-0 truncate text-foreground font-medium">
                       {pickName(r)}
                     </span>
-                    <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                    <span className="text-muted-foreground text-xs whitespace-nowrap">
                       {formatDate(r.anniversaryThisYear)}
                     </span>
                     <span
                       className={
-                        "text-[10px] whitespace-nowrap font-semibold " +
-                        (soon ? "text-amber-700" : "text-muted-foreground")
+                        "text-xs whitespace-nowrap font-semibold " +
+                        (soon ? "text-warning" : "text-muted-foreground")
                       }
                     >
                       {relativeDays(r.daysToAnniversary)}
                     </span>
-                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">
-                      {r.yearsOfService}th
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {r.yearsOfService} tahun
                     </span>
                   </li>
                 );
@@ -283,52 +317,52 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
         </CategoryCard>
 
         <CategoryCard
+          id="push" hidden={active !== "push"}
           title="Kesehatan push notification"
           icon={<BellRing size={14} />}
-          accent="bg-sky-50/60 border-sky-300"
           countLabel={`${pushHealthRows.filter((r) => pushHealthTier(r) <= 1).length} perlu dicek`}
         >
-          <p className="px-3 pt-2 pb-1 text-[10.5px] text-muted-foreground">
+          <p className="px-3 pt-2 pb-1 text-sm text-muted-foreground">
             Server tidak bisa menanyakan browser &quot;izin notifikasi
             masih aktif?&quot; secara langsung — bukti terkuat adalah
             karyawan pernah benar-benar mengetuk sebuah notifikasi.
           </p>
-          <ul className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
+          <ul className="divide-y divide-border/60 ">
             {pushHealthRows.map((r) => {
               const tier = pushHealthTier(r);
               return (
                 <li
                   key={r.id}
-                  className="flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10"
+                  className="flex items-center flex-wrap justify-between gap-3 px-4 py-3 text-sm hover:bg-accent/10"
                 >
                   <span className="flex-1 min-w-0 truncate text-foreground font-medium">
                     {pickName(r)}
                   </span>
                   <span
                     className={
-                      "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap " +
+                      "inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap " +
                       (tier === 0
                         ? "bg-destructive/15 text-destructive"
                         : tier === 1
-                          ? "bg-amber-100 text-amber-700"
+                          ? "bg-warning/10 text-warning"
                           : tier === 2
-                            ? "bg-emerald-100 text-emerald-700"
+                            ? "bg-success/10 text-success"
                             : "bg-muted text-muted-foreground")
                     }
                   >
                     {tier === 0
                       ? "Belum subscribe"
                       : tier === 1
-                        ? "Belum pernah klik"
+                          ? (r.pushLastClickedAt ? "Perlu verifikasi" : "Belum pernah klik")
                         : tier === 2
                           ? "Aktif"
                           : "Dikecualikan"}
                   </span>
-                  <span className="text-muted-foreground text-[10px] whitespace-nowrap">
-                    {r.pushDeviceCount} device
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    {r.pushDeviceCount} perangkat
                   </span>
-                  <span className="text-muted-foreground text-[10px] whitespace-nowrap w-20 text-right">
-                    {tier === 2 ? relativeSince(r.pushLastClickedAt) : "—"}
+                  <span className="text-muted-foreground text-xs whitespace-nowrap w-20 text-right">
+                    {r.pushLastClickedAt ? relativeSince(r.pushLastClickedAt) : "—"}
                   </span>
                 </li>
               );
@@ -337,9 +371,9 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
         </CategoryCard>
 
         <CategoryCard
+          id="history" hidden={active !== "history"}
           title="Riwayat notifikasi perayaan"
           icon={<MessageCircle size={14} />}
-          accent="bg-indigo-50/60 border-indigo-300"
           countLabel={
             notifQuery
               ? `${notifLogFiltered.length} / ${notifLog.length} notif`
@@ -352,7 +386,7 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
               value={notifQuery}
               onChange={(e) => setNotifQuery(e.target.value)}
               placeholder="Cari nama, isi pesan, atau jenis (ulang tahun/anniversary/streak)…"
-              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="w-full rounded-lg border border-border bg-background px-2.5 min-h-11 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           {notifLog.length === 0 ? (
@@ -360,25 +394,25 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
           ) : notifLogFiltered.length === 0 ? (
             <Empty>Tidak ada hasil untuk &quot;{notifQuery}&quot;.</Empty>
           ) : (
-            <ul className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
+            <ul className="divide-y divide-border/60 ">
               {notifLogFiltered.map((entry) => (
                 <li
                   key={entry.log.id}
-                  className="px-3 py-2 text-xs hover:bg-accent/10"
+                  className="px-4 py-3 text-sm hover:bg-accent/10"
                 >
-                  <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex items-center flex-wrap justify-between gap-2">
                     <span className="font-medium text-foreground truncate">
                       {entry.employeeName}
                     </span>
                     <span
                       className={
-                        "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider " +
+                        "inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider " +
                         eventBadgeClass(entry.log.eventType)
                       }
                     >
                       {eventBadgeLabel(entry.log.eventType)}
                     </span>
-                    <span className="font-mono tabular-nums text-[10px] text-muted-foreground whitespace-nowrap">
+                    <span className="tabular-nums text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(entry.log.sentAt).toLocaleString("id-ID", {
                         day: "numeric",
                         month: "short",
@@ -387,16 +421,16 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
                       })}
                     </span>
                     {entry.log.status === "failed" && (
-                      <span className="text-[9px] font-bold text-destructive uppercase">
+                      <span className="text-xs font-bold text-destructive uppercase">
                         Gagal
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-[10px] text-muted-foreground whitespace-pre-wrap line-clamp-3">
+                  <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-3">
                     {entry.log.body}
                   </p>
                   {entry.log.errorMessage && (
-                    <p className="mt-0.5 text-[10px] text-destructive">
+                    <p className="mt-0.5 text-xs text-destructive">
                       {entry.log.errorMessage}
                     </p>
                   )}
@@ -411,31 +445,33 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
 }
 
 function NoticeSection({ rows }: { rows: EmployeeMonitoringRow[] }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const totalNotices = rows.reduce((s, r) => s + r.notices.length, 0);
   return (
-    <section className="rounded-2xl border-2 border-warning/40 bg-warning/10 overflow-hidden">
+    <section className="rounded-2xl border border-warning/30 bg-warning/10 overflow-hidden">
       <button
         type="button"
+        aria-expanded={open}
+        aria-controls="monitoring-notices"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-warning/15 transition"
+        className="w-full flex items-center justify-between gap-3 min-h-14 cursor-pointer px-4 py-3 hover:bg-warning/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <span className="flex items-center gap-2 text-warning font-semibold">
+        <span className="flex items-center gap-2 text-foreground font-semibold">
           <AlertTriangle size={14} />
-          {totalNotices} notice di {rows.length} karyawan
+          {totalNotices} catatan pada {rows.length} karyawan
         </span>
         <span className="text-xs text-muted-foreground">
-          {open ? "Klik untuk tutup" : "Klik untuk lihat"}
+          <ChevronDown aria-hidden="true" size={18} className={open ? "rotate-180" : ""} />
         </span>
       </button>
       {open && (
-        <ul className="divide-y divide-warning/20 bg-card">
+        <ul id="monitoring-notices" className="divide-y divide-warning/20 bg-card">
           {rows.map((r) => (
             <li key={r.id} className="px-4 py-2 text-xs">
               <div className="font-medium text-foreground mb-0.5">
                 {pickName(r)}
               </div>
-              <ul className="space-y-0.5 text-[11px]">
+              <ul className="space-y-0.5 text-sm">
                 {r.notices.map((n, i) => (
                   <li key={i} className="flex items-baseline gap-1.5">
                     <span className="text-warning">•</span>
@@ -452,26 +488,28 @@ function NoticeSection({ rows }: { rows: EmployeeMonitoringRow[] }) {
 }
 
 function CategoryCard({
+  id,
+  hidden,
   title,
   icon,
-  accent,
   countLabel,
   children,
 }: {
+  id: string;
+  hidden: boolean;
   title: string;
   icon: React.ReactNode;
-  accent: string;
   countLabel: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`rounded-2xl border-2 overflow-hidden ${accent}`}>
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-card border-b border-border">
+    <section id={`monitoring-${id}`} hidden={hidden} className="rounded-2xl border border-border overflow-hidden bg-card">
+      <div className="flex items-center justify-between gap-2 px-4 py-4 bg-card border-b border-border">
         <h2 className="font-display text-sm font-semibold flex items-center gap-2">
           {icon}
           {title}
         </h2>
-        <span className="text-[10px] text-muted-foreground">{countLabel}</span>
+        <span className="text-xs text-muted-foreground">{countLabel}</span>
       </div>
       <div className="bg-card">{children}</div>
     </section>
@@ -493,9 +531,9 @@ function eventBadgeLabel(eventType: string): string {
     case "anniversary_morning":
       return "Anniversary";
     case "birthday_broadcast":
-      return "Broadcast 🎂";
+      return "Broadcast ulang tahun";
     case "anniversary_broadcast":
-      return "Broadcast 🎉";
+      return "Broadcast masa kerja";
     case "streak_milestone":
       return "Streak";
     case "greeting_notified":
@@ -508,17 +546,17 @@ function eventBadgeLabel(eventType: string): string {
 function eventBadgeClass(eventType: string): string {
   switch (eventType) {
     case "birthday_morning":
-      return "bg-pink-100 text-pink-700";
+      return "bg-primary/10 text-primary";
     case "anniversary_morning":
-      return "bg-amber-100 text-amber-700";
+      return "bg-warning/10 text-warning";
     case "birthday_broadcast":
-      return "bg-pink-100 text-pink-700";
+      return "bg-primary/10 text-primary";
     case "anniversary_broadcast":
-      return "bg-amber-100 text-amber-700";
+      return "bg-warning/10 text-warning";
     case "streak_milestone":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-success/10 text-success";
     case "greeting_notified":
-      return "bg-purple-100 text-purple-700";
+      return "bg-primary/10 text-primary";
     default:
       return "bg-muted text-muted-foreground";
   }

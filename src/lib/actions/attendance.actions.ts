@@ -37,6 +37,7 @@ import { getBlockingTasks } from "@/lib/tasks/blocking";
 import { taskGateMessage } from "@/lib/tasks/gate";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { sendPushToAdmins } from "@/lib/push/web-push";
+import { checkoutPushGate } from "@/lib/push/checkout-gate";
 import { looseDb, effectiveCheckInTime, SELFIE_SESSION_WINDOW_MS } from "@/lib/attendance/selfie-gate-db";
 // Nonaktif sementara 2026-09-12 — lihat komentar di pemanggilnya di bawah.
 // import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
@@ -979,6 +980,16 @@ export async function checkOut(payload?: CheckOutPayload) {
     };
   }
 
+  let pushCheck;
+  try {
+    pushCheck = await checkoutPushGate(user.id, existing.id);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Verifikasi notifikasi gagal diperiksa." };
+  }
+  if (!pushCheck.ready) {
+    return { pushVerificationRequired: true as const, pushAttendanceId: existing.id, pushAttemptedAt: pushCheck.attemptedAt };
+  }
+
   const checkoutLat = payload?.latitude ?? null;
   const checkoutLng = payload?.longitude ?? null;
   const note = payload?.outsideLocationNote?.trim() || null;
@@ -1004,7 +1015,8 @@ export async function checkOut(payload?: CheckOutPayload) {
   const settings = await getCachedAttendanceSettings();
   const timezone = settings?.timezone ?? "Asia/Jakarta";
 
-  const now = new Date();
+  // Waktu server saat gate pertama dibuka, bukan waktu selesai verifikasi.
+  const now = pushCheck.attemptedAt ? new Date(pushCheck.attemptedAt) : new Date();
 
   // Threshold keterlambatan: karyawan flexible tidak punya jam akhir
   // tetap → skip threshold check. Untuk jadwal tetap, kita hitung

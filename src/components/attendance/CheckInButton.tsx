@@ -11,6 +11,7 @@ import { getSelfieGuide, verifyCheckInSelfie } from "@/lib/actions/attendance-se
 import { AttendancePushGate } from "./AttendancePushGate";
 import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
 import { TaskGateDialog } from "./TaskGateDialog";
+import { CheckoutPushDialog } from "./CheckoutPushDialog";
 import type { BlockingTask } from "@/lib/tasks/types";
 import { activeBreakWindow } from "@/lib/utils/break-windows";
 import { extensionFor } from "@/lib/images/compress-image";
@@ -150,6 +151,7 @@ export function CheckInButton({
     tasks: BlockingTask[];
     args: CheckoutArgs;
   } | null>(null);
+  const [checkoutPush, setCheckoutPush] = useState<{ attendanceId: string; attemptedAt: string; args: CheckoutArgs } | null>(null);
   // Selfie capture + upload for check-in. `pendingCoordsRef` holds the GPS
   // fix from step 1 while the selfie dialog is open in step 2.
   const [selfieOpen, setSelfieOpen] = useState(false);
@@ -566,6 +568,11 @@ export function CheckInButton({
       overrideCheckoutTime: args.overrideCheckoutTime ?? undefined,
     });
 
+    if (result?.pushVerificationRequired && result.pushAttendanceId && result.pushAttemptedAt) {
+      setCheckoutPush({ attendanceId: result.pushAttendanceId, attemptedAt: result.pushAttemptedAt, args });
+      return;
+    }
+
     // Server minta konfirmasi (outside location atau late > 30 min).
     // Buka dialog pilihan jam + catatan.
     const confirmResult = result as {
@@ -830,6 +837,16 @@ export function CheckInButton({
       />
 
       {/* Sign out diblokir Tugas Karyawan: kerjakan sekarang / tunda besok */}
+      {checkoutPush && <CheckoutPushDialog
+        attendanceId={checkoutPush.attendanceId}
+        attemptedAt={checkoutPush.attemptedAt}
+        onClose={() => setCheckoutPush(null)}
+        onContinue={() => {
+          const args = checkoutPush.args;
+          setCheckoutPush(null);
+          startTransition(async () => submitCheckout(args));
+        }}
+      />}
       <TaskGateDialog
         open={taskGate !== null}
         onOpenChange={(o) => {

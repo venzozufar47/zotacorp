@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { verifyPushClick } from "@/lib/push/click-proof";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,8 @@ export const dynamic = "force-dynamic";
  * dibuka lagi), jadi kita percaya `endpoint` (bukan session) sebagai
  * identitas: endpoint sudah unik per device di `push_subscriptions`, dan
  * cuma dipakai utk update `last_clicked_at` — tidak membocorkan/mengubah
- * data lain. Selalu balas 200 (fire-and-forget dari SW, tidak ada retry).
+ * data lain. Payload baru juga wajib membawa tanda tangan server agar endpoint
+ * saja tidak bisa dipakai untuk memalsukan klik dan melewati gate absen pulang.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -19,6 +21,9 @@ export async function POST(req: NextRequest) {
     const endpoint = typeof body?.endpoint === "string" ? body.endpoint : null;
     if (!endpoint) {
       return NextResponse.json({ ok: false }, { status: 400 });
+    }
+    if (!verifyPushClick(endpoint, body.proof, process.env.VAPID_PRIVATE_KEY ?? "")) {
+      return NextResponse.json({ ok: false }, { status: 403 });
     }
     const supabase = createAdminClient();
     await supabase

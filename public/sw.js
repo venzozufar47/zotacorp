@@ -25,7 +25,7 @@ self.addEventListener("push", (event) => {
       body: data.body || "",
       icon: data.icon || "/icon-192.png",
       badge: "/icon-192.png",
-      data: { url: data.url || "/" },
+      data: { url: data.url || "/", checkoutVerificationToken: data.checkoutVerificationToken, clickProof: data.clickProof },
     })
   );
 });
@@ -33,6 +33,28 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/";
+  const verificationToken = event.notification.data?.checkoutVerificationToken;
+  if (verificationToken) {
+    event.waitUntil((async () => {
+      // Record the proof before focusing the app. Keep its dialog/GPS state intact.
+      let verified = false;
+      try {
+        const response = await fetch("/api/push/checkout-verify", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: verificationToken }),
+        });
+        verified = response.ok;
+      } catch { /* The app offers resend/recovery when proof cannot be recorded. */ }
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const win of windows) {
+        win.postMessage({ type: "checkout-push-verified", verified });
+      }
+      const existing = windows.find((win) => new URL(win.url).pathname === "/dashboard") || windows[0];
+      if (existing) await existing.focus();
+      else await self.clients.openWindow(url);
+    })());
+    return;
+  }
 
   // Fire-and-forget beacon: the only server-observable proof that push
   // notifications are truly reaching this device (subscription rows
@@ -46,7 +68,7 @@ self.addEventListener("notificationclick", (event) => {
       return fetch("/api/push/click", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: sub.endpoint }),
+        body: JSON.stringify({ endpoint: sub.endpoint, proof: event.notification.data?.clickProof }),
       });
     })
     .catch(() => {});

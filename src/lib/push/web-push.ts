@@ -1,6 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { signPushClick } from "./click-proof";
 
 /**
  * Server-side Web Push sender.
@@ -40,6 +41,7 @@ export interface PushPayload {
   url?: string;
   /** Icon override; defaults to the app icon in the service worker. */
   icon?: string;
+  checkoutVerificationToken?: string;
 }
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -81,7 +83,6 @@ async function deliver(
   subs: StoredSubscription[],
   payload: PushPayload
 ): Promise<PushDeliveryResult> {
-  const body = JSON.stringify(payload);
   const stale: string[] = [];
   let delivered = 0;
 
@@ -90,7 +91,7 @@ async function deliver(
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          body
+          JSON.stringify({ ...payload, clickProof: signPushClick(s.endpoint, process.env.VAPID_PRIVATE_KEY!) })
         );
         delivered++;
       } catch (err: unknown) {
@@ -136,6 +137,16 @@ export async function sendPushToUser(
     .eq("user_id", userId);
 
   return deliver(supabase, subs ?? [], payload);
+}
+
+/** Target only the signed-in employee's selected browser. */
+export async function sendPushToDevice(userId: string, endpoint: string, payload: PushPayload) {
+  const supabase = createAdminClient();
+  if (!ensureConfigured()) return { targeted: 0, delivered: 0 };
+  const { data, error } = await supabase.from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth").eq("user_id", userId).eq("endpoint", endpoint);
+  if (error) throw new Error("Perangkat notifikasi belum bisa diperiksa.");
+  return deliver(supabase, data ?? [], payload);
 }
 
 /**

@@ -65,35 +65,35 @@ export function BirthdayBroadcastButton({
     <>
       <div
         className={
-          "rounded-2xl border-2 p-4 flex items-start gap-3 " +
+          "rounded-2xl border p-4 sm:p-5 flex flex-wrap items-center gap-4 " +
           (hasBirthday
-            ? "border-pink-300 bg-pink-50/60"
+            ? "border-primary/25 bg-primary/5"
             : "border-border bg-muted/30")
         }
       >
         <span
           className={
-            "shrink-0 size-10 rounded-full border-2 border-foreground flex items-center justify-center " +
-            (hasBirthday ? "bg-pink-200" : "bg-muted")
+            "shrink-0 size-10 rounded-xl flex items-center justify-center " +
+            (hasBirthday ? "bg-primary/10 text-primary" : "bg-muted")
           }
         >
           <Cake size={18} />
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-display font-bold text-foreground">
-            Broadcast reminder ulang tahun
+            Pengingat ulang tahun
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-sm leading-relaxed text-muted-foreground mt-1">
             {hasBirthday
               ? `Hari ini: ${todayBirthdays.map((c) => c.name).join(", ")} ulang tahun. Klik untuk kirim push ke seluruh karyawan ngajak ngucapin via Zota App.`
-              : "Tidak ada karyawan yang ulang tahun hari ini. Tombol akan aktif otomatis pas ada yang ulang tahun."}
+              : "Tidak ada ulang tahun hari ini. Broadcast tersedia saat ada karyawan yang berulang tahun."}
           </p>
         </div>
         <Button
           type="button"
           onClick={() => setOpen(true)}
           disabled={!hasBirthday || pending}
-          className="gap-1.5 shrink-0"
+          className="min-h-11 gap-2 shrink-0 max-sm:w-full"
         >
           <Megaphone size={14} />
           Broadcast
