@@ -43,6 +43,8 @@ export async function listReadyCakeItems(bankAccountId: string): Promise<ReadyCa
     .not("status", "in", "(cancelled,discarded,done)")
     .is("picked_up_at", null)
     .is("sold_pos_sale_id", null)
+    // Yang sudah ada pembayarannya (lunas lewat admin) diserahkan lewat tab Pesanan, bukan dijual ulang di POS.
+    .lte("paid_idr", 0)
     .is("archived_at", null)
     .order("created_at", { ascending: true });
   const rows = (orders ?? []) as unknown as {

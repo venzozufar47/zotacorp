@@ -282,13 +282,14 @@ export async function resolveReadyCakeForSale(
 ): Promise<{ ok: true; cake: ReadyCakeForSale } | { ok: false; error: string }> {
   const { data } = await db
     .from("cake_orders" as never)
-    .select("id, customer_name, total_idr, is_diy, is_ready_stock, status, production_status, picked_up_at, sold_pos_sale_id, archived_at, branch")
+    .select("id, customer_name, total_idr, paid_idr, is_diy, is_ready_stock, status, production_status, picked_up_at, sold_pos_sale_id, archived_at, branch")
     .eq("id", orderId)
     .maybeSingle();
   const o = data as unknown as {
     id: string;
     customer_name: string;
     total_idr: number;
+    paid_idr: number;
     is_diy: boolean;
     is_ready_stock: boolean;
     status: string;
@@ -302,6 +303,8 @@ export async function resolveReadyCakeForSale(
   const label = o.customer_name;
   if (o.sold_pos_sale_id || o.picked_up_at || o.status === "done")
     return { ok: false, error: `"${label}" sudah terjual` };
+  if (Number(o.paid_idr) > 0)
+    return { ok: false, error: `"${label}" sudah dibayar. Serahkan lewat tab Pesanan, bukan dijual lagi di POS` };
   if (o.status !== "ready" || o.production_status !== "done" || o.archived_at)
     return { ok: false, error: `"${label}" belum siap dijual` };
   // Kue yang sudah keluar dari stok (diserahkan / dibuang) tidak boleh dijual lagi. Kue lama tanpa catatan masuk boleh.
