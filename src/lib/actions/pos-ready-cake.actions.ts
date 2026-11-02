@@ -57,24 +57,25 @@ export async function listReadyCakeItems(bankAccountId: string): Promise<ReadyCa
   }[];
   if (rows.length === 0) return [];
 
+  // Kue siap yang sudah keluar dari stok (diserahkan / dibuang) tidak ditawarkan. Kue lama tanpa catatan masuk
+  // (dibuat sebelum SKU stok ada) tetap boleh dijual; stoknya diselaraskan saat transaksi.
   const finished = rows.filter((r) => r.status === "ready" && r.production_status === "done");
-  const { data: produced } =
+  const { data: exited } =
     finished.length > 0
       ? await db
           .from("pos_stock_movements")
           .select("cake_order_id")
           .eq("bank_account_id", bankAccountId)
-          .eq("type", "production")
+          .eq("type", "withdrawal")
           .in("cake_order_id", finished.map((r) => r.id))
       : { data: [] as { cake_order_id: string | null }[] };
-  const inStock = new Set((produced ?? []).map((r) => r.cake_order_id));
+  const withdrawn = new Set((exited ?? []).map((r) => r.cake_order_id));
 
   const items: ReadyCakeItem[] = [];
   for (const r of rows) {
     const base = { id: r.id, name: r.customer_name, priceIdr: r.total_idr, isDiy: r.is_diy };
     if (r.status === "ready" && r.production_status === "done") {
-      // Kue tanpa catatan masuk stok tidak boleh dijual (stok tidak akan cocok).
-      if (!inStock.has(r.id)) continue;
+      if (withdrawn.has(r.id)) continue;
       items.push({ ...base, stage: "ready", readyAt: r.production_done_at ?? r.created_at });
     } else if (r.production_status === "decorating") {
       items.push({ ...base, stage: "decorating", readyAt: null });

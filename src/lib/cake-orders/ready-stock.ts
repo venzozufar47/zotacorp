@@ -266,6 +266,8 @@ export interface ReadyCakeForSale {
   variantId: string | null;
   productName: string;
   variantName: string | null;
+  /** Kue dibuat sebelum SKU stok ada (tanpa catatan masuk): masuk stok saat dijual, jadi stok tidak berubah. */
+  legacy: boolean;
 }
 
 /**
@@ -302,7 +304,9 @@ export async function resolveReadyCakeForSale(
     return { ok: false, error: `"${label}" sudah terjual` };
   if (o.status !== "ready" || o.production_status !== "done" || o.archived_at)
     return { ok: false, error: `"${label}" belum siap dijual` };
-  if (!(await isReadyCakeInStock(db, orderId))) return { ok: false, error: `"${label}" tidak tercatat di stok` };
+  // Kue yang sudah keluar dari stok (diserahkan / dibuang) tidak boleh dijual lagi. Kue lama tanpa catatan masuk boleh.
+  if (await movementExists(db, orderId, "withdrawal")) return { ok: false, error: `"${label}" sudah keluar dari stok` };
+  const legacy = !(await movementExists(db, orderId, "production"));
   const sku = await resolveSku(db, o);
   if (!sku || sku.accountId !== bankAccountId) return { ok: false, error: `"${label}" bukan ready cake cabang ini` };
   if (!(o.total_idr >= 0)) return { ok: false, error: `Harga "${label}" belum ditetapkan` };
@@ -323,6 +327,7 @@ export async function resolveReadyCakeForSale(
       variantId: sku.variantId,
       productName: prod?.name ?? READY_CAKE_PRODUCT_NAME,
       variantName,
+      legacy,
     },
   };
 }
@@ -346,6 +351,23 @@ export async function claimReadyCakeForSale(db: Db, orderId: string, saleId: str
     return ((data ?? []) as unknown[]).length === 1;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Kue lama (dibuat sebelum SKU stok ada) yang dijual: catat masuk stok pada saat yang sama, supaya penjualannya
+ * (yang mengurangi stok) tidak membuat stok minus untuk kue yang memang tidak pernah dihitung. Idempoten.
+ */
+export async function recordReadyCakeLegacyIntake(db: Db, orderId: string): Promise<void> {
+  try {
+    const order = await loadOrder(db, orderId);
+    if (!order?.is_ready_stock) return;
+    if (await movementExists(db, orderId, "production")) return;
+    const sku = await resolveSku(db, order);
+    if (!sku) return;
+    await insertMovement(db, sku, orderId, "production", null, "Ready cake lama (sebelum pencatatan stok) dicatat masuk saat dijual");
+  } catch {
+    /* best-effort */
   }
 }
 

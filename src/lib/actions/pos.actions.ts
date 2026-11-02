@@ -25,6 +25,7 @@ import { saleShiftContext } from "@/lib/pos/shift-data";
 import { resolveLedgerAccountId } from "@/lib/pos/ledger";
 import {
   claimReadyCakeForSale,
+  recordReadyCakeLegacyIntake,
   releaseReadyCakesForSale,
   resolveReadyCakeForSale,
   type ReadyCakeForSale,
@@ -891,6 +892,7 @@ export async function createPosSale(input: {
         subtotal: cake.priceIdr,
         readyCakeOrderId: cake.orderId as string | null,
         readyCakeName: cake.name as string | null,
+        readyCakeLegacy: cake.legacy,
       };
     }
     if (isCatalogItem(it)) {
@@ -916,6 +918,7 @@ export async function createPosSale(input: {
         subtotal,
         readyCakeOrderId: null as string | null,
         readyCakeName: null as string | null,
+        readyCakeLegacy: false,
       };
     }
     const c = it as CustomItemInput;
@@ -934,6 +937,7 @@ export async function createPosSale(input: {
       subtotal,
       readyCakeOrderId: null as string | null,
       readyCakeName: null as string | null,
+      readyCakeLegacy: false,
     };
   });
   // `< 0` bukan `<= 0`: tiap unitPrice sudah divalidasi >= 0 di atas,
@@ -1073,6 +1077,7 @@ export async function createPosSale(input: {
       await supabase.from("pos_sales").delete().eq("id", sale.id);
       return { ok: false, error: '"' + (it.readyCakeName ?? "Ready cake") + '" baru saja terjual atau tidak tersedia lagi' };
     }
+    if (it.readyCakeLegacy) await recordReadyCakeLegacyIntake(readyDb, it.readyCakeOrderId);
   }
 
   // Untuk pesanan, lewati cashflow insert. Sale baru di-link ke
