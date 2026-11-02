@@ -35,6 +35,7 @@ Didefinisikan di `:root` (nilai) dan dipetakan di blok `@theme inline` (nama uti
 | Garis & fokus | `border`, `input`, `ring` | |
 | Status | `destructive`, `success`, `warning` | Pakai ini, bukan merah/hijau/kuning sendiri. |
 | Dekoratif | `tertiary`, `quaternary`, `pop-pink`, `pop-amber`, `pop-emerald` | Jangan dipakai untuk makna status. |
+| Perayaan mendatang | `celebration-upcoming` | Permukaan teal lembut kartu “Segera dirayakan” di dashboard. |
 | Skala teal | `--teal-50` … `--teal-900`, `--grad-teal`, `--grad-teal-soft` | Hanya CSS variable, dipakai lewat `var(--teal-500)` di permukaan shell admin. |
 | Sudut | `rounded-sm … rounded-3xl` | Diturunkan dari `--radius` (0,75rem). |
 | Font | `font-sans` (Plus Jakarta Sans), `font-display` (Poppins) | Hanya dua font ini. Poppins 600/700 untuk judul. |

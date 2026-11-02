@@ -123,7 +123,7 @@ const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   },
 ];
 
-export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ simsosmed?: string; simbulanlalu?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ simsosmed?: string; simbulanlalu?: string; simperayaan?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
@@ -436,7 +436,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
         />
       )}
 
-      <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
+      <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} preview={sim?.simperayaan === "1" && Boolean(user.email?.startsWith("venzozufar"))} />
 
       <CleaningChecklistCard initial={cleaningTasks} />
 

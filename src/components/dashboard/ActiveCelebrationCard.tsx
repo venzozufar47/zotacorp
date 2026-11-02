@@ -4,10 +4,12 @@ import { CelebrationComposer } from "./CelebrationComposer";
 import { ActiveCelebrationReplyIsland } from "./ActiveCelebrationReplyIsland";
 import { CelebrationBroadcastEditor } from "./CelebrationBroadcastEditor";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { PartyPopper, Sparkles } from "lucide-react";
 
 interface Props {
   celebrant: CelebrantWithMessages;
   viewerId: string;
+  preview?: boolean;
 }
 
 /**
@@ -17,8 +19,8 @@ interface Props {
  *   - viewer === celebrant   → broadcast composer + reply button per greeting
  *   - viewer !== celebrant   → greeting composer
  */
-export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
-  const { t } = await getDictionary();
+export async function ActiveCelebrationCard({ celebrant, viewerId, preview = false }: Props) {
+  const { lang, t } = await getDictionary();
   const isSelf = viewerId === celebrant.id;
 
   const firstName = celebrant.fullName.split(" ")[0] ?? celebrant.fullName;
@@ -77,6 +79,15 @@ export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
         </g>
       </svg>
 
+      <div className="relative flex items-center justify-between gap-3">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/30 bg-primary-foreground/10 px-3 py-1.5 text-xs font-semibold"><Sparkles aria-hidden size={14} />{lang === "id" ? "Hari ini, kita rayakan!" : "Celebrating today!"}</span>
+        <PartyPopper aria-hidden size={32} className="shrink-0 text-primary-foreground/80" />
+      </div>
+      <svg aria-hidden viewBox="0 0 400 180" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 top-0 h-44 w-full opacity-70">
+        <g fill="var(--pop-amber)"><path d="m335 35 7-3 4 15-7 3z" /><circle cx="190" cy="18" r="3" /><path d="m25 112 5-4 8 10-5 4z" /></g>
+        <g fill="var(--pop-pink)"><circle cx="365" cy="105" r="4" /><path d="m265 50 5-4 8 10-5 4z" /><path d="m80 14 4 2-5 12-4-2z" /></g>
+        <g fill="var(--pop-emerald)"><path d="m300 130 5-4 8 10-5 4z" /><circle cx="145" cy="45" r="3" /></g>
+      </svg>
       {/* Header */}
       <header className="relative flex items-start gap-3">
         {!isSelf && (
@@ -105,6 +116,7 @@ export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
           )}
         </div>
       </header>
+      <p className="relative text-sm leading-relaxed text-primary-foreground/90">{isSelf ? t.celebrations.cardSelfSubhead : lang === "id" ? "Hari spesial terasa lebih hangat saat dirayakan bersama. Yuk, kirim doa dan ucapan terbaikmu!" : "A special day feels warmer together. Share your wishes and make their day!"}</p>
 
       {/* Inner surface — inverts back to white so messages read naturally */}
       <div className="relative rounded-2xl bg-card p-4 space-y-3 text-foreground">
@@ -173,7 +185,7 @@ export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
 
         {/* Composer — hidden for the celebrant once they've posted their
             broadcast (they can edit the pinned one above instead). */}
-        {!(isSelf && broadcast) && (
+        {preview ? <div className="space-y-2 py-1"><p className="text-sm text-muted-foreground">Jadilah yang pertama memberi ucapan untuk {firstName}.</p><button type="button" disabled className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground"><PartyPopper aria-hidden size={17} />Tulis ucapan · Preview</button></div> : !(isSelf && broadcast) && (
           <div className="pt-1">
             <CelebrationComposer
               celebrantId={celebrant.id}

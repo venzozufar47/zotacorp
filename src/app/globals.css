@@ -23,6 +23,7 @@
   --color-tertiary: var(--tertiary);
   --color-quaternary: var(--quaternary);
   --color-pop-pink: var(--pop-pink);
+  --color-celebration-upcoming: var(--celebration-upcoming);
   --color-pop-amber: var(--pop-amber);
   --color-pop-emerald: var(--pop-emerald);
 
@@ -112,6 +113,7 @@
   --tertiary: #f5f5f7;
   --quaternary: #34c759;
   --pop-pink: #f5f5f7;
+  --celebration-upcoming: #edf7f7;
   --pop-amber: #ff9f0a;
   --pop-emerald: #34c759;
 
