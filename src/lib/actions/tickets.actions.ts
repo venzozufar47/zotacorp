@@ -261,6 +261,27 @@ async function firePush(userIds: string[], payload: { title: string; body: strin
   }
 }
 
+/** Pihak yang perlu mengetahui perubahan tiket; pelaku tidak menerima notifikasi sendiri. */
+async function notifyTicketChange(row: any, actorId: string, title: string, body: string) {
+  try {
+    const holders = Number(row.handler_level) === 0
+      ? row.assignee_id ? [row.assignee_id] : await employeesOfBranch(row.branch_id)
+      : await holderRecipients(Number(row.handler_level), row.handler_id ?? null);
+    const ids = Array.from(new Set<string>([
+      row.created_by, row.resolved_by, row.delegated_from_id, row.escalated_by, ...holders,
+    ].filter((id): id is string => Boolean(id) && id !== actorId)));
+    if (ids.length === 0) return;
+    const admin = createAdminClient() as any;
+    const { data: people, error } = await admin.from("profiles").select("id, role").in("id", ids);
+    if (error) throw new Error(error.message);
+    for (const person of people ?? []) {
+      await firePush([person.id], { title, body, url: person.role === "admin" ? "/admin/tickets" : "/tickets" });
+    }
+  } catch (err) {
+    console.error("[tickets] change notification failed", err);
+  }
+}
+
 /** Foto bukti: path harus di folder uploader sendiri dan objeknya benar-benar ada di storage. */
 async function verifyUploadedPaths(userId: string, paths: string[]): Promise<string | null> {
   if (paths.some((p) => !p.startsWith(`${userId}/`))) return "Foto bukti tidak valid";
@@ -349,15 +370,15 @@ export async function createTicket(input: z.infer<typeof createSchema>): Promise
   }
 
   // Push ke pemegang tiket (atasan yang dituju) & owner (best-effort).
-  const notifyIds = (await holderRecipients(level, handlerId)).filter((id) => id !== actor.userId);
+  const notifyIds = level >= OWNER_LEVEL ? [] : (await holderRecipients(level, handlerId)).filter((id) => id !== actor.userId);
   const pushMsg = await renderWaTemplate("ticket_new_alert", {
     branch: branch.label,
     category: TICKET_CATEGORY_LABELS[d.category],
     title: d.title,
   });
   const pushPayload = { title: "Tiket baru masuk", body: pushMsg, url: "/tickets" };
-  if (notifyIds.length > 0) void firePush(notifyIds, pushPayload);
-  void sendPushToAdmins({ ...pushPayload, url: "/admin/tickets" }).catch((err) => console.error("[tickets] push admin failed", err));
+  if (notifyIds.length > 0) await firePush(notifyIds, pushPayload);
+  await sendPushToAdmins({ ...pushPayload, url: "/admin/tickets" }).catch((err) => console.error("[tickets] push admin failed", err));
 
   revalidateTickets();
   return { ok: true, data: { id: ticketId } };
@@ -430,7 +451,7 @@ export async function createDownTicket(input: z.infer<typeof createDownSchema>):
   }
 
   const targets = d.assigneeId ? [d.assigneeId] : members;
-  void firePush(
+  await firePush(
     targets.filter((id) => id !== gate.userId),
     {
       title: d.priority === "urgent" ? "Tiket mendesak dari owner" : "Tiket dari owner",
@@ -443,7 +464,7 @@ export async function createDownTicket(input: z.infer<typeof createDownSchema>):
     const bosses = (await superiorsOf(branch.id, d.assigneeId)).filter((id) => id !== d.assigneeId && id !== gate.userId);
     if (bosses.length > 0) {
       const [assigneeName] = await namesOf(admin, [d.assigneeId]);
-      void firePush(bosses, {
+      await firePush(bosses, {
         title: "Owner menugaskan anggota timmu",
         body: `${assigneeName}: ${d.title} (${branch.label})`,
         url: "/tickets",
@@ -492,7 +513,7 @@ export async function delegateTicket(ticketId: string, note: string, toUserId: s
   if (error) return { ok: false, error: error.message };
   const [fromName] = await namesOf(admin, [actor.userId]);
   const extra = note.trim() ? ` — "${note.trim()}"` : "";
-  void firePush([toUserId], { title: "Tiket diteruskan ke kamu", body: `${fromName}: ${row.title} (${row.branch})${extra}`, url: "/tickets" });
+  await firePush([toUserId], { title: "Tiket diteruskan ke kamu", body: `${fromName}: ${row.title} (${row.branch})${extra}`, url: "/tickets" });
   revalidateTickets();
   return { ok: true };
 }
@@ -542,7 +563,7 @@ export async function forwardOwnerTicket(ticketId: string, note: string, toUserI
   if (!updated || updated.length === 0) return { ok: false, error: "Tiket sudah berubah — muat ulang halaman" };
   const [fromName] = await namesOf(admin, [actor.userId]);
   const extra = note.trim() ? ` — "${note.trim()}"` : "";
-  void firePush([toUserId], { title: "Tiket diteruskan ke kamu", body: `${fromName}: ${row.title} (${row.branch})${extra}`, url: "/tickets" });
+  await firePush([toUserId], { title: "Tiket diteruskan ke kamu", body: `${fromName}: ${row.title} (${row.branch})${extra}`, url: "/tickets" });
   revalidateTickets();
   return { ok: true };
 }
@@ -555,8 +576,10 @@ export async function cancelTicket(ticketId: string): Promise<ActionResult> {
   if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
   if (!actor.isAdmin && row.created_by !== actor.userId) return { ok: false, error: "Forbidden" };
   if (!["open", "in_progress"].includes(row.status)) return { ok: false, error: "Tiket tidak bisa dibatalkan pada status ini" };
-  const { error } = await admin.from("tickets").update({ status: "cancelled" }).eq("id", ticketId).in("status", ["open", "in_progress"]);
+  const { data: updated, error } = await admin.from("tickets").update({ status: "cancelled" }).eq("id", ticketId).in("status", ["open", "in_progress"]).select("id");
   if (error) return { ok: false, error: error.message };
+  if (!updated?.length) return { ok: false, error: "Tiket sudah berubah — muat ulang halaman" };
+  await notifyTicketChange(row, actor.userId, "Tiket dibatalkan", `${row.branch} · ${row.title}`);
   revalidateTickets();
   return { ok: true };
 }
@@ -577,8 +600,10 @@ export async function startTicket(ticketId: string): Promise<ActionResult> {
   };
   // Tiket 'down' untuk seluruh cabang: yang pertama mengambil jadi penerimanya.
   if (row.direction === "down" && !row.assignee_id) patch.assignee_id = actor.userId;
-  const { error } = await admin.from("tickets").update(patch).eq("id", ticketId).eq("status", "open");
+  const { data: updated, error } = await admin.from("tickets").update(patch).eq("id", ticketId).eq("status", "open").select("id");
   if (error) return { ok: false, error: error.message };
+  if (!updated?.length) return { ok: false, error: "Tiket sudah berubah — muat ulang halaman" };
+  await notifyTicketChange({ ...row, ...patch }, actor.userId, "Tiket mulai dikerjakan", `${row.branch} · ${row.title}`);
   revalidateTickets();
   return { ok: true };
 }
@@ -639,7 +664,7 @@ export async function resolveTicket(ticketId: string, note: string | undefined, 
     const round = prev.reduce((m, r) => Math.max(m, r.round), 0) + 1;
     const made = await createVerificationRows(admin, "ticket", ticketId, round, [{ verifierIds: verifiers }]);
     if (made.error) console.error("[tickets] gagal membuat permintaan verifikasi", made.error);
-    void firePush(made.verifierIds, { title: "Verifikasi menunggumu", body: `Tiket "${row.title}" selesai dikerjakan — buka beranda untuk memverifikasi.`, url: "/dashboard" });
+    await firePush(made.verifierIds, { title: "Verifikasi menunggumu", body: `Tiket "${row.title}" selesai dikerjakan — buka beranda untuk memverifikasi.`, url: "/dashboard" });
   }
 
   if (row.created_by && row.created_by !== actor.userId) {
@@ -648,7 +673,7 @@ export async function resolveTicket(ticketId: string, note: string | undefined, 
       title: row.title,
       note: note?.trim() || "-",
     });
-    void firePush([row.created_by], { title: "Tiket selesai", body: msg, url: row.direction === "down" ? "/admin/tickets" : "/tickets" });
+    await firePush([row.created_by], { title: "Tiket selesai", body: msg, url: row.direction === "down" ? "/admin/tickets" : "/tickets" });
   }
   revalidateTickets();
   return { ok: true };
@@ -695,11 +720,11 @@ export async function escalateTicket(ticketId: string, note: string, toUserId?: 
 
   const msg = await renderWaTemplate("ticket_escalated_alert", { branch: row.branch, title: row.title, note: note.trim() });
   if (to >= OWNER_LEVEL) {
-    void sendPushToAdmins({ title: "Tiket dieskalasi", body: msg, url: "/admin/tickets" }).catch((err) =>
+    await sendPushToAdmins({ title: "Tiket dieskalasi", body: msg, url: "/admin/tickets" }).catch((err) =>
       console.error("[tickets] push failed", err)
     );
   } else {
-    void firePush(await holderRecipients(to, toId), { title: "Tiket dieskalasi ke kamu", body: msg, url: "/tickets" });
+    await firePush(await holderRecipients(to, toId), { title: "Tiket dieskalasi ke kamu", body: msg, url: "/tickets" });
   }
   revalidateTickets();
   return { ok: true };
@@ -747,13 +772,16 @@ export async function ownerDecideTicket(ticketId: string, decision: "accept" | "
       owner_note: note!.trim(),
     };
   }
-  const { error } = await admin.from("tickets").update(patch).eq("id", ticketId).eq("status", "escalated");
+  const { data: updated, error } = await admin.from("tickets").update(patch).eq("id", ticketId).eq("status", "escalated").select("id");
   if (error) return { ok: false, error: error.message };
+  if (!updated?.length) return { ok: false, error: "Tiket sudah berubah — muat ulang halaman" };
 
-  if (decision === "reject") {
+  if (decision === "accept") {
+    await notifyTicketChange(row, actor.userId, "Eskalasi diterima", `${row.branch} · ${row.title}${note?.trim() ? ` — ${note.trim()}` : ""}`);
+  } else {
     const msg = await renderWaTemplate("ticket_returned_alert", { title: row.title, note: note!.trim() });
     const targets = returnTo === 0 ? (row.assignee_id ? [row.assignee_id as string] : []) : await holderRecipients(returnTo!, returnId);
-    if (targets.length > 0) void firePush(targets, { title: "Eskalasi ditolak", body: msg, url: "/tickets" });
+    if (targets.length > 0) await firePush(targets, { title: "Eskalasi ditolak", body: msg, url: "/tickets" });
   }
   revalidateTickets();
   return { ok: true };
@@ -786,6 +814,7 @@ export async function confirmTicketResolution(ticketId: string, decision: "confi
       .select("id");
     if (error) return { ok: false, error: error.message };
     if (!data || data.length === 0) return { ok: false, error: "Konfirmasi tidak tersimpan — muat ulang halaman lalu coba lagi" };
+    await notifyTicketChange(row, actor.userId, "Penyelesaian tiket dikonfirmasi", `${row.branch} · ${row.title}`);
     revalidateTickets();
     return { ok: true };
   }
@@ -817,7 +846,7 @@ export async function confirmTicketResolution(ticketId: string, decision: "confi
     lvl === 0 ? (row.assignee_id ? [row.assignee_id as string] : await employeesOfBranch(row.branch_id)) : await holderRecipients(lvl, row.handler_id ?? null);
   if (targets.length > 0) {
     const msg = await renderWaTemplate("ticket_reopened_alert", { title: row.title, note: note!.trim() });
-    void firePush(targets, { title: "Tiket dibuka kembali", body: msg, url: "/tickets" });
+    await firePush(targets, { title: "Tiket dibuka kembali", body: msg, url: "/tickets" });
   }
   revalidateTickets();
   return { ok: true };
