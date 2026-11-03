@@ -400,13 +400,7 @@ export function BranchCardsGrid({
     return i === -1 ? FIXED_ORDER.length : i;
   };
   const ordered = [...branches].sort((a, b) => pos(a.unitCode) - pos(b.unitCode));
-  // Cabang yang dipilih otomatis (sebelum Anda mengklik) tetap yang paling bermasalah: merah → kuning → abu-abu → hijau; seri → lebih banyak temuan.
-  const rank = (code: string) => {
-    const s = scUnit(code)?.status;
-    return s === "red" ? 0 : s === "yellow" ? 1 : s === "green" ? 3 : 2;
-  };
-  const worst = [...branches].sort((a, b) => rank(a.unitCode) - rank(b.unitCode) || b.flags.length - a.flags.length)[0] ?? null;
-  const selected = ordered.find((b) => b.key === selectedKey) ?? worst;
+  const selected = ordered.find((b) => b.key === selectedKey) ?? null;
   const selectedUnit = selected ? scUnit(selected.unitCode) : undefined;
 
   const TOP_BORDER: Record<string, string> = {
@@ -420,7 +414,7 @@ export function BranchCardsGrid({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="font-display text-[15px] font-semibold tracking-[-0.015em] text-foreground lg:text-base">Pilih cabang</div>
-          <div className="text-[11px] text-muted-foreground">Urutan tetap · cabang paling bermasalah terpilih otomatis · klik untuk rincian lengkap</div>
+          <div className="text-[11px] text-muted-foreground">Klik cabang untuk membuka rincian · klik lagi untuk menutup</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {sc && sc.periods.length > 0 && (
@@ -477,18 +471,18 @@ export function BranchCardsGrid({
       </div>
 
       {/* Pemilih cabang */}
-      <div role="tablist" aria-label="Cabang" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+      <div role="group" aria-label="Cabang" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
         {ordered.map((b) => {
           const u = scUnit(b.unitCode);
           const on = selected?.key === b.key;
           return (
             <button
               key={b.key}
-              role="tab"
               type="button"
-              aria-selected={on}
-              title={on ? `${b.name} sedang ditampilkan` : `Tampilkan rincian ${b.name}`}
-              onClick={() => setSelectedKey(b.key)}
+              aria-expanded={on}
+              aria-controls={`branch-details-${b.key}`}
+              title={on ? `Tutup rincian ${b.name}` : `Tampilkan rincian ${b.name}`}
+              onClick={() => setSelectedKey((current) => current === b.key ? null : b.key)}
               className={cn(
                 "rounded-xl border border-t-4 p-3 text-left transition duration-150",
                 "shadow-[0_1px_2px_rgba(8,49,46,0.04),0_4px_16px_rgba(8,49,46,0.05)]",
@@ -515,29 +509,11 @@ export function BranchCardsGrid({
       {/* Rincian satu cabang */}
       {selected && (
         <section
+          id={`branch-details-${selected.key}`}
           key={selected.key}
           aria-label={`Rincian ${selected.name}`}
           className="mt-3 animate-fade-up rounded-2xl border border-border/70 bg-card px-5 py-4 shadow-[0_1px_2px_rgba(8,49,46,0.04),0_4px_16px_rgba(8,49,46,0.05)]"
         >
-          <div className="mb-3 flex flex-wrap items-center gap-2.5">
-            <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--teal-700)]">Cabang aktif</span>
-            <h3 className="font-display text-lg font-extrabold text-foreground">{selected.name}</h3>
-            {selectedUnit && <StatusBadge status={selectedUnit.status} />}
-            {selectedUnit && sc?.selectedLabel && (
-              <span className="text-[12px] text-muted-foreground">
-                Scorecard {sc.selectedLabel}
-                {selectedUnit.status === "rampup" && selectedUnit.rampUpUntil
-                  ? ` · ramp-up s.d. ${new Date(`${selectedUnit.rampUpUntil}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`
-                  : ""}
-              </span>
-            )}
-            {selectedUnit && (
-              <button type="button" onClick={() => setOpenUnit(selectedUnit)} className="ml-auto rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-foreground hover:bg-muted">
-                Rincian
-              </button>
-            )}
-          </div>
-
           {selectedUnit?.confirmedRed && (
             <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-destructive/10 px-3 py-2 text-[13px] font-semibold text-destructive">
               <span className="flex-1">
@@ -553,9 +529,12 @@ export function BranchCardsGrid({
           {/* 1. SCORECARD — inti panel, dengan grafik tren tiap metrik. */}
           {selectedUnit && sc?.selectedLabel ? (
             <div>
-              <div className="mb-2 flex flex-wrap items-baseline gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Scorecard · {sc.selectedLabel}</h4>
                 <span className="text-[11px] text-muted-foreground">tren {sc.sparkMonths.length} periode terakhir</span>
+                <button type="button" onClick={() => setOpenUnit(selectedUnit)} className="ml-auto min-h-11 shrink-0 rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-foreground hover:bg-muted">
+                  Rincian
+                </button>
               </div>
               <ScorecardPanel unit={selectedUnit} months={sc.sparkMonths} changes={sc.changes} />
             </div>

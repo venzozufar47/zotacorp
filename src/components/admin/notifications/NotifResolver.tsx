@@ -14,6 +14,7 @@ import { recordSimTopup } from "@/lib/actions/sim-cards.actions";
 import { ownerDecideTicket } from "@/lib/actions/tickets.actions";
 import { resolvePayslipDispute } from "@/lib/actions/payslip-disputes.actions";
 import { markSelfieOverrideReviewed } from "@/lib/actions/attendance-selfie.actions";
+import { AttendanceCoachingForm } from "./AttendanceCoachingForm";
 import {
   NOTIF_KINDS,
   NotifLeading,
@@ -620,6 +621,7 @@ function NotifResolver({
               sudah dicek.
             </p>
           </Body>
+          <AttendanceCoachingForm logId={item.rowId} pending={pending} run={run} />
           <button
             type="button"
             disabled={pending}
@@ -631,7 +633,7 @@ function NotifResolver({
               }, "Ditandai sudah ditinjau")
             }
           >
-            {pending && <Loader2 size={14} className="animate-spin" />} Sudah ditinjau
+            {pending && <Loader2 size={14} className="animate-spin" />} Sudah ditinjau tanpa pembinaan
           </button>
         </>
       );

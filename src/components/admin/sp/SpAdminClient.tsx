@@ -39,7 +39,7 @@ function EntryRow({ r }: { r: SpOverviewRow }) {
           }
         >
           {isSanction && <ShieldAlert size={10} />}
-          {r.spLevel ? SP_LEVEL_LABEL[r.spLevel] : PLAIN_NOTE_LABEL}
+          {r.context === "attendance" && r.spLevel === "teguran" ? "Teguran keras — absen" : r.spLevel ? SP_LEVEL_LABEL[r.spLevel] : PLAIN_NOTE_LABEL}
         </span>
       </div>
       <p className="text-xs text-muted-foreground">

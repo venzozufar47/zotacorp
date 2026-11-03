@@ -85,7 +85,7 @@ function NoteItem({
             : "border-primary/40 bg-primary/5")
       }
     >
-      {n.spLevel && (
+      {(n.spLevel || n.context === "attendance") && (
         <span
           className={
             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold " +
@@ -93,7 +93,7 @@ function NoteItem({
           }
         >
           {isSanction && <ShieldAlert size={10} />}
-          {SP_LEVEL_LABEL[n.spLevel]}
+          {n.context === "attendance" && n.spLevel === "teguran" ? "Teguran keras — absen" : n.spLevel ? SP_LEVEL_LABEL[n.spLevel] : "Pembinaan absen"}
         </span>
       )}
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{n.body}</p>
