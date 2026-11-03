@@ -12,7 +12,6 @@ import { getCleaningReviewQuickAccess } from "@/lib/actions/cleaning-review.acti
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import {
-  getAdminCelebrationsRadar,
   getCelebrationsFeed,
 } from "@/lib/actions/celebrations.actions";
 import {
@@ -49,7 +48,6 @@ export default async function AdminHomeRoute() {
     today,
     pending,
     disputes,
-    radar,
     celebrationsFeed,
     cleaningExceptions,
     opsMetrics,
@@ -67,7 +65,6 @@ export default async function AdminHomeRoute() {
     getAdminHomeToday(),
     getPendingConfirmations(),
     listOpenPayslipDisputes(),
-    getAdminCelebrationsRadar(),
     getCelebrationsFeed().catch(() => ({
       today: [],
       upcoming: [],
@@ -126,7 +123,6 @@ export default async function AdminHomeRoute() {
         today={today}
         pendingConfirmations={pending}
         disputes={disputes}
-        upcomingCelebrants={radar}
         userDirectory={userDirectory}
         cleaningExceptions={cleaningExceptions}
         opsMetrics={opsMetrics}

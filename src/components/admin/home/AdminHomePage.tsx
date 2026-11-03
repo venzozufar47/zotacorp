@@ -13,9 +13,6 @@ import {
   ArrowRight,
   RefreshCw,
   Sparkles,
-  Cake,
-  CalendarDays,
-  Gift,
   X as XIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,8 +44,6 @@ import type {
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 import type { AdminTicketSummary } from "@/lib/actions/tickets.actions";
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
-import type { Celebrant } from "@/lib/utils/celebrations";
-import { zonedDateString } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import { BranchCardsGrid } from "./BranchCardsGrid";
 import type { HomeData as UnitScorecardData } from "@/lib/unit-scorecard/persist";
@@ -85,7 +80,6 @@ export function AdminHomePage({
   today,
   pendingConfirmations,
   disputes,
-  upcomingCelebrants,
   userDirectory,
   cleaningExceptions,
   opsMetrics,
@@ -98,7 +92,6 @@ export function AdminHomePage({
   today: AdminHomeToday;
   pendingConfirmations: PendingConfirmationItem[];
   disputes: DisputeRow[];
-  upcomingCelebrants: Celebrant[];
   /** name + avatar lookup for dispute rows (which only carry userId). */
   userDirectory: Record<
     string,
@@ -171,7 +164,6 @@ export function AdminHomePage({
   ];
   const floorStack = floorOrdered.slice(0, 7);
   const floorExtra = floorOrdered.length - floorStack.length;
-  const todayWib = zonedDateString(new Date(today.asOfIso), "Asia/Jakarta");
   // Total omzet bulan ini SEMUA cabang — Haengbocake (POS+Cake, Pare+
   // Semarang) + Yeobo Space (3 cabang). Angka aktual (bukan proyeksi):
   // hero cuma menyampaikan fakta sekali pandang, togglenya sendiri hidup
@@ -465,8 +457,8 @@ export function AdminHomePage({
         </Card>
       </section>
 
-      {/* FLOOR + COMING UP */}
-      <div className="grid grid-cols-1 items-start lg:grid-cols-[1.6fr_1fr] gap-5">
+      {/* FLOOR */}
+      <div className="space-y-3">
           {/* FLOOR VIEW */}
           <section aria-label="Karyawan hari ini" className="animate-fade-up animate-fade-up-delay-2">
               {today.clockedInNow.length === 0 ? (
@@ -554,41 +546,7 @@ export function AdminHomePage({
               )}
           </section>
 
-          {/* UPCOMING */}
-          {upcomingCelebrants.length > 0 && (
-          <section aria-label="Perayaan mendatang" className="relative overflow-hidden rounded-3xl border border-primary/15 bg-card p-5 sm:p-6" style={{ background: "linear-gradient(120deg, var(--celebration-upcoming), color-mix(in srgb, var(--celebration-upcoming) 35%, var(--card)) 65%, var(--card))" }}>
-            <Gift aria-hidden className="pointer-events-none absolute -right-3 -top-3 size-28 -rotate-12 text-primary/5" strokeWidth={1} />
-            <div className="relative mb-5 flex items-start gap-3">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-card text-primary"><CalendarDays aria-hidden size={21} /></span>
-              <h3 className="self-center font-display text-base font-semibold text-foreground">Segera dirayakan</h3>
-            </div>
-            <ul className="relative space-y-3">
-                {upcomingCelebrants.slice(0, 3).map((c) => (
-                  <li
-                    key={`${c.id}-${c.kind}-${c.eventYear}`}
-                    className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card/90 p-3 sm:p-4"
-                  >
-                    <EmployeeAvatar
-                      full_name={c.fullName}
-                      avatar_url={c.avatarUrl ?? null}
-                      avatar_seed={c.avatarSeed ?? null}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground break-words">
-                        {c.fullName}
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatShortDate(c.occursOn)}</p>
-                      <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary">{c.kind === "birthday" ? <Cake aria-hidden size={13} /> : <Sparkles aria-hidden size={13} />}{labelCelebrant(c)}</span>
-                    </div>
-                    <div className="min-w-16 rounded-xl bg-primary/5 px-3 py-2 text-center text-primary">
-                      <strong className="block text-xl leading-none tabular-nums">{Math.max(0, Math.round((Date.parse(c.occursOn) - Date.parse(todayWib)) / 86_400_000))}</strong>
-                      <span className="mt-1 block text-xs">{c.occursOn === todayWib ? "hari ini" : "hari lagi"}</span>
-                    </div>
-                  </li>
-                ))}
-            </ul>
-          </section>
-          )}
+
       </div>
 
       <EmployeeDrawer subject={drawer} onClose={() => setDrawer(null)} />
@@ -1067,17 +1025,4 @@ function groupByBusinessUnit<
         return b.members.length - a.members.length;
       return a.unit.localeCompare(b.unit);
     });
-}
-
-function labelCelebrant(c: Celebrant) {
-  if (c.kind === "birthday") return "Ulang tahun";
-  return c.years ? `${c.years} tahun bergabung` : "Anniversary";
-}
-
-function formatShortDate(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString("id-ID", {
-    month: "short",
-    day: "numeric",
-  });
 }
