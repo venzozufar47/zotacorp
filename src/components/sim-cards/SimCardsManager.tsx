@@ -15,6 +15,7 @@ import {
   Upload,
 } from "lucide-react";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import {
   createSimCard,
   updateSimCard,
@@ -653,6 +654,8 @@ function HistoryDialog({
 }) {
   const [rows, setRows] = useState<SimTopup[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [proof, setProof] = useState<LightboxPhoto | null>(null);
+  const [loadingProof, setLoadingProof] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -668,15 +671,24 @@ function HistoryDialog({
     };
   }, [card.id]);
 
-  async function openProof(path: string) {
-    const res = await getSimProofSignedUrl(path);
-    if (!res.ok) return void toast.error(res.error);
-    if (!res.data) return void toast.error("Gagal membuat URL bukti");
-    window.open(res.data.url, "_blank", "noopener");
+  async function openProof(topup: SimTopup) {
+    if (!topup.proofPath || loadingProof) return;
+    setLoadingProof(topup.id);
+    try {
+      const res = await getSimProofSignedUrl(topup.proofPath);
+      if (!res.ok) return void toast.error(res.error);
+      if (!res.data) return void toast.error("Gagal membuat URL bukti");
+      setProof({ url: res.data.url, title: `Bukti isi pulsa · ${card.label || card.phoneNumber} · ${topup.createdAt.slice(0, 10)}` });
+    } catch {
+      toast.error("Gagal memuat bukti isi pulsa. Coba lagi.");
+    } finally {
+      setLoadingProof(null);
+    }
   }
 
   return (
     <Shell title={`Riwayat · ${card.phoneNumber}`} onClose={onClose}>
+      <PhotoLightbox photos={proof ? [proof] : []} index={proof ? 0 : null} onIndexChange={() => {}} onClose={() => setProof(null)} />
       {loading ? (
         <p className="text-sm text-muted-foreground py-4 text-center">Memuat…</p>
       ) : !rows || rows.length === 0 ? (
@@ -697,10 +709,11 @@ function HistoryDialog({
                 {t.proofPath ? (
                   <button
                     type="button"
-                    onClick={() => openProof(t.proofPath!)}
-                    className="text-primary underline underline-offset-2"
+                    onClick={() => openProof(t)}
+                    disabled={loadingProof !== null}
+                    className="inline-flex min-h-11 items-center gap-1 text-primary underline underline-offset-2 disabled:opacity-50"
                   >
-                    Lihat bukti
+                    {loadingProof === t.id ? <><Loader2 size={13} className="animate-spin" /> Memuat…</> : "Lihat bukti"}
                   </button>
                 ) : (
                   <span className="text-muted-foreground">Tanpa bukti</span>

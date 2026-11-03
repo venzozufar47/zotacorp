@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowRight, ExternalLink, Loader2, SkipForward, X } from "lucide-react";
-import type { PendingConfirmationItem, SubscriptionDetail } from "@/lib/actions/pending-confirmations.actions";
+import type { PendingConfirmationItem, SubscriptionDetail, SimCardDetail } from "@/lib/actions/pending-confirmations.actions";
 import { CYCLE_LABEL } from "@/lib/subscriptions/types";
 import { renewSubscription } from "@/lib/actions/subscriptions.actions";
 import { markChecklistReviewed, resolveItemIssue } from "@/lib/actions/cleaning-governance.actions";
@@ -43,6 +43,7 @@ export interface ResolverItem {
   href?: string;
   /** Khusus langganan: nominal, siklus, tanggal, alokasi, catatan. */
   subscription?: SubscriptionDetail;
+  simCard?: SimCardDetail;
   /** Bila ada, jenis ini diselesaikan lewat drawer karyawan (late proof, lembur, pendaftar). */
   drawer?: DrawerSubject;
 }
@@ -72,6 +73,7 @@ export function fromPending(p: PendingConfirmationItem, desc: string, ago: strin
     desc,
     detail: p.detail,
     subscription: p.subscription,
+    simCard: p.simCard,
     ago,
     shortLabel: p.shortLabel,
     href: notifHref(p),
@@ -463,6 +465,22 @@ function NotifResolver({
     case "sim_card":
       content = (
         <>
+          {item.simCard && (
+            <dl className="space-y-2 rounded-xl border border-border bg-muted/30 p-3 text-sm">
+              {[
+                ["Nomor SIM", item.simCard.phoneNumber],
+                ["Penggunaan", item.simCard.label || "Keterangan penggunaan belum diisi"],
+                ["Unit bisnis", item.simCard.businessUnit || "Belum diisi"],
+                ["Provider", item.simCard.provider || "Belum diisi"],
+                ...(item.simCard.notes ? [["Catatan", item.simCard.notes]] : []),
+              ].map(([label, value]) => (
+                <div key={label} className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  <dt className="w-24 shrink-0 text-muted-foreground">{label}</dt>
+                  <dd className="min-w-0 flex-1 break-words font-medium whitespace-pre-wrap">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
           <Body>
             <p>{text}</p>
             <p className="text-muted-foreground">Catat isi pulsa dengan masa aktif baru. Bukti screenshot opsional.</p>

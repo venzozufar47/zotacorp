@@ -51,6 +51,15 @@ export type PendingConfirmationItem = {
   minutes?: number;
   /** Khusus subscription: rincian untuk popup penyelesaian. */
   subscription?: SubscriptionDetail;
+  simCard?: SimCardDetail;
+};
+
+export type SimCardDetail = {
+  phoneNumber: string;
+  label: string | null;
+  provider: string | null;
+  businessUnit: string | null;
+  notes: string | null;
 };
 
 export type SubscriptionDetail = {
@@ -126,7 +135,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     supabase
       .from("sim_cards" as never)
       .select(
-        "id, phone_number, pic_user_id, pic_name, active_until, grace_until"
+        "id, phone_number, label, provider, business_unit_id, notes, pic_user_id, pic_name, active_until, grace_until"
       )
       .eq("is_active", true)
       .limit(200),
@@ -306,6 +315,10 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
   type SimRow = {
     id: string;
     phone_number: string;
+    label: string | null;
+    provider: string | null;
+    business_unit_id: string;
+    notes: string | null;
     pic_user_id: string | null;
     pic_name: string | null;
     active_until: string | null;
@@ -323,18 +336,29 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     string,
     { full_name: string | null; avatar_url: string | null; avatar_seed: string | null }
   >();
-  if (simPicIds.length > 0) {
-    const { data: sProfs } = await supabase
-      .from("profiles")
-      .select("id, full_name, avatar_url, avatar_seed")
-      .in("id", simPicIds);
-    for (const p of sProfs ?? []) simProfById.set(p.id, p);
-  }
+  const simUnitIds = Array.from(new Set(simRows.map(s => s.business_unit_id).filter(Boolean)));
+  const [{ data: sProfs }, { data: simUnits }] = await Promise.all([
+    simPicIds.length > 0
+      ? supabase.from("profiles").select("id, full_name, avatar_url, avatar_seed").in("id", simPicIds)
+      : Promise.resolve({ data: [] }),
+    simUnitIds.length > 0
+      ? supabase.from("business_units").select("id, name").in("id", simUnitIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  for (const p of sProfs ?? []) simProfById.set(p.id, p);
+  const simUnitById = new Map((simUnits ?? []).map(unit => [unit.id, unit.name]));
   const simItems: PendingConfirmationItem[] = simRows.map((s) => {
     const p = s.pic_user_id ? simProfById.get(s.pic_user_id) : null;
     return {
       rowId: s.id,
       kind: "sim_card",
+      simCard: {
+        phoneNumber: s.phone_number,
+        label: s.label,
+        provider: s.provider,
+        businessUnit: simUnitById.get(s.business_unit_id) ?? null,
+        notes: s.notes,
+      },
       userId: s.pic_user_id ?? s.id,
       // PIC manual (pic_name tanpa akun) bukan karyawan terdaftar → tanpa avatar.
       hasPerson: !!s.pic_user_id,

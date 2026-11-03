@@ -16,6 +16,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { PhotoLightbox } from "@/components/shared/PhotoLightbox";
 import {
   getEmployeeDrawerData,
   getEmployeeApprovals,
@@ -471,8 +472,9 @@ function ApprovalCard({
 
   // Late-proof photo lives in a private bucket; fetch a short-lived
   // signed URL on demand via the existing admin-gated proof route and
-  // open it in a new tab. `item.id` for late_proof is the log id.
+  // display it above the drawer. `item.id` for late_proof is the log id.
   const [loadingProof, setLoadingProof] = useState(false);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
   async function viewProof() {
     if (item.kind !== "late_proof") return;
     setLoadingProof(true);
@@ -486,7 +488,9 @@ function ApprovalCard({
         toast.error(body.error ?? "Gagal memuat foto bukti.");
         return;
       }
-      window.open(body.url, "_blank", "noopener,noreferrer");
+      setProofUrl(body.url);
+    } catch {
+      toast.error("Gagal memuat foto bukti. Coba lagi.");
     } finally {
       setLoadingProof(false);
     }
@@ -494,6 +498,12 @@ function ApprovalCard({
 
   return (
     <li className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
+      <PhotoLightbox
+        photos={proofUrl ? [{ url: proofUrl, title: `Bukti keterlambatan · ${formatActivityDate(item.date)}` }] : []}
+        index={proofUrl ? 0 : null}
+        onIndexChange={() => {}}
+        onClose={() => setProofUrl(null)}
+      />
       <div className="flex items-center gap-2">
         <span
           className={

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
 
 export interface LightboxPhoto {
@@ -36,25 +37,57 @@ export function PhotoLightbox({
   onClose: () => void;
 }) {
   const open = index !== null && photos[index] !== undefined;
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open || index === null) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && index! > 0) onIndexChange(index! - 1);
-      else if (e.key === "ArrowRight" && index! < photos.length - 1) onIndexChange(index! + 1);
+      if (e.key === "Escape") {
+        // Popup foto menutup sendiri; Escape tidak ikut menutup drawer di bawahnya.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onClose();
+      } else if (e.key === "ArrowLeft" && index! > 0) {
+        e.preventDefault();
+        onIndexChange(index! - 1);
+      } else if (e.key === "ArrowRight" && index! < photos.length - 1) {
+        e.preventDefault();
+        onIndexChange(index! + 1);
+      } else if (e.key === "Tab") {
+        const buttons = dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+        if (!buttons?.length) return;
+        const first = buttons[0];
+        const last = buttons[buttons.length - 1];
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
   }, [open, index, photos.length, onClose, onIndexChange]);
 
-  if (!open || index === null) return null;
+  if (!open || index === null || typeof document === "undefined") return null;
   const photo = photos[index];
   const hasPrev = index > 0;
   const hasNext = index < photos.length - 1;
 
-  return (
+  return createPortal(
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="fixed inset-0 z-[80] flex flex-col bg-black/95"
       role="dialog"
       aria-modal="true"
@@ -62,7 +95,7 @@ export function PhotoLightbox({
       onClick={onClose}
     >
       <div
-        className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 text-white"
+        className="flex shrink-0 items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 text-white"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="min-w-0">
@@ -90,7 +123,8 @@ export function PhotoLightbox({
         onPrev={hasPrev ? () => onIndexChange(index - 1) : null}
         onNext={hasNext ? () => onIndexChange(index + 1) : null}
       />
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -220,7 +254,7 @@ function ZoomSurface({
   return (
     <div
       ref={surfaceRef}
-      className="relative flex-1 min-h-0 grid place-items-center overflow-hidden px-2 pb-[max(1rem,env(safe-area-inset-bottom))] select-none"
+      className="relative flex-1 min-h-0 overflow-hidden select-none"
       style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -235,11 +269,12 @@ function ZoomSurface({
         }
       }}
     >
+      <div className="pointer-events-none absolute inset-x-2 top-0 bottom-[max(4.5rem,env(safe-area-inset-bottom))] flex items-center justify-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={photo.url}
         alt={photo.title}
-        className="max-h-full max-w-full rounded-lg object-contain will-change-transform"
+        className="pointer-events-auto max-h-full max-w-full rounded-lg object-contain will-change-transform"
         style={{
           transform: `translate(${t.x}px, ${t.y}px) scale(${t.s})`,
           transition: touching ? "none" : "transform 150ms ease-out",
@@ -247,6 +282,7 @@ function ZoomSurface({
         onClick={(e) => e.stopPropagation()}
         draggable={false}
       />
+      </div>
 
       {onPrev && t.s <= 1 && (
         <button
