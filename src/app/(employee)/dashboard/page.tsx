@@ -72,7 +72,8 @@ import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home
 import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
 import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
-import { MessageSquareWarning, FlaskConical } from "lucide-react";
+import { MessageSquareWarning, MessageSquare, FlaskConical } from "lucide-react";
+import { resolveUserBranches } from "@/lib/branches/user-branches";
 import { NoticeCard } from "@/components/dashboard/NoticeCard";
 import { ShortcutsCard } from "@/components/dashboard/ShortcutsCard";
 import { SocialScorecardSection } from "@/components/social/SocialScorecardSection";
@@ -173,6 +174,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
     canFileComplaintFlag,
     answeredMonthlyPulse,
     pendingSopCount,
+    feedbackBranches,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -225,6 +227,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
     FEATURES.keluhan || FEATURES.risetProduk ? canFileComplaint() : Promise.resolve(false),
     FEATURES.survei ? hasAnsweredMonthlyPulse() : Promise.resolve(true),
     FEATURES.pengakuanSop ? countPendingSopAcknowledgments() : Promise.resolve(0),
+    resolveUserBranches(user.id),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -519,6 +522,9 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
 
       <ShortcutsCard
         items={[
+          ...(feedbackBranches.length > 0
+            ? [{ href: "/feedback-pelanggan", icon: <MessageSquare />, title: "Feedback pelanggan", body: "Rating dan masukan untuk cabangmu" }]
+            : []),
           ...(FEATURES.pengaduan
             ? [
                 {

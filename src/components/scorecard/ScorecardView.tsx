@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { combineWasteService } from "@/lib/scorecard/combine";
 import { TILE_STYLE, type TileTone } from "./tile-styles";
@@ -17,10 +18,12 @@ const BAND_META: Record<ScorecardBand, { label: string } & (typeof TILE_STYLE)[T
 export function ScorecardView({
   scorecard,
   settingsLinks,
+  feedbackHref,
 }: {
   scorecard: BranchScorecard;
   /** Pintasan "atur target" per metrik ke halaman pengaturan aslinya (hanya halaman owner yang mengirim). */
   settingsLinks?: Partial<Record<ScorecardMetric["key"], { href: string; label: string }>>;
+  feedbackHref?: string;
 }) {
   // Waste + Service level tampil sebagai SATU kartu yang warnanya mengikuti yang lebih rendah.
   const items = combineWasteService(scorecard.metrics);
@@ -111,9 +114,16 @@ export function ScorecardView({
           return (
             <div key={m.key} className={tileCls} style={{ animationDelay: `${i * 60}ms` }}>
               {watermark}
+              {m.key === "feedback" && feedbackHref && (
+                <Link
+                  href={feedbackHref}
+                  aria-label={`Lihat feedback pelanggan cabang ${scorecard.branch}`}
+                  className="absolute inset-0 z-10 rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              )}
               <div className="relative flex items-start justify-between gap-1">
                 <span className="text-[11.5px] font-medium leading-snug">{m.label}</span>
-                <span className="-mr-2 -mt-1.5">
+                <span className={cn("-mr-2 -mt-1.5", m.key === "feedback" && feedbackHref && "z-20")}>
                   <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} detail={m.note} settings={settingsLinks?.[m.key]} onSolid />
                 </span>
               </div>

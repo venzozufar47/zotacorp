@@ -9,6 +9,9 @@ import {
   TrendingUp,
   CheckCircle2,
   Settings2,
+  Info,
+  ChevronDown,
+  TriangleAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
@@ -555,28 +558,36 @@ export function BranchCardsGrid({
         </section>
       )}
 
-      {sc?.selectedLabel && (
-        <div className="text-[10.5px] leading-snug text-muted-foreground">
-          Scorecard {sc.selectedLabel}: dihitung otomatis tiap malam
-          {sc.computedAt ? ` · diperbarui ${new Date(sc.computedAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
-          {sc.version > 1 ? ` · versi ${sc.version}` : ""}. Nilai tepat di batas masuk status yang lebih baik.
-          {sc.warnings.length > 0 && (
-            <details className="mt-1">
-              <summary className="cursor-pointer font-semibold text-warning">▲ {sc.warnings.length} hal membuat angka bulan ini masih bisa berubah</summary>
-              <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                {sc.warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            </details>
-          )}
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/30 text-xs leading-relaxed">
+        {sc?.selectedLabel && (
+          <div className="space-y-2 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-semibold text-foreground">Scorecard {sc.selectedLabel}</span>
+              <span className="text-muted-foreground">
+                {sc.computedAt ? `Diperbarui ${new Date(sc.computedAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "Dihitung otomatis tiap malam"}
+              </span>
+              {sc.version > 1 && <span className="rounded-md bg-background px-2 py-0.5 text-muted-foreground">Versi {sc.version}</span>}
+            </div>
+            {sc.warnings.length > 0 && (
+              <details className="group rounded-lg border border-warning/25 bg-warning/10 px-3">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-medium text-foreground [&::-webkit-details-marker]:hidden">
+                  <TriangleAlert size={15} aria-hidden className="shrink-0 text-warning" />
+                  <span className="flex-1">Angka periode ini masih dapat berubah · {sc.warnings.length} catatan</span>
+                  <ChevronDown size={15} aria-hidden className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <ul className="list-disc space-y-1 pb-3 pl-6 text-muted-foreground">
+                  {sc.warnings.map((w) => <li key={w}>{w}</li>)}
+                </ul>
+              </details>
+            )}
+            <p className="text-muted-foreground">Dihitung otomatis tiap malam. Nilai tepat di batas mendapat status yang lebih baik.</p>
+          </div>
+        )}
+        <div className={cn("flex items-start gap-2.5 px-4 py-3 text-muted-foreground", sc?.selectedLabel && "border-t border-border/70")}>
+          <Info size={15} aria-hidden className="mt-0.5 shrink-0" />
+          <p><span className="font-medium text-foreground">Dasar omzet Yeobo Space.</span> Booking dan tambahan setelah fee Mayar 2,2%, sebanding dengan bank/P&amp;L. Angka juga tampil di beranda karyawan delegasi.</p>
         </div>
-      )}
-
-      <p className="text-[10.5px] leading-snug text-muted-foreground">
-        Omzet Yeobo Space net setelah fee Mayar 2,2% (booking + tambahan) — sebanding
-        dengan angka bank/P&L. Juga terlihat di beranda karyawan delegasi.
-      </p>
+      </div>
 
       {openUnit && sc?.selectedMonth && (
         <UnitDetailDialog

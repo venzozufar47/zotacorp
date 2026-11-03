@@ -356,7 +356,7 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
         <Card>
           <label htmlFor="fb-wish" className="block text-[15px] font-semibold leading-snug">
             Produk baru apa yang kakak ingin kami sediakan?
-            <span className="ml-1.5 text-[13px] font-normal text-muted-foreground">(opsional)</span>
+            <span className="ml-1.5 text-[13px] font-normal text-muted-foreground">(tidak wajib)</span>
           </label>
           <input
             id="fb-wish"

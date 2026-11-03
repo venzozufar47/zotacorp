@@ -133,7 +133,7 @@ export function FinanceLandingClient({
           their assigned rekening, which is always under one BU). */}
       {isAdmin && (
       <div className="flex gap-2 flex-wrap">
-        {businessUnits.map((bu) => {
+        {businessUnits.filter((bu) => BU_AVAILABILITY[bu] === true).map((bu) => {
           const available = BU_AVAILABILITY[bu] ?? false;
           const active = bu === activeBusinessUnit;
           return (
@@ -180,24 +180,27 @@ export function FinanceLandingClient({
         <div className="flex items-center gap-2 flex-wrap">
           <Link
             href={`/admin/finance/pnl?bu=${encodeURIComponent(activeBusinessUnit)}`}
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition"
+            aria-label="Profit & Loss"
+            className="group relative inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <TrendingUp size={14} />
-            Profit &amp; Loss
+            <TrendingUp size={18} aria-hidden />
+            <span aria-hidden className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-md opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100">Profit &amp; Loss</span>
           </Link>
           <Link
             href="/admin/finance/assignments"
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition"
+            aria-label="Assignment queue"
+            className="group relative inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Inbox size={14} />
-            Assignment queue
+            <Inbox size={18} aria-hidden />
+            <span aria-hidden className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-md opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100">Assignment queue</span>
           </Link>
           <Link
             href="/admin/finance/employees"
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition"
+            aria-label="Karyawan ke cabang"
+            className="group relative inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Users size={14} />
-            Karyawan → cabang
+            <Users size={18} aria-hidden />
+            <span aria-hidden className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-md opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100">Karyawan → cabang</span>
           </Link>
           <Button
             type="button"

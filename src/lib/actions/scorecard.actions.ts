@@ -307,12 +307,12 @@ export async function computeMetricsAsOf(
       displayValue: fb?.average != null ? `${fb.average.toFixed(1).replace(".", ",")} ★` : "Belum ada data",
       band: fb?.band ?? "measuring",
       note: fb
-        ? `${fb.count} feedback dalam ${FEEDBACK_WINDOW_DAYS} hari terakhir, target ${fb.targetCount} (${FEEDBACK_DAILY_TARGET} per hari).${
-            fb.average != null && !fb.countMet && fb.band === "yellow" && fb.average >= th.fbGreen ? " Jumlah belum tercapai, jadi kuning." : ""
+        ? `${fb.count}/${fb.targetCount} feedback · ${FEEDBACK_WINDOW_DAYS} hari.${
+            fb.average != null && !fb.countMet && fb.band === "yellow" && fb.average >= th.fbGreen ? " Kuning: jumlah belum cukup." : ""
           }`
         : undefined,
       ranges: feedbackRanges(th),
-      rangesNote: `Hijau butuh juga jumlah feedback mencapai ${FEEDBACK_DAILY_TARGET} per hari; bila kurang, kartu kuning.`,
+      rangesNote: `Hijau: minimal ${FEEDBACK_DAILY_TARGET} feedback/hari.`,
     },
   ];
 }

@@ -19,7 +19,7 @@ export async function ScorecardSection({ simulatePrevMonth = false }: { simulate
             <span className="eyebrow text-muted-foreground">Scorecard cabang {sc.branch}</span>
             <span aria-hidden className="ml-3 h-px flex-1 bg-gradient-to-r from-border to-transparent" />
           </div>
-          <ScorecardView scorecard={sc} />
+          <ScorecardView scorecard={sc} feedbackHref="/feedback-pelanggan" />
           <ScorecardPrevMonth scorecard={sc} />
         </div>
       ))}
