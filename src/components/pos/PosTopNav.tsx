@@ -20,6 +20,7 @@ export type PosNavSection =
   | "pesanan"
   | "riwayat"
   | "service-level"
+  | "feedback"
   | "insights";
 
 interface Props {

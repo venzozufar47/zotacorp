@@ -1326,7 +1326,7 @@ export function POSClient({
             )}
             {feedbackToday && (
               <div className="min-w-0 flex-1">
-                <FeedbackTargetCard summary={feedbackToday} />
+                <FeedbackTargetCard summary={feedbackToday} href={`${basePath}/feedback`} />
               </div>
             )}
             {serviceLevel && (

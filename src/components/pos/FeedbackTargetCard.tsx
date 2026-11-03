@@ -1,4 +1,5 @@
 import type { PosFeedbackToday } from "@/lib/actions/feedback.actions";
+import Link from "next/link";
 
 /**
  * Kartu "feedback pelanggan hari ini vs target" di layar kasir, sebelah Omset dan Service Level. Mengingatkan kasir untuk
@@ -11,11 +12,11 @@ function tone(count: number, target: number): { text: string; bg: string; bar: s
   return { text: "text-destructive", bg: "bg-destructive/10", bar: "bg-destructive" };
 }
 
-export function FeedbackTargetCard({ summary }: { summary: PosFeedbackToday }) {
+export function FeedbackTargetCard({ summary, href }: { summary: PosFeedbackToday; href: string }) {
   const t = tone(summary.count, summary.target);
   const pct = Math.min(100, Math.round((summary.count / summary.target) * 100));
   return (
-    <div className={`flex h-full items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)]`}>
+    <Link href={href} aria-label={`Lihat feedback pelanggan ${summary.branch}`} className={`flex min-h-11 h-full items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Feedback Hari Ini</p>
         <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
@@ -31,6 +32,6 @@ export function FeedbackTargetCard({ summary }: { summary: PosFeedbackToday }) {
           <span className={`block h-full rounded-full ${t.bar}`} style={{ width: `${pct}%` }} />
         </span>
       </div>
-    </div>
+    </Link>
   );
 }

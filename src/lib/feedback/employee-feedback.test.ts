@@ -8,7 +8,7 @@ import { runInNewContext } from "node:vm";
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
-function setup(options: { signedIn?: boolean; branches?: string[]; fail?: boolean } = {}) {
+function setup(options: { signedIn?: boolean; branches?: string[]; fail?: boolean; posAllowed?: boolean; ledger?: string | null; wishes?: string[] } = {}) {
   const calls: { method: string; args: any[] }[] = [];
   const raw = { id: "review", branch: "Pare", rating: 4, aspects: ["rasa"], comment: "Enak", product_wish: null, created_at: "2026-11-01T00:00:00Z" };
   const query: any = {};
@@ -18,16 +18,27 @@ function setup(options: { signedIn?: boolean; branches?: string[]; fail?: boolea
       return query;
     };
   }
-  query.then = (resolve: any) => resolve(options.fail ? { error: { message: "private database error" } } : { data: [raw] });
+  const rows = options.wishes ? options.wishes.map((wish, i) => ({ ...raw, id: String(i), product_wish: wish })) : [raw];
+  query.then = (resolve: any) => resolve(options.fail ? { error: { message: "private database error" } } : { data: rows });
+  const accountQuery: any = {};
+  for (const method of ["select", "eq"]) accountQuery[method] = (...args: any[]) => {
+    calls.push({ method: `account.${method}`, args });
+    return accountQuery;
+  };
+  accountQuery.maybeSingle = async () => ({ data: { default_branch: "Pare", ledger_account_id: options.ledger ?? null } });
   const modules: Record<string, any> = {
     "@/lib/supabase/cached": { getCurrentUser: async () => options.signedIn === false ? null : { id: "current-user" } },
     "@/lib/branches/user-branches": { resolveUserBranches: async (id: string) => {
       assert.equal(id, "current-user");
       return options.branches ?? ["Pare"];
     } },
+    "./_gates": { requireAdminOrPosAssignee: async (id: string) => {
+      calls.push({ method: "gate", args: [id] });
+      return options.posAllowed ? { ok: true } : { ok: false, error: "Forbidden" };
+    } },
     "./_supabase-admin": { createAdminClient: () => ({ from: (table: string) => {
       calls.push({ method: "from", args: [table] });
-      return query;
+      return table === "bank_accounts" ? accountQuery : query;
     } }) },
     "@/lib/utils/jakarta": { jakartaDateString: () => "2026-11-03" },
     "@/lib/feedback/store": { wibDayStart: (day: string) => `${day}T00:00:00+07:00` },
@@ -72,4 +83,39 @@ test("kegagalan database tidak ditampilkan sebagai nol ulasan atau membocorkan p
   assert.equal(result.ok, false);
   assert.ok(result.error);
   assert.ok(!result.error.includes("private database error"));
+});
+
+test("feedback POS menolak akses rekening yang tidak ditugaskan sebelum membaca database", async () => {
+  const { actions, calls } = setup();
+  const result = await actions.getPosCustomerFeedback("other-outlet");
+  assert.equal(result.ok, false);
+  assert.equal(calls.some((call) => call.method === "from"), false);
+});
+
+test("feedback POS mengikuti cabang rekening, bukan parameter cabang dari pemanggil", async () => {
+  const { actions, calls } = setup({ posAllowed: true });
+  const result = await actions.getPosCustomerFeedback("assigned-outlet", "Semarang");
+  assert.equal(result.ok, true);
+  assert.equal(result.data[0].branch, "Pare");
+  assert.equal(JSON.stringify(calls.find((call) => call.method === "in")?.args), '["branch",["Pare"]]');
+  assert.equal(JSON.stringify(calls.find((call) => call.method === "account.eq")?.args), '["id","assigned-outlet"]');
+});
+
+test("rekening dengan buku induk tidak ikut menampilkan feedback cabang induk", async () => {
+  const { actions, calls } = setup({ posAllowed: true, ledger: "parent-outlet" });
+  const result = await actions.getPosCustomerFeedback("mamaya");
+  assert.equal(result.data.length, 0);
+  assert.equal(calls.some((call) => call.method === "in"), false);
+});
+
+test("rekap usulan menggabungkan kapitalisasi dan spasi tanpa menghitung isian kosong", async () => {
+  const { actions } = setup({ wishes: ["Roti Sobek", "  roti   sobek ", "Brownies", "   "] });
+  const result = await actions.getMyCustomerFeedback();
+  const summary = result.data[0];
+  assert.equal(summary.count, 4);
+  assert.equal(summary.commentCount, 4);
+  assert.equal(summary.productWishCount, 3);
+  assert.equal(summary.productWishes.length, 2);
+  assert.equal(summary.productWishes[0].text, "Roti Sobek");
+  assert.equal(summary.productWishes[0].count, 2);
 });

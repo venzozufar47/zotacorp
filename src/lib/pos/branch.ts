@@ -66,6 +66,7 @@ export const POS_DEFAULT_BRANCH: PosBranchParam = "pare";
  * membuat folder baru di `src/app/pos/[branch]/`.
  */
 export const POS_SUBPAGES = [
+  "feedback",
   "insights",
   "pesanan",
   "produk",
