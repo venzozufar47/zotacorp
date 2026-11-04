@@ -1334,17 +1334,17 @@ export function POSClient({
         {(dailyRevenue || serviceLevel || feedbackToday) && (
           <div className="flex items-stretch gap-3 px-3 pt-3">
             {dailyRevenue && (
-              <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 [&>*]:w-full">
                 <DailyRevenueTargetCard summary={dailyRevenue} />
               </div>
             )}
             {feedbackToday && (
-              <div className="min-w-0 flex-1">
-                <FeedbackTargetCard summary={feedbackToday} href={`${basePath}/feedback`} freebies={monitorStock} />
+              <div className="flex min-w-0 flex-1 [&>*]:w-full">
+                <FeedbackTargetCard summary={feedbackToday} href={`${basePath}/feedback`} freebies={monitorStock} bankAccountId={bankAccountId} />
               </div>
             )}
             {serviceLevel && (
-              <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 [&>*]:w-full">
                 <ServiceLevelHero
                   summary={serviceLevel}
                   size="compact"

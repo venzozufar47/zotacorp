@@ -15,6 +15,7 @@ import {
   type ServiceLevelResult,
 } from "@/lib/pos/service-level";
 import { listActiveSkus } from "@/lib/pos/stock-engine";
+import { loadThresholdsFor } from "@/lib/scorecard/thresholds-store";
 import { computeWaste, type WasteResult } from "@/lib/pos/waste";
 
 /**
@@ -205,6 +206,19 @@ export async function getServiceLevelSummary(
       .order("snapshot_date", { ascending: true }),
   ]);
 
+  // Target mengikuti scorecard cabang (batas hijau Service level cabang + bulan ini), bukan pengaturan outlet lama.
+  // Gagal baca: jatuh ke target outlet.
+  let target = account?.service_level_target ?? 1;
+  if (account?.default_branch) {
+    try {
+      const monthStart = `${jakartaDateString(new Date()).slice(0, 7)}-01`;
+      const th = await loadThresholdsFor(createAdminClient(), account.default_branch, monthStart);
+      if (th.slGreen > 0) target = th.slGreen / 100;
+    } catch {
+      /* pakai target outlet */
+    }
+  }
+
   let readySum = 0;
   let totalSkuSamples = 0;
   let daysCounted = 0;
@@ -234,7 +248,7 @@ export async function getServiceLevelSummary(
       bankAccountId,
       accountName: account?.account_name ?? "",
       branch: account?.default_branch ?? null,
-      target: account?.service_level_target ?? 1,
+      target,
       percent: totalSkuSamples > 0 ? readySum / totalSkuSamples : null,
       readySum,
       totalSkuSamples,

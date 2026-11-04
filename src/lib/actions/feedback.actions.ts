@@ -9,7 +9,8 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ASPECT_ALL_GOOD, FEEDBACK_DAILY_TARGET, FEEDBACK_SLUGS, type FeedbackBranch } from "@/lib/feedback/constants";
 import { validateFeedback } from "@/lib/feedback/validate";
 import { wibDayStart } from "@/lib/feedback/store";
-import { recordFeedbackFreebie } from "@/lib/feedback/freebie";
+import { claimCode, giveFreebie, offerFeedbackFreebie, pendingClaimCount, voidFreebie } from "@/lib/feedback/freebie";
+import { getCurrentUser } from "@/lib/supabase/cached";
 
 /**
  * Feedback pelanggan Haengbocake. Pengiriman publik tanpa login: divalidasi ketat dan dibatasi lajunya di sini, ditulis
@@ -44,7 +45,7 @@ export interface SubmitFeedbackInput {
   dryRun?: unknown;
 }
 
-export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promise<{ ok: true } | { ok: false; error: string; limited?: boolean }> {
+export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promise<{ ok: true; claimCode?: string } | { ok: false; error: string; limited?: boolean }> {
   const target = FEEDBACK_SLUGS[String(input.slug)];
   if (!target) return { ok: false, error: "Halaman tidak ditemukan." };
   // Bot yang mengisi kolom jebakan dianggap berhasil supaya tidak mencoba ulang.
@@ -98,9 +99,9 @@ export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promis
     console.error("[feedback] gagal menyimpan", error?.message);
     return { ok: false, error: "Maaf, masukan belum terkirim. Coba lagi ya, kak." };
   }
-  // Pengisi feedback mendapat freebies: kurangi stok "Freebies Tiramisu" cabang ini.
-  await recordFeedbackFreebie(db, (saved as unknown as { id: string }).id, target.branch);
-  return { ok: true };
+  // Freebies hanya DITAWARKAN (stok cukup); stok baru berkurang saat kasir mengetuk "Diberikan".
+  const code = await offerFeedbackFreebie(db, (saved as unknown as { id: string }).id, target.branch);
+  return code ? { ok: true, claimCode: code } : { ok: true };
 }
 
 // ── Admin ────────────────────────────────────────────────────────────
@@ -246,11 +247,14 @@ export async function getFeedbackAdminData(input: {
 export async function setFeedbackHidden(id: string, hidden: boolean): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  const { error } = await createAdminClient()
+  const db = createAdminClient();
+  const { error } = await db
     .from("customer_feedback" as never)
     .update({ hidden } as never)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+  // Feedback spam disembunyikan: tawaran freebies dibatalkan, dan yang sudah terlanjur diberikan dikembalikan ke stok.
+  if (hidden) await voidFreebie(db, id);
   revalidatePath("/admin/scorecard");
   revalidatePath("/dashboard");
   return { ok: true };
@@ -265,6 +269,8 @@ export interface PosFeedbackToday {
   branch: FeedbackBranch;
   /** Alamat halaman feedback cabang ini (untuk QR / tautan). */
   path: string;
+  /** Tawaran freebies hari ini yang menunggu diklaim kasir. */
+  freebiePending: number;
 }
 
 /** Jumlah feedback hari ini untuk kartu target di layar kasir. Hanya outlet Pare dan Semarang; selain itu null. */
@@ -284,5 +290,90 @@ export async function getPosFeedbackToday(bankAccountId: string): Promise<Action
     .eq("hidden", false)
     .gte("created_at", wibDayStart(today));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: { count: count ?? 0, target: FEEDBACK_DAILY_TARGET, branch, path: `/feedback/${branch.toLowerCase()}` } };
+  const freebiePending = await pendingClaimCount(db, branch);
+  return {
+    ok: true,
+    data: { count: count ?? 0, target: FEEDBACK_DAILY_TARGET, branch, path: `/feedback/${branch.toLowerCase()}`, freebiePending },
+  };
+}
+
+export interface FreebieClaimRow {
+  id: string;
+  code: string;
+  rating: number;
+  /** Jam isi (HH:MM WIB). */
+  time: string;
+}
+
+/** Cabang outlet untuk gerbang klaim; null bila bukan outlet feedback. */
+async function claimBranch(bankAccountId: string) {
+  const db = createAdminClient();
+  const { data: account } = await db.from("bank_accounts").select("default_branch, ledger_account_id").eq("id", bankAccountId).maybeSingle();
+  const branch = account?.default_branch;
+  if (account?.ledger_account_id || (branch !== "Pare" && branch !== "Semarang")) return null;
+  return { db, branch: branch as FeedbackBranch };
+}
+
+/** Tawaran freebies hari ini yang menunggu kasir (terbaru dulu). Kedaluwarsa otomatis lewat tengah malam WIB. */
+export async function listFreebieClaims(bankAccountId: string): Promise<ActionResult<FreebieClaimRow[]>> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const ctx = await claimBranch(bankAccountId);
+  if (!ctx) return { ok: true, data: [] };
+  const { data, error } = await ctx.db
+    .from("customer_feedback" as never)
+    .select("id, rating, created_at")
+    .eq("branch", ctx.branch)
+    .eq("hidden", false)
+    .eq("freebie_claim", "pending")
+    .gte("created_at", wibDayStart(jakartaDateString(new Date())))
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) return { ok: false, error: error.message };
+  const rows = ((data ?? []) as unknown as { id: string; rating: number; created_at: string }[]).map((r) => ({
+    id: r.id,
+    code: claimCode(r.id),
+    rating: r.rating,
+    time: new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false })
+      .format(new Date(r.created_at))
+      .replace(":", "."),
+  }));
+  return { ok: true, data: rows };
+}
+
+/** Kasir menandai tawaran: "given" (stok −1) atau "skipped" (dilewati). */
+export async function resolveFreebieClaim(input: {
+  bankAccountId: string;
+  feedbackId: string;
+  action: "given" | "skipped";
+}): Promise<ActionResult> {
+  const gate = await requireAdminOrPosAssignee(input.bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sesi berakhir. Masuk lagi." };
+  const ctx = await claimBranch(input.bankAccountId);
+  if (!ctx) return { ok: false, error: "Outlet ini tidak memakai freebies feedback." };
+  const { data: fb } = await ctx.db
+    .from("customer_feedback" as never)
+    .select("id, branch, hidden, freebie_claim, created_at")
+    .eq("id", input.feedbackId)
+    .maybeSingle();
+  const row = fb as unknown as { branch: string; hidden: boolean; freebie_claim: string | null; created_at: string } | null;
+  if (!row || row.branch !== ctx.branch) return { ok: false, error: "Feedback tidak ditemukan." };
+  if (row.hidden || row.freebie_claim !== "pending") return { ok: false, error: "Tawaran ini sudah diproses." };
+  if (row.created_at < wibDayStart(jakartaDateString(new Date()))) return { ok: false, error: "Tawaran ini sudah kedaluwarsa (hari sudah berganti)." };
+
+  if (input.action === "skipped") {
+    const { error } = await ctx.db
+      .from("customer_feedback" as never)
+      .update({ freebie_claim: "skipped", freebie_claimed_at: new Date().toISOString(), freebie_claimed_by: user.id } as never)
+      .eq("id", input.feedbackId)
+      .eq("freebie_claim", "pending");
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const res = await giveFreebie(ctx.db, { feedbackId: input.feedbackId, branch: ctx.branch, userId: user.id });
+    if (!res.ok) return { ok: false, error: res.error };
+  }
+  revalidatePath("/pos", "layout");
+  return { ok: true };
 }

@@ -34,6 +34,24 @@ function readFilled(slug: string): boolean {
     return false;
   }
 }
+/** Kode klaim freebies (berlaku hari ini): disimpan supaya tetap tampil bila halaman dimuat ulang. */
+const claimKey = (slug: string) => `zota_fb_claim_${slug}`;
+const todayKey = () => new Date().toDateString();
+function readClaim(slug: string): string {
+  try {
+    const v = JSON.parse(localStorage.getItem(claimKey(slug)) ?? "null") as { code?: string; day?: string } | null;
+    return v && v.day === todayKey() && typeof v.code === "string" ? v.code : "";
+  } catch {
+    return "";
+  }
+}
+function saveClaim(slug: string, code: string) {
+  try {
+    localStorage.setItem(claimKey(slug), JSON.stringify({ code, day: todayKey() }));
+  } catch {
+    /* penyimpanan diblokir: kode tetap tampil di layar ini */
+  }
+}
 function markFilled(slug: string) {
   try {
     localStorage.setItem(filledKey(slug), String(Date.now()));
@@ -109,7 +127,12 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
   const [website, setWebsite] = useState(""); // kolom jebakan bot
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<null | { rating: number }>(null);
+  const [done, setDone] = useState<null | { rating: number; code?: string }>(null);
+  const savedClaim = useSyncExternalStore(
+    () => () => {},
+    () => readClaim(slug),
+    () => ""
+  );
   // Sudah mengisi di perangkat ini (dalam 12 jam): tampilkan ucapan terima kasih, bukan formulir.
   const filled = useSyncExternalStore(
     () => () => {},
@@ -191,7 +214,8 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
         return;
       }
       if (!isTestMode()) markFilled(slug);
-      setDone({ rating });
+      if (r.claimCode) saveClaim(slug, r.claimCode);
+      setDone({ rating, code: r.claimCode });
       window.scrollTo({ top: 0 });
     } catch {
       setErrors({ form: "Koneksi bermasalah. Coba kirim lagi ya, kak." });
@@ -216,6 +240,15 @@ export function FeedbackForm({ slug, brand }: { slug: string; brand: string }) {
                 ? `Senang sekali kakak puas. Masukan kakak sangat berarti untuk ${brand}.`
                 : `Maaf kalau belum maksimal. Masukan kakak kami baca dan jadikan bahan berbenah di ${brand}.`}
           </p>
+          {(done?.code || savedClaim) && (
+            <div className="mt-5 w-full rounded-2xl border border-border bg-card px-4 py-3">
+              <p className="text-sm font-semibold">Ada hadiah kecil untuk kakak</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Tunjukkan layar ini ke kasir hari ini.</p>
+              <p className="mt-2 font-display text-3xl font-extrabold tracking-[0.3em] text-primary tabular-nums" aria-label="Kode hadiah">
+                {done?.code || savedClaim}
+              </p>
+            </div>
+          )}
           <p className="mt-6 text-sm font-semibold text-primary">Sampai jumpa lagi!</p>
         </div>
       </main>
