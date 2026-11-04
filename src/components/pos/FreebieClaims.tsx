@@ -28,6 +28,8 @@ export function FreebieClaims({
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<FreebieClaimRow[] | null>(null);
   const [busy, start] = useTransition();
+  // Konfirmasi ganda: ketukan pertama hanya meminta konfirmasi di baris itu; aksi baru jalan di ketukan kedua.
+  const [confirm, setConfirm] = useState<{ id: string; action: "given" | "skipped" } | null>(null);
 
   function load() {
     setRows(null);
@@ -41,6 +43,7 @@ export function FreebieClaims({
   }
 
   function resolve(id: string, action: "given" | "skipped") {
+    setConfirm(null);
     start(async () => {
       const r = await resolveFreebieClaim({ bankAccountId, feedbackId: id, action });
       if (!r.ok) {
@@ -61,6 +64,7 @@ export function FreebieClaims({
         type="button"
         onClick={() => {
           setOpen(true);
+          setConfirm(null);
           load();
         }}
         aria-label={`${name}: ${soldOut ? "habis" : `sisa ${onHand}`}${pending > 0 ? `, ${pending} menunggu` : ""}`}
@@ -91,25 +95,51 @@ export function FreebieClaims({
             <p className="py-6 text-center text-xs text-muted-foreground">Tidak ada tawaran yang menunggu.</p>
           ) : (
             <ul className="max-h-[50dvh] divide-y divide-border overflow-y-auto">
-              {rows.map((r) => (
-                <li key={r.id} className="flex items-center gap-2 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-lg font-extrabold leading-none tracking-wider tabular-nums">{r.code}</p>
-                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
-                      {r.time}
-                      <span aria-hidden>·</span>
-                      <Star size={11} className="fill-current" aria-hidden />
-                      {r.rating}
-                    </p>
-                  </div>
-                  <Button type="button" variant="outline" className="h-11 shrink-0" disabled={busy} onClick={() => resolve(r.id, "skipped")}>
-                    Lewati
-                  </Button>
-                  <Button type="button" className="h-11 shrink-0" disabled={busy || soldOut} onClick={() => resolve(r.id, "given")}>
-                    Diberikan
-                  </Button>
-                </li>
-              ))}
+              {rows.map((r) => {
+                const asking = confirm?.id === r.id ? confirm.action : null;
+                return (
+                  <li key={r.id} className="space-y-2 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-display text-lg font-extrabold leading-none tracking-wider tabular-nums">{r.code}</p>
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
+                          {r.time}
+                          <span aria-hidden>·</span>
+                          <Star size={11} className="fill-current" aria-hidden />
+                          {r.rating}
+                        </p>
+                      </div>
+                      {!asking && (
+                        <>
+                          <Button type="button" variant="outline" className="h-11 shrink-0" disabled={busy} onClick={() => setConfirm({ id: r.id, action: "skipped" })}>
+                            Lewati
+                          </Button>
+                          <Button type="button" className="h-11 shrink-0" disabled={busy || soldOut} onClick={() => setConfirm({ id: r.id, action: "given" })}>
+                            Diberikan
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {asking && (
+                      <div className="space-y-2 rounded-xl bg-muted/60 p-2.5" role="alert">
+                        <p className="text-xs font-semibold leading-snug">
+                          {asking === "given"
+                            ? `Yakin berikan freebies untuk kode ${r.code}? Stok berkurang 1.`
+                            : `Yakin lewati kode ${r.code}? Pelanggan tidak akan mendapat freebies dan tawaran hilang dari daftar.`}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button type="button" variant="outline" className="h-11" disabled={busy} onClick={() => setConfirm(null)}>
+                            Batal
+                          </Button>
+                          <Button type="button" className="h-11" disabled={busy} onClick={() => resolve(r.id, asking)}>
+                            {asking === "given" ? "Ya, berikan" : "Ya, lewati"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
           <Button type="button" variant="ghost" className="h-11 w-full" onClick={() => setOpen(false)}>
