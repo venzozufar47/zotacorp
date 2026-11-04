@@ -114,6 +114,7 @@ export function ProductCatalogClient({
           notes: null,
           requiresSugarLevel: false,
           stockOnly: false,
+          notForSale: false,
           variants: [],
         },
       ]);

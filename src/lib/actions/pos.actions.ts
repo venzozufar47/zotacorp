@@ -52,6 +52,7 @@ type PosProductRow = Pick<
   | "notes"
   | "requires_sugar_level"
   | "stock_only"
+  | "not_for_sale"
 >;
 type PosProductVariantRow = Pick<
   Database["public"]["Tables"]["pos_product_variants"]["Row"],
@@ -112,6 +113,8 @@ export interface PosProduct {
   notes: string | null;
   /** Produk khusus stok (Ready Cake): ikut stok/penarikan, tidak dijual dari grid. */
   stockOnly: boolean;
+  /** Tidak dijual di kasir (mis. Freebies): tak tampil di grid, ditolak server saat dijual, tetap ikut stok dan dipantau. */
+  notForSale: boolean;
   /** Wajib pilih tingkat gula — dipakai untuk produk TANPA varian.
    *  Kalau produk punya varian, yang menentukan adalah flag di varian. */
   requiresSugarLevel: boolean;
@@ -197,6 +200,7 @@ function mapPosProduct(
     notes: r.notes,
     requiresSugarLevel: r.requires_sugar_level,
     stockOnly: r.stock_only,
+    notForSale: r.not_for_sale,
     variants,
   };
 }
@@ -252,12 +256,12 @@ export async function listActivePosProducts(
   const supabase = await createClient();
   let query = supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, not_for_sale")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true);
   // Produk khusus stok (Ready Cake) tidak dijual dari grid keranjang (dijual lewat pemilih kue ready), tetapi HARUS ada
   // di halaman Stok supaya kasir bisa menarik (membuang) kue ready lewat dialog Penarikan.
-  if (!opts.includeStockOnly) query = query.eq("stock_only", false);
+  if (!opts.includeStockOnly) query = query.eq("stock_only", false).eq("not_for_sale", false);
   const { data, error } = await query
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true })
@@ -271,6 +275,22 @@ export async function listActivePosProducts(
   return data.map((d) => mapPosProduct(d, variants.get(d.id) ?? []));
 }
 
+/** Produk yang tidak dijual di kasir tetapi stoknya dipantau di layar POS (mis. Freebies Tiramisu). */
+export async function listMonitoredStockProducts(
+  bankAccountId: string
+): Promise<Array<{ productId: string; name: string }>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("pos_products")
+    .select("id, name")
+    .eq("bank_account_id", bankAccountId)
+    .eq("active", true)
+    .eq("track_stock", true)
+    .eq("not_for_sale", true)
+    .order("sort_order", { ascending: true });
+  return (data ?? []).map((p) => ({ productId: p.id, name: p.name }));
+}
+
 /** Admin katalog: termasuk yang inactive. */
 export async function listAllPosProducts(
   bankAccountId: string
@@ -278,7 +298,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, not_for_sale")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
@@ -755,6 +775,7 @@ export async function createPosSale(input: {
       bank_account_id: string;
       is_open_price: boolean;
       requires_sugar_level: boolean;
+      not_for_sale: boolean;
     }
   >();
   const variantMap = new Map<
@@ -773,7 +794,7 @@ export async function createPosSale(input: {
     const { data: products, error: prodErr } = await supabase
       .from("pos_products")
       .select(
-        "id, name, price, active, bank_account_id, is_open_price, requires_sugar_level"
+        "id, name, price, active, bank_account_id, is_open_price, requires_sugar_level, not_for_sale"
       )
       .in("id", productIds);
     if (prodErr) return { ok: false, error: prodErr.message };
@@ -784,6 +805,7 @@ export async function createPosSale(input: {
       if (p.bank_account_id !== input.bankAccountId)
         return { ok: false, error: "Produk tidak cocok dengan rekening" };
       if (!p.active) return { ok: false, error: `Produk "${p.name}" tidak aktif` };
+      if (p.not_for_sale) return { ok: false, error: `Produk "${p.name}" tidak dijual di kasir` };
     }
     // Ambil semua varian aktif untuk produk-produk ini. Digunakan
     // untuk (a) deteksi "produk ini punya varian → wajib pilih" dan

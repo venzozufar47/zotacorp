@@ -100,6 +100,8 @@ interface Props {
   feedbackToday?: PosFeedbackToday | null;
   /** Daftar ready cake cabang ini; null = cabang tanpa SKU Ready Cake (tombol Ready Cake tidak dirender). */
   readyCake?: ReadyCakeSummary | null;
+  /** Produk yang tidak dijual di kasir tetapi stoknya dipantau (mis. Freebies Tiramisu). Hanya tampilan. */
+  monitorStock?: Array<{ name: string; onHand: number }>;
   /** Konten struk bersama (server, per rekening). */
   receiptContent: ReceiptContent;
   products: PosProduct[];
@@ -221,6 +223,7 @@ export function POSClient({
   dailyRevenue = null,
   feedbackToday = null,
   readyCake = null,
+  monitorStock = [],
   receiptContent,
   products,
   isAdmin,
@@ -1367,6 +1370,20 @@ export function POSClient({
             />
           </div>
         </div>
+
+        {monitorStock.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-2 pt-2 sm:px-3 sm:pt-3">
+            {monitorStock.map((m) => (
+              <span
+                key={m.name}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
+              >
+                {m.name}
+                <b className="tabular-nums text-foreground">sisa {m.onHand}</b>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
           {readyCake && (searchQuery.trim() === "" || "ready cake".includes(searchQuery.trim().toLowerCase())) && (

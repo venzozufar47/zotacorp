@@ -9,6 +9,7 @@ import {
 import {
   findPosAccount,
   listActivePosProducts,
+  listMonitoredStockProducts,
   getPosDailyRevenueSummary,
 } from "@/lib/actions/pos.actions";
 import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
@@ -72,6 +73,7 @@ export default async function PosPage({
     dailyRevenueRes,
     feedbackRes,
     readyCakeItems,
+    monitoredProducts,
   ] = await Promise.all([
       listActivePosProducts(account.id),
       getCurrentRole(),
@@ -93,6 +95,8 @@ export default async function PosPage({
       getPosFeedbackToday(account.id).catch(() => null),
       // Daftar ready cake untuk panel di atas grid. Gagal tidak boleh menjatuhkan layar kasir.
       listReadyCakeItems(account.id).catch(() => []),
+      // Produk yang tidak dijual tetapi stoknya dipantau (mis. Freebies Tiramisu).
+      listMonitoredStockProducts(account.id).catch(() => []),
     ]);
   const receiptContent =
     receiptConfig ?? defaultReceiptContent(account.accountName);
@@ -111,6 +115,11 @@ export default async function PosPage({
   const hasReadyCakeSku = onHand.some((s) => s.productName === READY_CAKE_PRODUCT_NAME);
   const readyCake = hasReadyCakeSku ? { items: readyCakeItems } : null;
 
+  const monitorStock = monitoredProducts.map((m) => ({
+    name: m.name,
+    onHand: onHand.find((s) => s.productId === m.productId && !s.variantId)?.onHand ?? 0,
+  }));
+
   return (
     <POSClient
       bankAccountId={account.id}
@@ -125,6 +134,7 @@ export default async function PosPage({
       }
       feedbackToday={feedbackRes && feedbackRes.ok ? (feedbackRes.data ?? null) : null}
       readyCake={readyCake}
+      monitorStock={monitorStock}
       cashierName={cashierDisplayName(profile?.nickname, profile?.full_name)}
       fixedCashierName={view.fixedCashierName ?? null}
       shiftSlot={view.shiftSlot}
