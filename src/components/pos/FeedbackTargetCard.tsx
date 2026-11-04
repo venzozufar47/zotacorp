@@ -28,29 +28,28 @@ export function FeedbackTargetCard({
   const t = tone(summary.count, summary.target);
   const pct = Math.min(100, Math.round((summary.count / summary.target) * 100));
   return (
-    <div className={`flex min-h-11 h-full flex-col justify-center overflow-hidden rounded-2xl border-2 border-foreground ${t.bg} shadow-[3px_3px_0_0_var(--foreground)]`}>
+    <div className={`relative flex min-h-11 h-full items-center gap-3 overflow-hidden rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)]`}>
+      {/* Seluruh kartu bisa diketuk (overlay tautan); chip freebies di atasnya tetap bisa diketuk sendiri. */}
       <Link
         href={href}
         aria-label={`Lihat feedback pelanggan ${summary.branch}`}
-        className="flex items-center gap-3 px-3 py-2 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="min-w-0 before:absolute before:inset-0 focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-ring"
       >
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Feedback Hari Ini</p>
-          <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
-            {summary.count}
-            <span className="text-base font-bold text-muted-foreground"> / {summary.target}</span>
-          </p>
-        </div>
-        <div className="ml-auto min-w-0 text-right text-[11px] text-muted-foreground">
-          <p>{summary.count >= summary.target ? "Target tercapai" : `${summary.target - summary.count} lagi`}</p>
-          <span className="mt-1 block h-1.5 w-16 overflow-hidden rounded-full bg-foreground/10" aria-hidden>
-            <span className={`block h-full rounded-full ${t.bar}`} style={{ width: `${pct}%` }} />
-          </span>
-        </div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Feedback Hari Ini</p>
+        <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
+          {summary.count}
+          <span className="text-base font-bold text-muted-foreground"> / {summary.target}</span>
+        </p>
       </Link>
-      {freebies.map((f) => (
-        <FreebieClaims key={f.name} bankAccountId={bankAccountId} name={f.name} onHand={f.onHand} pending={summary.freebiePending} />
-      ))}
+      <div className="relative z-10 ml-auto flex min-w-0 flex-col items-end gap-1 text-right text-[11px] text-muted-foreground">
+        <p>{summary.count >= summary.target ? "Target tercapai" : `${summary.target - summary.count} lagi`}</p>
+        {freebies.map((f) => (
+          <FreebieClaims key={f.name} bankAccountId={bankAccountId} name={f.name} onHand={f.onHand} pending={summary.freebiePending} />
+        ))}
+      </div>
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-foreground/10" aria-hidden>
+        <span className={`block h-full ${t.bar}`} style={{ width: `${pct}%` }} />
+      </span>
     </div>
   );
 }

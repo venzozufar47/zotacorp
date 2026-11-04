@@ -63,21 +63,15 @@ export function FreebieClaims({
           setOpen(true);
           load();
         }}
-        className="flex min-h-9 w-full items-center justify-between gap-2 border-t border-foreground/10 px-3 py-1 text-left text-[11px] text-muted-foreground"
+        aria-label={`${name}: ${soldOut ? "habis" : `sisa ${onHand}`}${pending > 0 ? `, ${pending} menunggu` : ""}`}
+        className="inline-flex min-h-8 items-center gap-1 rounded-full border border-foreground/30 bg-card/80 px-2.5 py-0.5 text-[11px] font-semibold text-foreground"
       >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <Gift size={13} className="shrink-0" aria-hidden />
-          <span className="truncate">{name}</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-1.5">
-          <b className={`tabular-nums ${soldOut ? "text-destructive" : "text-foreground"}`}>{soldOut ? "habis" : `sisa ${onHand}`}</b>
-          {pending > 0 && (
-            <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-bold tabular-nums text-primary-foreground">
-              {pending} menunggu
-            </span>
-          )}
-          <ChevronRight size={13} aria-hidden />
-        </span>
+        <Gift size={12} className="shrink-0" aria-hidden />
+        <span className={`tabular-nums ${soldOut ? "text-destructive" : ""}`}>{soldOut ? "Freebies habis" : `Freebies ${onHand}`}</span>
+        {pending > 0 && (
+          <span className="rounded-full bg-primary px-1.5 text-[10px] font-bold tabular-nums leading-4 text-primary-foreground">{pending}</span>
+        )}
+        <ChevronRight size={12} className="shrink-0 opacity-60" aria-hidden />
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
