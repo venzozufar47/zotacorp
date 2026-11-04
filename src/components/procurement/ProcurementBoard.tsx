@@ -211,7 +211,7 @@ export function ProcurementBoard({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Cari bahan atau kategori…"
-          className="h-9 w-full rounded-xl border-2 border-foreground bg-card pl-8 pr-8 text-sm"
+          className="h-10 w-full rounded-xl border-2 border-foreground bg-card pl-8 pr-8 text-sm"
         />
         {query && (
           <button
@@ -247,274 +247,249 @@ export function ProcurementBoard({
       ) : visible.length === 0 ? (
         <Empty>Tidak ada bahan cocok.</Empty>
       ) : (
-        <div className="space-y-2">
+        <div className="divide-y divide-border overflow-hidden rounded-2xl border-2 border-foreground bg-card">
           {visible.map((r) => {
             const m = r.metrics;
             const open = expanded === r.material.id;
             const note = ssBasisNote(m.ssBasis, 25);
             const eoqNote = eoqErrorNote(m.eoqError);
+            const buy = m.suggestion && m.suggestion.qtyPurchaseUnits > 0 ? m.suggestion : null;
+            const leadLabel =
+              r.lead.source === "nyata"
+                ? `nyata, ${r.lead.samples} pesanan`
+                : r.lead.source === "manual"
+                  ? "diisi manual"
+                  : "bawaan";
             return (
-              <div
-                key={r.material.id}
-                className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm"
-              >
-                <div className="p-3 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpanded((e) => (e === r.material.id ? null : r.material.id))
-                    }
-                    className="flex-1 min-w-[180px] text-left"
-                  >
+              <div key={r.material.id}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => setExpanded((e) => (e === r.material.id ? null : r.material.id))}
+                  className="flex min-h-14 w-full items-center gap-2.5 px-3 py-2 text-left active:bg-muted/60"
+                >
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-sm">
-                        {r.material.name}
+                      <span className="truncate text-sm font-semibold">{r.material.name}</span>
+                      <span className={`shrink-0 rounded-full border px-1.5 py-px text-[10px] font-bold ${STATUS_CLASS[m.status]}`}>
+                        {STATUS_LABEL[m.status]}
                       </span>
-                      <ChevronDown
-                        size={14}
-                        className={`text-muted-foreground transition ${open ? "rotate-180" : ""}`}
-                      />
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {r.material.category ?? "tanpa kategori"} ·{" "}
-                      {fmtRpPrecise(m.unitCost)}/{r.material.usage_unit}
-                      {brandInfo?.[r.material.id]?.currentBrand ? ` · Dipakai: ${brandInfo[r.material.id].currentBrand}` : ""}
-                    </div>
-                  </button>
-
-                  <span
-                    className={`shrink-0 rounded-full border-2 px-2 py-0.5 text-[11px] font-bold ${STATUS_CLASS[m.status]}`}
-                  >
-                    {STATUS_LABEL[m.status]}
-                  </span>
-
-                  <div className="w-28 text-right tabular-nums">
-                    <div className="text-sm font-bold">
-                      {fmtQty(m.onHand)} {r.material.usage_unit}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      estimasi{" "}
-                      {m.freshness && (
-                        <span className={FRESHNESS_CLASS[m.freshness]}>
-                          · {FRESHNESS_LABEL[m.freshness]}
-                        </span>
-                      )}
+                    <div className="truncate text-[11px] tabular-nums text-muted-foreground">
+                      {m.onHand == null
+                        ? "belum ada hitungan"
+                        : `${fmtQty(m.onHand)} ${r.material.usage_unit}${m.daysOfCover != null ? ` · cukup ${Math.floor(m.daysOfCover)} hari` : ""}`}
                     </div>
                   </div>
-
-                  <div className="w-24 text-right tabular-nums">
-                    <div className="text-sm font-semibold">
-                      {m.daysOfCover == null
-                        ? "—"
-                        : `${Math.floor(m.daysOfCover)} hari`}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">cukup</div>
-                  </div>
-
-                  <div className="w-32 text-right">
-                    {m.suggestion && m.suggestion.qtyPurchaseUnits > 0 ? (
+                  <div className="shrink-0 text-right tabular-nums">
+                    {buy ? (
                       <>
-                        <div className="text-sm font-bold text-warning-foreground">
-                          beli {fmtQty(m.suggestion.qtyPurchaseUnits, 2)}{" "}
-                          {r.material.purchase_unit}
+                        <div className="text-[13px] font-bold">
+                          Beli {fmtQty(buy.qtyPurchaseUnits, 2)} {r.material.purchase_unit}
                         </div>
-                        <div className="text-[10px] text-muted-foreground tabular-nums">
-                          ≈ {formatRp(m.suggestion.estCost)}
-                        </div>
+                        <div className="text-[10px] text-muted-foreground">≈ {formatRp(buy.estCost)}</div>
                       </>
                     ) : m.onHand == null ? (
                       <span className="text-[11px] font-semibold text-muted-foreground">Opname dulu</span>
                     ) : m.suggestion?.reason === "dipesan" ? (
-                      <>
-                        <div className="text-[11px] font-bold text-foreground">Sudah dipesan</div>
-                        <div className="text-[10px] text-muted-foreground tabular-nums">
-                          tiba {r.inTransit.expectedAt ?? "—"}
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">—</span>
-                    )}
+                      <span className="text-[11px] font-semibold">Sudah dipesan</span>
+                    ) : null}
                   </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    {r.material.shopee_url && (
-                      <a
-                        href={r.material.shopee_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Buka link pembelian"
-                        className="inline-flex items-center gap-1 h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-muted-foreground hover:border-foreground hover:text-foreground"
-                      >
-                        <ExternalLink size={13} /> Link beli
-                      </a>
-                    )}
-                    {/* Satu jalur untuk pembelian: nota berfoto (buku kas + stok + harga). */}
-                    <a
-                      href={`/pengadaan?tab=catat&bu=${encodeURIComponent(activeBrand ?? "")}&bahan=${r.material.id}`}
-                      title="Catat pembelian bahan ini lewat nota berfoto"
-                      className="inline-flex items-center gap-1 h-8 rounded-lg border-2 border-foreground bg-primary px-2 text-[11px] font-bold"
-                    >
-                      <PackagePlus size={13} /> Catat belanja
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => setGoodsInFor(r)}
-                      title="Barang masuk tanpa pembelian (pemberian / dari cabang lain) — tidak tercatat di keuangan"
-                      className="inline-flex items-center h-8 rounded-lg px-1.5 text-[10.5px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                    >
-                      tanpa nota
-                    </button>
-                    {brandInfo?.[r.material.id] && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBrandFor({
-                            id: r.material.id,
-                            name: r.material.name,
-                            category: r.material.category,
-                            halalKind: brandInfo[r.material.id].halalKind,
-                            inHalalList: brandInfo[r.material.id].inHalalList,
-                          })
-                        }
-                        title="Merek yang dibeli & sedang dipakai untuk bahan ini"
-                        className="inline-flex items-center h-8 rounded-lg px-1.5 text-[10.5px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                      >
-                        {brandInfo[r.material.id].brandCount > 0 ? "ganti merek" : "merek"}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition ${open ? "rotate-180" : ""}`} aria-hidden />
+                </button>
 
                 {open && (
-                  <div className="border-t-2 border-foreground/20 p-3 space-y-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                      <NumField
-                        label={`Pakai / hari (${r.material.usage_unit})`}
-                        value={r.params.avgDailyUsage}
-                        decimal
-                        onCommit={(v) => saveParams(r, { avgDailyUsage: v })}
-                      />
-                      <NumField
-                        label="Lead time (hari)"
-                        value={r.params.leadTimeDays}
-                        decimal
-                        onCommit={(v) => saveParams(r, { leadTimeDays: v })}
-                      />
-                      <NumField
-                        label="Variasi pakai (±)"
-                        value={r.params.usageSigmaDaily ?? 0}
-                        decimal
-                        onCommit={(v) =>
-                          saveParams(r, { usageSigmaDaily: v > 0 ? v : null })
-                        }
-                      />
-                      <NumField
-                        label="Variasi lead time"
-                        value={r.params.leadTimeSigmaDays ?? 0}
-                        decimal
-                        onCommit={(v) =>
-                          saveParams(r, { leadTimeSigmaDays: v > 0 ? v : null })
-                        }
-                      />
-                      <NumField
-                        label={`MOQ (${r.material.purchase_unit})`}
-                        value={r.params.moqPurchaseUnits}
-                        decimal
-                        onCommit={(v) => saveParams(r, { moqPurchaseUnits: v })}
-                      />
-                      <NumField
-                        label="Kelipatan pesan"
-                        value={r.params.orderMultipleUnits}
-                        decimal
-                        onCommit={(v) =>
-                          v > 0 && saveParams(r, { orderMultipleUnits: v })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap items-end gap-2">
-                      <div className="flex-1 min-w-[220px]">
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Link pembelian
-                        </span>
-                        <TextField
-                          value={r.material.shopee_url ?? ""}
-                          placeholder="https://shopee.co.id/…"
-                          onCommit={(v) => saveLink(r, v)}
-                          className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px]"
-                        />
-                      </div>
-                      <div className="w-40">
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Supplier
-                        </span>
-                        <TextField
-                          value={r.params.supplier ?? ""}
-                          placeholder="nama toko"
-                          onCommit={(v) => saveParams(r, { supplier: v })}
-                          className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Angka penyusun — supaya saran belanja bisa ditelusuri,
-                        bukan kotak hitam. */}
-                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground tabular-nums">
-                      <span>
-                        Safety stock{" "}
-                        <b className="text-foreground">
-                          {fmtQty(m.safetyStock)} {r.material.usage_unit}
-                        </b>
-                      </span>
-                      <span>
-                        Titik pesan{" "}
-                        <b className="text-foreground">
-                          {fmtQty(m.reorderPoint)} {r.material.usage_unit}
-                        </b>
-                      </span>
-                      <span>
-                        EOQ{" "}
-                        <b className="text-foreground">
-                          {m.eoq == null
-                            ? "—"
-                            : `${fmtQty(m.eoq)} ${r.material.usage_unit}`}
-                        </b>
-                      </span>
-                      <span>
-                        Service level{" "}
-                        <b className="text-foreground">
-                          {Math.round(
-                            (r.params.serviceLevelOverride ?? 0) * 100
-                          ) || "global"}
-                          {r.params.serviceLevelOverride ? "%" : ""}
-                        </b>{" "}
-                        <span className="opacity-70">(z {m.z.toFixed(3)})</span>
-                      </span>
-                      {m.daysUntilReorder != null && (
-                        <span>
-                          Waktu ke titik pesan{" "}
-                          <b className="text-foreground">
-                            {Math.floor(m.daysUntilReorder)} hari
-                          </b>
-                        </span>
+                  <div className="space-y-3 border-t border-border bg-muted/30 px-3 py-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <a
+                        href={`/pengadaan?tab=catat&bu=${encodeURIComponent(activeBrand ?? "")}&bahan=${r.material.id}`}
+                        className="col-span-2 inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border-2 border-foreground bg-primary text-sm font-bold text-primary-foreground"
+                      >
+                        <PackagePlus size={16} aria-hidden /> Catat belanja
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setGoodsInFor(r)}
+                        className="h-10 rounded-xl border border-border bg-card text-xs font-semibold"
+                      >
+                        Barang masuk tanpa nota
+                      </button>
+                      {brandInfo?.[r.material.id] ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBrandFor({
+                              id: r.material.id,
+                              name: r.material.name,
+                              category: r.material.category,
+                              halalKind: brandInfo[r.material.id].halalKind,
+                              inHalalList: brandInfo[r.material.id].inHalalList,
+                            })
+                          }
+                          className="h-10 rounded-xl border border-border bg-card text-xs font-semibold"
+                        >
+                          {brandInfo[r.material.id].brandCount > 0 ? "Ganti merek" : "Merek"}
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                      {r.material.shopee_url && (
+                        <a
+                          href={r.material.shopee_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="col-span-2 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-semibold"
+                        >
+                          <ExternalLink size={13} aria-hidden /> Buka link beli
+                        </a>
                       )}
                     </div>
 
-                    {(note || eoqNote) && (
-                      <div className="space-y-1">
-                        {note && (
-                          <p className="flex items-start gap-1.5 text-[11px] text-warning-foreground">
-                            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                            {note}
-                          </p>
-                        )}
-                        {eoqNote && (
-                          <p className="text-[11px] text-muted-foreground pl-[18px]">
-                            {eoqNote}
-                          </p>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+                      <div className="flex justify-between gap-2">
+                        <dt>Harga</dt>
+                        <dd className="font-semibold text-foreground">
+                          {fmtRpPrecise(m.unitCost)}/{r.material.usage_unit}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt>Data stok</dt>
+                        <dd className={`font-semibold ${m.freshness ? FRESHNESS_CLASS[m.freshness] : ""}`}>
+                          {m.freshness ? FRESHNESS_LABEL[m.freshness] : "—"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt>Titik pesan</dt>
+                        <dd className="font-semibold text-foreground">
+                          {fmtQty(m.reorderPoint)} {r.material.usage_unit}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt>Lead time</dt>
+                        <dd className="font-semibold text-foreground">
+                          {fmtQty(r.lead.days)} hari <span className="font-normal opacity-70">({leadLabel})</span>
+                        </dd>
+                      </div>
+                      {r.inTransit.count > 0 && (
+                        <div className="col-span-2 flex justify-between gap-2">
+                          <dt>Di jalan</dt>
+                          <dd className="font-semibold text-foreground">
+                            {fmtQty(r.inTransit.qtyUsage)} {r.material.usage_unit}
+                            {r.inTransit.expectedAt ? ` · tiba ${r.inTransit.expectedAt}` : ""}
+                          </dd>
+                        </div>
+                      )}
+                      {brandInfo?.[r.material.id]?.currentBrand && (
+                        <div className="col-span-2 flex justify-between gap-2">
+                          <dt>Dipakai</dt>
+                          <dd className="font-semibold text-foreground">{brandInfo[r.material.id].currentBrand}</dd>
+                        </div>
+                      )}
+                    </dl>
+
+                    <details className="rounded-xl border border-border bg-card">
+                      <summary className="flex min-h-10 cursor-pointer select-none items-center px-3 text-xs font-semibold text-primary">
+                        Atur parameter &amp; rincian hitungan
+                      </summary>
+                      <div className="space-y-3 border-t border-border p-3">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                          <NumField
+                            label={`Pakai / hari (${r.material.usage_unit})`}
+                            value={r.params.avgDailyUsage}
+                            decimal
+                            onCommit={(v) => saveParams(r, { avgDailyUsage: v })}
+                          />
+                          <NumField
+                            label="Lead time (hari kerja)"
+                            value={r.params.leadTimeDays}
+                            decimal
+                            onCommit={(v) => saveParams(r, { leadTimeDays: v })}
+                          />
+                          <NumField
+                            label="Variasi pakai (±)"
+                            value={r.params.usageSigmaDaily ?? 0}
+                            decimal
+                            onCommit={(v) => saveParams(r, { usageSigmaDaily: v > 0 ? v : null })}
+                          />
+                          <NumField
+                            label="Variasi lead time"
+                            value={r.params.leadTimeSigmaDays ?? 0}
+                            decimal
+                            onCommit={(v) => saveParams(r, { leadTimeSigmaDays: v > 0 ? v : null })}
+                          />
+                          <NumField
+                            label={`MOQ (${r.material.purchase_unit})`}
+                            value={r.params.moqPurchaseUnits}
+                            decimal
+                            onCommit={(v) => saveParams(r, { moqPurchaseUnits: v })}
+                          />
+                          <NumField
+                            label="Kelipatan pesan"
+                            value={r.params.orderMultipleUnits}
+                            decimal
+                            onCommit={(v) => v > 0 && saveParams(r, { orderMultipleUnits: v })}
+                          />
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-[1fr_10rem]">
+                          <div>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Link pembelian</span>
+                            <TextField
+                              value={r.material.shopee_url ?? ""}
+                              placeholder="https://shopee.co.id/…"
+                              onCommit={(v) => saveLink(r, v)}
+                              className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px]"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Supplier</span>
+                            <TextField
+                              value={r.params.supplier ?? ""}
+                              placeholder="nama toko"
+                              onCommit={(v) => saveParams(r, { supplier: v })}
+                              className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+                          <span>
+                            Safety stock{" "}
+                            <b className="text-foreground">
+                              {fmtQty(m.safetyStock)} {r.material.usage_unit}
+                            </b>
+                          </span>
+                          <span>
+                            EOQ <b className="text-foreground">{m.eoq == null ? "—" : `${fmtQty(m.eoq)} ${r.material.usage_unit}`}</b>
+                          </span>
+                          <span>
+                            Service level{" "}
+                            <b className="text-foreground">
+                              {Math.round((r.params.serviceLevelOverride ?? 0) * 100) || "global"}
+                              {r.params.serviceLevelOverride ? "%" : ""}
+                            </b>{" "}
+                            <span className="opacity-70">(z {m.z.toFixed(3)})</span>
+                          </span>
+                          {m.daysUntilReorder != null && (
+                            <span>
+                              Waktu ke titik pesan <b className="text-foreground">{Math.floor(m.daysUntilReorder)} hari</b>
+                            </span>
+                          )}
+                        </div>
+
+                        {(note || eoqNote) && (
+                          <div className="space-y-1">
+                            {note && (
+                              <p className="flex items-start gap-1.5 text-[11px] text-warning-foreground">
+                                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                                {note}
+                              </p>
+                            )}
+                            {eoqNote && <p className="pl-[18px] text-[11px] text-muted-foreground">{eoqNote}</p>}
+                          </div>
                         )}
                       </div>
-                    )}
+                    </details>
                   </div>
                 )}
               </div>
