@@ -7550,6 +7550,7 @@ export type Database = {
           variant_id: string | null
           withdrawal_reason: string | null
           cake_order_id: string | null
+          feedback_id: string | null
         }
         Insert: {
           bank_account_id: string
@@ -7566,6 +7567,7 @@ export type Database = {
           variant_id?: string | null
           withdrawal_reason?: string | null
           cake_order_id?: string | null
+          feedback_id?: string | null
         }
         Update: {
           bank_account_id?: string
@@ -7582,6 +7584,7 @@ export type Database = {
           variant_id?: string | null
           withdrawal_reason?: string | null
           cake_order_id?: string | null
+          feedback_id?: string | null
         }
         Relationships: [
           {

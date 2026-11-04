@@ -9,6 +9,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ASPECT_ALL_GOOD, FEEDBACK_DAILY_TARGET, FEEDBACK_SLUGS, type FeedbackBranch } from "@/lib/feedback/constants";
 import { validateFeedback } from "@/lib/feedback/validate";
 import { wibDayStart } from "@/lib/feedback/store";
+import { recordFeedbackFreebie } from "@/lib/feedback/freebie";
 
 /**
  * Feedback pelanggan Haengbocake. Pengiriman publik tanpa login: divalidasi ketat dan dibatasi lajunya di sini, ditulis
@@ -78,21 +79,27 @@ export async function submitCustomerFeedback(input: SubmitFeedbackInput): Promis
     if ((count ?? 0) >= IP_LIMIT.count) return tooMany;
   }
 
-  const { error } = await db.from("customer_feedback" as never).insert({
-    branch: target.branch,
-    visit_type: v.data.visitType,
-    rating: v.data.rating,
-    aspects: v.data.aspects,
-    comment: v.data.comment,
-    product_wish: v.data.productWish,
-    aspect_order: v.data.aspectOrder,
-    device_id: deviceId,
-    ip_hash: ipHash,
-  } as never);
-  if (error) {
-    console.error("[feedback] gagal menyimpan", error.message);
+  const { data: saved, error } = await db
+    .from("customer_feedback" as never)
+    .insert({
+      branch: target.branch,
+      visit_type: v.data.visitType,
+      rating: v.data.rating,
+      aspects: v.data.aspects,
+      comment: v.data.comment,
+      product_wish: v.data.productWish,
+      aspect_order: v.data.aspectOrder,
+      device_id: deviceId,
+      ip_hash: ipHash,
+    } as never)
+    .select("id")
+    .single();
+  if (error || !saved) {
+    console.error("[feedback] gagal menyimpan", error?.message);
     return { ok: false, error: "Maaf, masukan belum terkirim. Coba lagi ya, kak." };
   }
+  // Pengisi feedback mendapat freebies: kurangi stok "Freebies Tiramisu" cabang ini.
+  await recordFeedbackFreebie(db, (saved as unknown as { id: string }).id, target.branch);
   return { ok: true };
 }
 
