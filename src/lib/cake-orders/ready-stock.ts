@@ -12,8 +12,8 @@ import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
  * Setiap pesanan paling banyak satu kali masuk dan satu kali keluar (indeks unik di DB), jadi semua fungsi di sini
  * idempoten. Pesanan lama tanpa baris masuk TIDAK pernah mengurangi stok.
  *
- * Penarikan manual (kasir memilih jumlah, tanpa memilih kue) ditangani `discardOldestReadyCakes`: kue tertua yang
- * masih ada dikeluarkan dari daftar serah terima supaya stok dan daftar pesanan tidak berselisih.
+ * Penarikan manual kasir memilih kue yang ditarik (`claimReadyCakesForWithdrawal`): kue itu langsung berstatus Buang di
+ * kanban, apa pun alasan penarikannya.
  *
  * Modul biasa (bukan "use server") karena menerima klien dari pemanggil: server action (service-role).
  * Semua fungsi best-effort dan tidak melempar; pemanggil tidak boleh gagal hanya karena stok.
@@ -176,56 +176,70 @@ export async function reverseReadyCakeExit(db: Db, orderId: string): Promise<voi
 }
 
 /**
- * Penarikan manual Ready Cake sejumlah `qty` pada satu SKU: keluarkan kue tertua yang masih berstatus siap dari daftar
- * serah terima (status `discarded`), supaya stok tidak turun sementara kuenya masih tampil di tab Pesanan.
- * Hanya kue yang tercatat masuk (punya baris produksi) dan belum keluar. Mengembalikan jumlah yang dikeluarkan.
+ * Penarikan Ready Cake oleh kasir: kasir memilih kue yang ditarik (bukan sekadar jumlah), apa pun alasannya. Kue-kue itu
+ * langsung berstatus `discarded` ("Buang") di kanban, sehingga keluar dari omset dan bonus kue. Atomik: bila ada satu kue
+ * yang sudah berubah (terjual, diserahkan, dibayar, dibuang) tak satu pun yang diubah. Baris stok keluar per kue
+ * ditulis pemanggil (satu baris per kue, bertanda `cake_order_id`).
  */
-export async function discardOldestReadyCakes(
+export async function claimReadyCakesForWithdrawal(
   db: Db,
-  args: { productId: string; variantId: string | null; qty: number }
-): Promise<number> {
+  args: { productId: string; orderIds: string[] }
+): Promise<{ ok: true; cakes: { id: string; variantId: string | null }[] } | { ok: false; error: string }> {
+  const ids = [...new Set(args.orderIds)];
+  if (ids.length === 0 || ids.length !== args.orderIds.length)
+    return { ok: false, error: "Pilih kue Ready Cake yang ditarik (tiap kue satu kali)" };
   try {
-    let q = db
+    const { data: produced } = await db
       .from("pos_stock_movements")
-      .select("cake_order_id, created_at")
+      .select("cake_order_id, variant_id")
       .eq("product_id", args.productId)
       .eq("type", "production")
-      .not("cake_order_id", "is", null)
-      .order("created_at", { ascending: true })
-      .limit(1000);
-    q = args.variantId ? q.eq("variant_id", args.variantId) : q.is("variant_id", null);
-    const { data: produced } = await q;
-    const ids = (produced ?? []).map((r) => r.cake_order_id).filter((v): v is string => !!v);
-    if (ids.length === 0) return 0;
+      .in("cake_order_id", ids);
+    const variantOf = new Map((produced ?? []).map((r) => [r.cake_order_id as string, r.variant_id as string | null]));
+    if (ids.some((id) => !variantOf.has(id)))
+      return { ok: false, error: "Ada kue yang tidak tercatat masuk stok Ready Cake ini. Muat ulang daftar." };
 
-    const { data: exits } = await db
+    const { data: exited } = await db
       .from("pos_stock_movements")
       .select("cake_order_id")
       .eq("type", "withdrawal")
       .in("cake_order_id", ids);
-    const exited = new Set((exits ?? []).map((r) => r.cake_order_id));
-    const candidates = ids.filter((id) => !exited.has(id));
-    if (candidates.length === 0) return 0;
+    if ((exited ?? []).length > 0) return { ok: false, error: "Ada kue yang sudah keluar dari stok. Muat ulang daftar." };
 
-    const { data: ready } = await db
-      .from("cake_orders" as never)
-      .select("id")
-      .in("id", candidates)
-      .eq("status", "ready")
-      .is("picked_up_at", null);
-    const readyIds = new Set(((ready ?? []) as unknown as { id: string }[]).map((r) => r.id));
-    const chosen = candidates.filter((id) => readyIds.has(id)).slice(0, Math.max(0, args.qty));
-    if (chosen.length === 0) return 0;
-
-    const { data: done } = await db
+    const { data: claimed } = await db
       .from("cake_orders" as never)
       .update({ status: "discarded" } as never)
-      .in("id", chosen)
+      .in("id", ids)
+      .eq("is_ready_stock", true)
       .eq("status", "ready")
+      .is("picked_up_at", null)
+      .is("sold_pos_sale_id", null)
+      .is("archived_at", null)
+      // Yang sudah ada pembayarannya (lunas lewat admin) menunggu diserahkan ke pembeli, bukan dibuang.
+      .lte("paid_idr", 0)
       .select("id");
-    return ((done ?? []) as unknown[]).length;
+    const claimedIds = ((claimed ?? []) as unknown as { id: string }[]).map((r) => r.id);
+    if (claimedIds.length !== ids.length) {
+      await unclaimReadyCakes(db, claimedIds);
+      return { ok: false, error: "Ada kue yang sudah terjual, dibayar, atau berubah status. Muat ulang daftar." };
+    }
+    return { ok: true, cakes: ids.map((id) => ({ id, variantId: variantOf.get(id) ?? null })) };
   } catch {
-    return 0;
+    return { ok: false, error: "Gagal memproses penarikan Ready Cake" };
+  }
+}
+
+/** Batalkan klaim `claimReadyCakesForWithdrawal` (penulisan stok gagal): kue kembali ke daftar siap. */
+export async function unclaimReadyCakes(db: Db, orderIds: string[]): Promise<void> {
+  if (orderIds.length === 0) return;
+  try {
+    await db
+      .from("cake_orders" as never)
+      .update({ status: "ready" } as never)
+      .in("id", orderIds)
+      .eq("status", "discarded");
+  } catch {
+    /* best-effort */
   }
 }
 

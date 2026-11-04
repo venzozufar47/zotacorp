@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { createStockMovements } from "@/lib/actions/pos-stock.actions";
+import { listReadyCakeItems, type ReadyCakeItem } from "@/lib/actions/pos-ready-cake.actions";
+import { formatRp } from "@/lib/cashflow/format";
 import {
   authorizerNames,
   POS_OPERATION_LABEL_ID,
@@ -34,6 +36,10 @@ interface SkuOption {
   label: string;
   productId: string;
   variantId: string | null;
+  /** Ready Cake (stok khusus): yang ditarik adalah kue yang dipilih kasir, bukan jumlah ketikan. */
+  readyCake: boolean;
+  /** Pembatas jenis kue untuk varian Ready Cake: true = DIY, false = Reguler, null = semua. */
+  readyCakeDiy: boolean | null;
 }
 
 /** Satu baris input di form (SKU + qty + alasan). */
@@ -44,6 +50,14 @@ interface Line {
   qty: string;
   /** Hanya dipakai saat type="withdrawal"; diabaikan untuk produksi. */
   reason: WithdrawalReason;
+  /** Hanya untuk baris Ready Cake: id pesanan kue yang dicentang. */
+  cakeIds: string[];
+}
+
+function readyCakeAge(readyAt: string | null): string {
+  if (!readyAt) return "";
+  const days = Math.floor((Date.now() - new Date(readyAt).getTime()) / 86_400_000);
+  return days <= 0 ? "hari ini" : `${days} hari`;
 }
 
 export function StockMovementDialog({
@@ -57,30 +71,55 @@ export function StockMovementDialog({
   const [pending, startTransition] = useTransition();
   const nextId = useRef(1);
   const [lines, setLines] = useState<Line[]>([
-    { id: 0, skuKey: "", qty: "", reason: DEFAULT_WITHDRAWAL_REASON },
+    { id: 0, skuKey: "", qty: "", reason: DEFAULT_WITHDRAWAL_REASON, cakeIds: [] },
   ]);
   const [notes, setNotes] = useState("");
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
+  const [readyCakes, setReadyCakes] = useState<ReadyCakeItem[] | null>(null);
+
+  const hasReadyCakeProduct = products.some((p) => p.stockOnly);
+  useEffect(() => {
+    if (type !== "withdrawal" || !hasReadyCakeProduct) return;
+    let alive = true;
+    void listReadyCakeItems(bankAccountId).then((items) => {
+      if (alive) setReadyCakes(items.filter((i) => i.stage === "ready"));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [type, hasReadyCakeProduct, bankAccountId]);
 
   const options = useMemo<SkuOption[]>(() => {
     const out: SkuOption[] = [];
     for (const p of products) {
+      // Ready Cake masuk stok otomatis dari produksi kue; tidak bisa ditambah manual.
+      if (p.stockOnly && type !== "withdrawal") continue;
       if (p.variants.length === 0) {
-        out.push({ key: `p:${p.id}`, label: p.name, productId: p.id, variantId: null });
+        out.push({
+          key: `p:${p.id}`,
+          label: p.name,
+          productId: p.id,
+          variantId: null,
+          readyCake: p.stockOnly,
+          readyCakeDiy: null,
+        });
       } else {
         for (const v of p.variants) {
+          const name = v.name.trim().toLowerCase();
           out.push({
             key: `p:${p.id}|v:${v.id}`,
             label: `${p.name} · ${v.name}`,
             productId: p.id,
             variantId: v.id,
+            readyCake: p.stockOnly,
+            readyCakeDiy: name === "diy" ? true : name === "reguler" ? false : null,
           });
         }
       }
     }
     return out;
-  }, [products]);
+  }, [products, type]);
 
   const optionByKey = useMemo(
     () => new Map(options.map((o) => [o.key, o])),
@@ -108,6 +147,7 @@ export function StockMovementDialog({
         id: nextId.current++,
         skuKey: "",
         qty: "",
+        cakeIds: [],
         // Warisi alasan baris terakhir: penarikan massal hampir selalu
         // satu sebab, jadi kasir cukup mengubah yang menyimpang.
         reason: prev[prev.length - 1]?.reason ?? DEFAULT_WITHDRAWAL_REASON,
@@ -120,13 +160,18 @@ export function StockMovementDialog({
 
   /** Baris yang sudah lengkap & valid — dasar preview + payload submit. */
   const validLines = lines
-    .map((l) => ({
-      opt: optionByKey.get(l.skuKey),
-      qty: parseInt(l.qty, 10),
-      reason: l.reason,
-    }))
+    .map((l) => {
+      const opt = optionByKey.get(l.skuKey);
+      return {
+        opt,
+        // Ready Cake: jumlah = kue yang dicentang, bukan ketikan.
+        qty: opt?.readyCake ? l.cakeIds.length : parseInt(l.qty, 10),
+        reason: l.reason,
+        cakeIds: l.cakeIds,
+      };
+    })
     .filter(
-      (l): l is { opt: SkuOption; qty: number; reason: WithdrawalReason } =>
+      (l): l is { opt: SkuOption; qty: number; reason: WithdrawalReason; cakeIds: string[] } =>
         !!l.opt && Number.isInteger(l.qty) && l.qty > 0
     );
 
@@ -156,6 +201,7 @@ export function StockMovementDialog({
           variantId: l.opt.variantId,
           qty: l.qty,
           reason: type === "withdrawal" ? l.reason : null,
+          readyCakeOrderIds: l.opt.readyCake ? l.cakeIds : undefined,
         })),
         notes: notes.trim() || undefined,
         pin,
@@ -185,7 +231,7 @@ export function StockMovementDialog({
     // separuh terisi harus ditolak supaya tidak diam-diam hilang.
     const halfFilled = lines.some((l) => {
       const hasSku = !!l.skuKey;
-      const q = parseInt(l.qty, 10);
+      const q = optionByKey.get(l.skuKey)?.readyCake ? l.cakeIds.length : parseInt(l.qty, 10);
       const hasQty = Number.isInteger(q) && q > 0;
       return hasSku !== hasQty;
     });
@@ -238,7 +284,7 @@ export function StockMovementDialog({
                 <div className="flex items-start gap-2">
                 <select
                   value={line.skuKey}
-                  onChange={(e) => updateLine(line.id, { skuKey: e.target.value })}
+                  onChange={(e) => updateLine(line.id, { skuKey: e.target.value, cakeIds: [] })}
                   aria-label={`Produk baris ${idx + 1}`}
                   className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
                 >
@@ -251,6 +297,11 @@ export function StockMovementDialog({
                       </option>
                     ))}
                 </select>
+                {optionByKey.get(line.skuKey)?.readyCake ? (
+                  <span className="w-20 shrink-0 rounded-lg border border-border bg-muted px-3 py-2 text-center text-sm tabular-nums text-muted-foreground">
+                    {line.cakeIds.length}
+                  </span>
+                ) : (
                 <input
                   type="number"
                   inputMode="numeric"
@@ -262,6 +313,7 @@ export function StockMovementDialog({
                   placeholder="Qty"
                   className="w-20 shrink-0 rounded-lg border border-border bg-background px-3 py-2 text-sm tabular-nums"
                 />
+                )}
                 <button
                   type="button"
                   onClick={() => removeLine(line.id)}
@@ -272,6 +324,18 @@ export function StockMovementDialog({
                   <Trash2 size={16} />
                 </button>
                 </div>
+
+                {optionByKey.get(line.skuKey)?.readyCake && (
+                  <ReadyCakeChecklist
+                    cakes={(readyCakes ?? []).filter((c) => {
+                      const diy = optionByKey.get(line.skuKey)?.readyCakeDiy;
+                      return diy == null || c.isDiy === diy;
+                    })}
+                    loading={readyCakes === null}
+                    selected={line.cakeIds}
+                    onChange={(cakeIds) => updateLine(line.id, { cakeIds })}
+                  />
+                )}
 
                 {/* Alasan per BARIS, bukan per submit: penarikan beralasan
                     campur itu nyata di data lama (`rusak, exp, tester`), dan
@@ -378,6 +442,47 @@ export function StockMovementDialog({
           }
         }}
       />
+    </div>
+  );
+}
+
+/** Daftar kue ready yang siap ditarik; kasir mencentang kue yang dibuang. Kue yang ditarik langsung berstatus Buang. */
+function ReadyCakeChecklist({
+  cakes,
+  loading,
+  selected,
+  onChange,
+}: {
+  cakes: ReadyCakeItem[];
+  loading: boolean;
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  if (loading) return <p className="text-[11px] text-muted-foreground">Memuat daftar kue…</p>;
+  if (cakes.length === 0)
+    return <p className="text-[11px] text-muted-foreground">Tidak ada kue ready yang bisa ditarik.</p>;
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 p-2 space-y-1">
+      <p className="text-[11px] text-muted-foreground">Centang kue yang ditarik. Kue ini langsung berstatus Buang.</p>
+      {cakes.map((c) => {
+        const checked = selected.includes(c.id);
+        return (
+          <label key={c.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => onChange(checked ? selected.filter((id) => id !== c.id) : [...selected, c.id])}
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {c.name}
+              {c.isDiy ? " (DIY)" : ""}
+            </span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {formatRp(c.priceIdr)} · {readyCakeAge(c.readyAt)}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }

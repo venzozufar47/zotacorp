@@ -45,7 +45,7 @@ export default async function PosStockPage({
       listStockOnHand(account.id),
       listStockMovements(account.id, 100),
       listStockOpnames(account.id, 50),
-      listActivePosProducts(account.id),
+      listActivePosProducts(account.id, { includeStockOnly: true }),
       listExcludedStockProducts(account.id),
       getPosAuthorizers(account.id),
       getCurrentRole(),

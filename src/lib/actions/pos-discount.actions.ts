@@ -431,9 +431,15 @@ async function planRetro(campaignId: string): Promise<RetroPlan | { error: strin
   const saleIds = sales.map((s) => s.id);
   const grossBySale = new Map<string, number>();
   for (let i = 0; i < saleIds.length; i += 200) {
-    const { data: itemsRaw } = await supabase.from("pos_sale_items").select("sale_id, subtotal").in("sale_id", saleIds.slice(i, i + 200));
-    for (const it of (itemsRaw ?? []) as { sale_id: string; subtotal: number | string }[])
+    const { data: itemsRaw } = await supabase
+      .from("pos_sale_items")
+      .select("sale_id, subtotal, ready_cake_order_id")
+      .in("sale_id", saleIds.slice(i, i + 200));
+    for (const it of (itemsRaw ?? []) as { sale_id: string; subtotal: number | string; ready_cake_order_id: string | null }[]) {
+      // Ready cake bukan omset POS dan tidak kena diskon kampanye.
+      if (it.ready_cake_order_id) continue;
       grossBySale.set(it.sale_id, (grossBySale.get(it.sale_id) ?? 0) + Number(it.subtotal));
+    }
   }
 
   const lite: DiscountCampaignLite = {

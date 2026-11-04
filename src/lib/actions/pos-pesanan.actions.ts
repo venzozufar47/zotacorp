@@ -17,6 +17,11 @@ import {
 } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
 import { releaseReadyCakesForSale } from "@/lib/cake-orders/ready-stock";
+import {
+  loadReadyCakeSaleLines,
+  recordReadyCakeSalePayments,
+  reverseReadyCakeSalePayments,
+} from "@/lib/cake-orders/ready-cake-sale-payment";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import type { FulfillmentType, SettleVia } from "./pos.actions";
 
@@ -64,6 +69,7 @@ export async function listPendingPesanan(
     sale_time: string | null;
     pending_at: string | null;
     total: number | string;
+    ready_cake_total: number | string | null;
     customer_name: string | null;
     fulfillment_type: FulfillmentType | null;
   };
@@ -76,7 +82,7 @@ export async function listPendingPesanan(
   const { data: salesRaw } = await sb
     .from("pos_sales")
     .select(
-      "id, bank_account_id, sale_date, sale_time, pending_at, total, customer_name, fulfillment_type"
+      "id, bank_account_id, sale_date, sale_time, pending_at, total, ready_cake_total, customer_name, fulfillment_type"
     )
     .eq("bank_account_id", bankAccountId)
     .eq("payment_status", "pending")
@@ -130,7 +136,7 @@ export async function listPendingPesanan(
     saleDate: s.sale_date,
     saleTime: s.sale_time ?? "",
     pendingAt: s.pending_at ?? "",
-    total: Number(s.total),
+    total: Number(s.total) + Number(s.ready_cake_total ?? 0),
     customerName: s.customer_name,
     fulfillmentType: s.fulfillment_type,
     items: itemsBySale.get(s.id) ?? [],
@@ -349,10 +355,15 @@ export async function updatePesananItems(input: {
     });
   }
 
+  // Ready cake bukan omset POS: dipisahkan dari `total` (lihat ready-cake-sale-payment.ts).
+  const readyCakeTotal = input.keepItems.reduce((sum, k) => {
+    const row = existingById.get(k.itemId)!;
+    return row.ready_cake_order_id ? sum + row.unit_price * k.qty : sum;
+  }, 0);
   const total =
     input.keepItems.reduce((sum, k) => {
       const row = existingById.get(k.itemId)!;
-      return sum + row.unit_price * k.qty;
+      return row.ready_cake_order_id ? sum : sum + row.unit_price * k.qty;
     }, 0) + newRows.reduce((sum, r) => sum + r.subtotal, 0);
 
   const adminDb = createAdminClient<Database>(
@@ -415,7 +426,11 @@ export async function updatePesananItems(input: {
   // sama sekali lagi — sale ini sudah "diklaim" di langkah 0, tapi
   // pengecekan kedua tidak rugi apa-apa dan menutup celah balapan yang
   // (walau sangat sempit) masih ada di antara klaim dan tulisan ini.
-  const headerPatch: Record<string, unknown> = { total, gross_total: total };
+  const headerPatch: Record<string, unknown> = {
+    total,
+    gross_total: total,
+    ready_cake_total: readyCakeTotal,
+  };
   if (custName) headerPatch.customer_name = custName;
   const { data: headerUpdated, error: headerErr } = await adminDb
     .from("pos_sales")
@@ -530,8 +545,34 @@ export async function settlePesanan(input: {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("default_branch, ledger_account_id")
+    .eq("id", sale.bank_account_id)
+    .single();
+  // Rekening POS Mamaya membukukan ke buku rekening induknya (Semarang).
+  const ledgerAccountId = account?.ledger_account_id ?? sale.bank_account_id;
+
+  // Ready cake di pesanan ini dibukukan sebagai pembayaran pesanan kuenya (omset kue), BARU saat dibayar. Ditulis
+  // sebelum uang POS-nya dicatat; bila langkah sesudahnya gagal, dibatalkan lagi.
+  const cakeLines = await loadReadyCakeSaleLines(adminDb, sale.id);
+  const recordCakePay = async (): Promise<string | null> => {
+    if (cakeLines.length === 0) return null;
+    const res = await recordReadyCakeSalePayments(adminDb, supabase, {
+      saleId: sale.id,
+      method: input.settledVia,
+      bankAccountId: ledgerAccountId,
+      branchLabel: account?.default_branch ?? "",
+      userId: gate.userId,
+      lines: cakeLines,
+    });
+    return res.ok ? null : res.error;
+  };
+
   // Settled via admin: tidak ada cashflow event (uang di luar POS).
   if (input.settledVia === "admin") {
+    const cakeErr = await recordCakePay();
+    if (cakeErr) return { ok: false, error: cakeErr };
     const { error } = await adminDb
       .from("pos_sales")
       .update({
@@ -542,10 +583,14 @@ export async function settlePesanan(input: {
         settled_by: gate.userId,
       } as never)
       .eq("id", sale.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      await reverseReadyCakeSalePayments(adminDb, sale.id);
+      return { ok: false, error: error.message };
+    }
     revalidatePath("/pos", "layout");
     revalidatePath("/pos/pesanan", "layout");
     revalidatePath("/pos/riwayat", "layout");
+    revalidatePath("/admin/cake-orders");
     return { ok: true, data: { saleId: sale.id } };
   }
 
@@ -556,14 +601,6 @@ export async function settlePesanan(input: {
   const [periodYearStr, periodMonthStr] = settleDate.split("-");
   const periodYear = Number(periodYearStr);
   const periodMonth = Number(periodMonthStr);
-
-  const { data: account } = await supabase
-    .from("bank_accounts")
-    .select("default_branch, ledger_account_id")
-    .eq("id", sale.bank_account_id)
-    .single();
-  // Rekening POS Mamaya membukukan ke buku rekening induknya (Semarang).
-  const ledgerAccountId = account?.ledger_account_id ?? sale.bank_account_id;
 
   const { data: existingStmt } = await supabase
     .from("cashflow_statements")
@@ -606,7 +643,7 @@ export async function settlePesanan(input: {
   // Description: "POS [Cash|QRIS] [Nama] (pesanan): 2x Produk A …".
   const { data: itemsRaw } = await supabase
     .from("pos_sale_items")
-    .select("product_name, variant_name, qty, product_id")
+    .select("product_name, variant_name, qty, product_id, ready_cake_order_id")
     .eq("sale_id", sale.id);
   const itemsLabel = (
     (itemsRaw ?? []) as Array<{
@@ -614,8 +651,10 @@ export async function settlePesanan(input: {
       variant_name: string | null;
       qty: number;
       product_id: string | null;
+      ready_cake_order_id: string | null;
     }>
   )
+    .filter((it) => !it.ready_cake_order_id)
     .map((it) => {
       if (!it.product_id) return `${it.qty}x ${it.product_name} (custom)`;
       const name = it.variant_name
@@ -626,7 +665,11 @@ export async function settlePesanan(input: {
     .join(", ");
   const methodLabel = input.settledVia === "cash" ? "Cash" : "QRIS";
   const custTag = sale.customer_name ? ` [${sale.customer_name}]` : "";
-  const description = `POS ${methodLabel}${custTag} (pesanan): ${itemsLabel}`;
+  const cakeTag = cakeLines.length > 0 ? `${itemsLabel ? ", " : ""}${cakeLines.length} ready cake (omset kue)` : "";
+  const description = `POS ${methodLabel}${custTag} (pesanan): ${itemsLabel}${cakeTag}`;
+
+  const cakeErr = await recordCakePay();
+  if (cakeErr) return { ok: false, error: cakeErr };
 
   const { data: tx, error: txErr } = await supabase
     .from("cashflow_transactions")
@@ -645,8 +688,10 @@ export async function settlePesanan(input: {
     })
     .select("id")
     .single();
-  if (txErr || !tx)
+  if (txErr || !tx) {
+    await reverseReadyCakeSalePayments(adminDb, sale.id);
     return { ok: false, error: txErr?.message ?? "Gagal membuat transaksi" };
+  }
 
   const { error: linkErr } = await adminDb
     .from("pos_sales")
@@ -663,6 +708,7 @@ export async function settlePesanan(input: {
     .eq("id", sale.id);
   if (linkErr) {
     await supabase.from("cashflow_transactions").delete().eq("id", tx.id);
+    await reverseReadyCakeSalePayments(adminDb, sale.id);
     return { ok: false, error: linkErr.message };
   }
 
@@ -670,6 +716,7 @@ export async function settlePesanan(input: {
   revalidatePath("/pos/pesanan", "layout");
   revalidatePath("/pos/riwayat", "layout");
   revalidatePath("/admin/finance", "layout");
+  revalidatePath("/admin/cake-orders");
   return { ok: true, data: { saleId: sale.id } };
 }
 

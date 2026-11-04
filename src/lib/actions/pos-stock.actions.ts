@@ -29,7 +29,7 @@ import {
 // Primitif mesin stok tinggal di modul biasa supaya cron (tanpa sesi)
 // bisa memakainya juga — file ini "use server" dan tidak boleh
 // mengekspor fungsi non-async. Lihat header stock-engine.ts.
-import { discardOldestReadyCakes } from "@/lib/cake-orders/ready-stock";
+import { claimReadyCakesForWithdrawal, unclaimReadyCakes } from "@/lib/cake-orders/ready-stock";
 import {
   computeExpectedCounts,
   jakartaHourIso,
@@ -326,6 +326,11 @@ export interface StockMovementLine {
    * ikut melenceng.
    */
   reason?: WithdrawalReason | null;
+  /**
+   * Hanya untuk produk Ready Cake (stok khusus): kue-kue yang ditarik, dipilih kasir satu per satu. Jumlahnya harus
+   * sama dengan `qty`. Kue itu langsung berstatus "Buang" di kanban apa pun alasannya.
+   */
+  readyCakeOrderIds?: string[];
 }
 
 /**
@@ -386,7 +391,7 @@ export async function createStockMovements(input: {
   const productIds = [...new Set(input.lines.map((l) => l.productId))];
   const { data: products } = await supabase
     .from("pos_products")
-    .select("id, name, stock_aggregate_variants, track_stock, stock_only")
+    .select("id, name, stock_aggregate_variants, track_stock, stock_only, bank_account_id")
     .in("id", productIds);
   const byId = new Map((products ?? []).map((p) => [p.id, p]));
 
@@ -399,55 +404,80 @@ export async function createStockMovements(input: {
         error: `${p.name} tidak dihitung di sistem stok`,
       };
   }
+  // Ready Cake: masuk stok otomatis dari produksi kue, keluar hanya lewat kue yang dipilih kasir.
+  for (const l of input.lines) {
+    const p = byId.get(l.productId)!;
+    if (!p.stock_only) continue;
+    if (p.bank_account_id !== input.bankAccountId)
+      return { ok: false, error: `${p.name} bukan produk rekening ini` };
+    if (input.type !== "withdrawal")
+      return { ok: false, error: `${p.name} masuk stok otomatis dari produksi kue, tidak bisa ditambah manual` };
+    if ((l.readyCakeOrderIds ?? []).length !== l.qty)
+      return { ok: false, error: `Pilih ${l.qty} kue ${p.name} yang ditarik (jumlah pilihan harus sama dengan qty)` };
+  }
 
   const now = new Date();
   const movementDate = jakartaDateString(now);
   const movementTime = jakartaHHMM(now);
   const notes = input.notes?.trim() || null;
 
-  const rows = input.lines.map((l) => ({
-    bank_account_id: input.bankAccountId,
-    product_id: l.productId,
-    // Aggregate mode: paksa variant_id=null — sama seperti versi single.
-    variant_id: byId.get(l.productId)?.stock_aggregate_variants
-      ? null
-      : l.variantId ?? null,
-    type: input.type,
-    qty: l.qty,
-    notes,
-    // CHECK di DB menolak alasan pada baris produksi — paksa null di sini
-    // supaya caller yang salah kirim tidak menggagalkan seluruh batch.
-    withdrawal_reason:
-      input.type === "withdrawal" && isWithdrawalReason(l.reason)
-        ? l.reason
-        : null,
-    movement_date: movementDate,
-    movement_time: movementTime,
-    created_by: gate.userId,
-  }));
+  const adminDb = createAdminClient();
+  const claimedCakeIds: string[] = [];
+  const rows: Array<Record<string, unknown>> = [];
+  for (const l of input.lines) {
+    const p = byId.get(l.productId)!;
+    const common = {
+      bank_account_id: input.bankAccountId,
+      product_id: l.productId,
+      type: input.type,
+      notes,
+      movement_date: movementDate,
+      movement_time: movementTime,
+      created_by: gate.userId,
+    };
+    if (p.stock_only) {
+      // Ready Cake: satu baris stok per kue yang dipilih (bertanda cake_order_id), dan kuenya langsung "Buang" di kanban.
+      const claim = await claimReadyCakesForWithdrawal(adminDb, {
+        productId: l.productId,
+        orderIds: l.readyCakeOrderIds ?? [],
+      });
+      if (!claim.ok) {
+        await unclaimReadyCakes(adminDb, claimedCakeIds);
+        return { ok: false, error: claim.error };
+      }
+      for (const c of claim.cakes) {
+        claimedCakeIds.push(c.id);
+        rows.push({
+          ...common,
+          variant_id: c.variantId,
+          qty: 1,
+          withdrawal_reason: isWithdrawalReason(l.reason) ? l.reason : null,
+          cake_order_id: c.id,
+        });
+      }
+      continue;
+    }
+    rows.push({
+      ...common,
+      // Aggregate mode: paksa variant_id=null — sama seperti versi single.
+      variant_id: p.stock_aggregate_variants ? null : l.variantId ?? null,
+      qty: l.qty,
+      // CHECK di DB menolak alasan pada baris produksi — paksa null di sini
+      // supaya caller yang salah kirim tidak menggagalkan seluruh batch.
+      withdrawal_reason:
+        input.type === "withdrawal" && isWithdrawalReason(l.reason) ? l.reason : null,
+    });
+  }
 
   const { data, error } = await supabase
     .from("pos_stock_movements")
-    .insert(rows)
+    .insert(rows as never)
     .select("id");
-  if (error) return { ok: false, error: error.message };
-
-  // Penarikan Ready Cake: kue tertua keluar dari daftar serah terima supaya stok dan tab Pesanan tetap sejalan.
-  // "Koreksi salah input" hanya membetulkan angka, kuenya tidak benar-benar hilang.
-  if (input.type === "withdrawal") {
-    const readyIds = new Set(
-      (products ?? []).filter((p) => p.stock_only).map((p) => p.id)
-    );
-    const adminDb = createAdminClient();
-    for (const l of input.lines) {
-      if (!readyIds.has(l.productId) || l.reason === "koreksi_input") continue;
-      await discardOldestReadyCakes(adminDb, {
-        productId: l.productId,
-        variantId: byId.get(l.productId)?.stock_aggregate_variants ? null : (l.variantId ?? null),
-        qty: l.qty,
-      });
-    }
+  if (error) {
+    await unclaimReadyCakes(adminDb, claimedCakeIds);
+    return { ok: false, error: error.message };
   }
+
   revalidatePath("/pos", "layout");
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");

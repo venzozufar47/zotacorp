@@ -331,8 +331,9 @@ export function POSClient({
     return m;
   }, [products]);
 
-  const { total, itemCount, cartLines, qtyByProductId } = useMemo(() => {
+  const { total, readyTotal, itemCount, cartLines, qtyByProductId } = useMemo(() => {
     let total = 0;
+    let readyTotal = 0;
     let itemCount = 0;
     const cartLines: Array<{
       key: string;
@@ -406,7 +407,8 @@ export function POSClient({
       });
     }
     for (const r of readyLines) {
-      total += r.price;
+      // Ready cake = omset kue, bukan omset POS: tidak masuk `total` (dasar diskon), tapi tetap uang yang diterima kasir.
+      readyTotal += r.price;
       itemCount += 1;
       cartLines.push({
         key: `r:${r.orderId}`,
@@ -421,7 +423,7 @@ export function POSClient({
         originalPrice: null,
       });
     }
-    return { total, itemCount, cartLines, qtyByProductId };
+    return { total, readyTotal, itemCount, cartLines, qtyByProductId };
   }, [cart, customItems, readyLines, lineByKey, discountByKey]);
 
   // Concept-b: filter produk by case-insensitive substring of nama
@@ -767,14 +769,14 @@ export function POSClient({
           subtotal: l.subtotal,
           note: l.sugarLabel,
         })),
-        grossTotal: total,
+        grossTotal: total + readyTotal,
         discountAmount,
-        total: finalTotal,
+        total: payTotal,
         method,
         cashReceived: method === "cash" ? cashReceived : null,
         change:
           method === "cash" && cashReceived != null
-            ? cashReceived - finalTotal
+            ? cashReceived - payTotal
             : null,
         footer: rc.footer,
         wifiName: rc.wifiName,
@@ -808,9 +810,12 @@ export function POSClient({
     () => pickBestCampaign(campaigns, total, liveNow, chosenCampaignId),
     [campaigns, total, liveNow, chosenCampaignId]
   );
+  // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
+  // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
   const finalTotal = picked ? picked.finalTotal : total;
   const discountAmount = picked ? picked.discountAmount : 0;
   const grossTotal = total;
+  const payTotal = finalTotal + readyTotal;
 
   const showEmptyState = products.length === 0 && customItems.length === 0;
 
@@ -897,7 +902,7 @@ export function POSClient({
     itemCount === 0 ||
     pending ||
     !customerName.trim() ||
-    (payMode === "cash" && (cashReceived == null || cashReceived < finalTotal)) ||
+    (payMode === "cash" && (cashReceived == null || cashReceived < payTotal)) ||
     (QRIS_RECEIPT_AT_CHECKOUT &&
       payMode === "qris" &&
       !qrisVerificationOk(qrisVerification, qrisReceipt));
@@ -1110,18 +1115,24 @@ export function POSClient({
               </div>
             </>
           )}
+          {readyTotal > 0 && finalTotal > 0 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Ready cake (tanpa diskon)</span>
+              <span>{formatRp(readyTotal)}</span>
+            </div>
+          )}
           <div
             className={`flex items-center justify-between ${
-              picked && discountAmount > 0
+              (picked && discountAmount > 0) || (readyTotal > 0 && finalTotal > 0)
                 ? "pt-1 border-t border-border"
                 : ""
             }`}
           >
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-              {picked && discountAmount > 0 ? "Total bayar" : "Total"}
+              {(picked && discountAmount > 0) || (readyTotal > 0 && finalTotal > 0) ? "Total bayar" : "Total"}
             </span>
             <span className="text-lg font-bold text-foreground">
-              {formatRp(finalTotal)}
+              {formatRp(payTotal)}
             </span>
           </div>
         </div>
@@ -1194,7 +1205,7 @@ export function POSClient({
         {/* Inline payment surface — replaces the old confirm modal. */}
         {payMode === "cash" && (
           <CashReceivedField
-            total={finalTotal}
+            total={payTotal}
             value={cashReceived}
             onChange={setCashReceived}
           />
@@ -1223,8 +1234,8 @@ export function POSClient({
         >
           {pending && <Loader2 size={14} className="animate-spin" />}
           {payMode === "pending"
-            ? `Buat pesanan ${formatRp(finalTotal)}`
-            : `Bayar ${formatRp(finalTotal)}`}
+            ? `Buat pesanan ${formatRp(payTotal)}`
+            : `Bayar ${formatRp(payTotal)}`}
         </button>
       </div>
     </div>

@@ -30,6 +30,10 @@ import {
   resolveReadyCakeForSale,
   type ReadyCakeForSale,
 } from "@/lib/cake-orders/ready-stock";
+import {
+  recordReadyCakeSalePayments,
+  reverseReadyCakeSalePayments,
+} from "@/lib/cake-orders/ready-cake-sale-payment";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -47,6 +51,7 @@ type PosProductRow = Pick<
   | "is_open_price"
   | "notes"
   | "requires_sugar_level"
+  | "stock_only"
 >;
 type PosProductVariantRow = Pick<
   Database["public"]["Tables"]["pos_product_variants"]["Row"],
@@ -105,6 +110,8 @@ export interface PosProduct {
    *  ini"). Null = tidak ada catatan. Empty string disimpan null oleh
    *  action layer supaya UI tidak render strip kosong. */
   notes: string | null;
+  /** Produk khusus stok (Ready Cake): ikut stok/penarikan, tidak dijual dari grid. */
+  stockOnly: boolean;
   /** Wajib pilih tingkat gula — dipakai untuk produk TANPA varian.
    *  Kalau produk punya varian, yang menentukan adalah flag di varian. */
   requiresSugarLevel: boolean;
@@ -189,6 +196,7 @@ function mapPosProduct(
     isOpenPrice: r.is_open_price,
     notes: r.notes,
     requiresSugarLevel: r.requires_sugar_level,
+    stockOnly: r.stock_only,
     variants,
   };
 }
@@ -238,16 +246,19 @@ async function fetchVariantsForProducts(
  * jadi tidak perlu gate tambahan di sini.
  */
 export async function listActivePosProducts(
-  bankAccountId: string
+  bankAccountId: string,
+  opts: { includeStockOnly?: boolean } = {}
 ): Promise<PosProduct[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only")
     .eq("bank_account_id", bankAccountId)
-    .eq("active", true)
-    // Produk khusus stok (Ready Cake) tidak dijual dari keranjang: omzetnya sudah tercatat lewat pesanan kue.
-    .eq("stock_only", false)
+    .eq("active", true);
+  // Produk khusus stok (Ready Cake) tidak dijual dari grid keranjang (dijual lewat pemilih kue ready), tetapi HARUS ada
+  // di halaman Stok supaya kasir bisa menarik (membuang) kue ready lewat dialog Penarikan.
+  if (!opts.includeStockOnly) query = query.eq("stock_only", false);
+  const { data, error } = await query
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true })
     .limit(PRODUCT_LIST_LIMIT);
@@ -267,7 +278,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
@@ -875,11 +886,14 @@ export async function createPosSale(input: {
 
   // 2. Hitung total server-side. Catalog items pakai harga DB (varian
   //    kalau ada), custom items pakai harga dari input.
+  //    Ready cake TIDAK masuk `total`: nilainya omset Custom Cake (dibukukan sebagai pembayaran pesanan kuenya, lihat
+  //    ready-cake-sale-payment.ts), bukan omset POS, dan tidak kena diskon kampanye.
   let total = 0;
+  let readyCakeTotal = 0;
   const itemsResolved = input.items.map((it) => {
     if (isReadyCakeItem(it)) {
       const cake = readyById.get(it.readyCakeOrderId)!;
-      total += cake.priceIdr;
+      readyCakeTotal += cake.priceIdr;
       return {
         productId: cake.productId as string | null,
         productName: cake.productName + " — " + cake.name,
@@ -1001,6 +1015,7 @@ export async function createPosSale(input: {
         input.paymentMethod === "qris" ? input.qrisVerification ?? null : null,
       total,
       gross_total: grossTotal,
+      ready_cake_total: readyCakeTotal,
       discount_amount: discountAmount,
       discount_campaign_id: campaign?.id ?? null,
       created_by: gate.userId,
@@ -1082,12 +1097,14 @@ export async function createPosSale(input: {
 
   // Untuk pesanan, lewati cashflow insert. Sale baru di-link ke
   // cashflow_transactions saat settle (via settlePesanan).
+  // Uang yang harus diterima kasir = bagian POS + ready cake (yang dibukukan terpisah sebagai omset kue).
+  const payable = total + readyCakeTotal;
   if (isPesanan) {
     revalidatePath("/pos", "layout");
     revalidatePath("/pos/pesanan", "layout");
     return {
       ok: true,
-      data: { saleId: sale.id, total, branch: account.default_branch ?? null },
+      data: { saleId: sale.id, total: payable, branch: account.default_branch ?? null },
     };
   }
 
@@ -1138,7 +1155,10 @@ export async function createPosSale(input: {
 
   // 9. Bangun description "POS Cash [Nama]: 2x Cake A, 1x Custom Item (custom)".
   const methodLabel = input.paymentMethod === "cash" ? "Cash" : "QRIS";
-  const itemsLabel = itemsResolved
+  const readyCakeLines = itemsResolved.filter((it) => it.readyCakeOrderId);
+  const itemsLabel = [
+    ...itemsResolved
+    .filter((it) => !it.readyCakeOrderId)
     .map((it) => {
       if (it.productId === null) return `${it.qty}x ${it.productName} (custom)`;
       const name = it.variantName
@@ -1148,8 +1168,9 @@ export async function createPosSale(input: {
       // membuka detail sale.
       const tag = it.originalUnitPrice != null ? " (diskon)" : "";
       return `${it.qty}x ${name}${tag}`;
-    })
-    .join(", ");
+    }),
+    ...(readyCakeLines.length > 0 ? [`${readyCakeLines.length} ready cake (omset kue)`] : []),
+  ].join(", ");
   const discountTag = campaign && discountAmount > 0
     ? ` (diskon ${describeDiscount(campaign)} ${campaign.name} −Rp ${discountAmount.toLocaleString("id-ID")})`
     : "";
@@ -1210,11 +1231,36 @@ export async function createPosSale(input: {
     return { ok: false, error: linkErr.message };
   }
 
+  // 12. Ready cake: bukukan sebagai pembayaran pesanan kuenya (omset kue + status lunas kanban); tunai juga ke kas cabang.
+  //     Semua-atau-tidak: bila gagal, seluruh penjualan dibatalkan supaya uang tidak tercatat setengah.
+  if (readyCakeLines.length > 0) {
+    const paid = await recordReadyCakeSalePayments(readyDb, supabase, {
+      saleId: sale.id,
+      method: input.paymentMethod === "cash" ? "cash" : "qris",
+      bankAccountId: ledgerAccountId,
+      branchLabel: account.default_branch ?? "",
+      userId: gate.userId,
+      lines: readyCakeLines.map((it) => ({
+        orderId: it.readyCakeOrderId as string,
+        customerName: it.readyCakeName ?? "Ready cake",
+        amountIdr: it.subtotal,
+      })),
+    });
+    if (!paid.ok) {
+      await supabase.from("cashflow_transactions").delete().eq("id", tx.id);
+      await releaseReadyCakesForSale(readyDb, sale.id);
+      await supabase.from("pos_sale_items").delete().eq("sale_id", sale.id);
+      await supabase.from("pos_sales").delete().eq("id", sale.id);
+      return { ok: false, error: paid.error };
+    }
+  }
+
   revalidatePath("/pos", "layout");
   revalidatePath("/admin/finance", "layout");
+  revalidatePath("/admin/cake-orders");
   return {
     ok: true,
-    data: { saleId: sale.id, total, branch: account.default_branch ?? null },
+    data: { saleId: sale.id, total: payable, branch: account.default_branch ?? null },
   };
 }
 
@@ -1272,7 +1318,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by, cashier_id, qris_verification" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, ready_cake_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by, cashier_id, qris_verification" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -1300,6 +1346,7 @@ export async function listRecentPosSales(
     payment_method: string;
     total: number;
     gross_total: number | null;
+    ready_cake_total: number | null;
     discount_amount: number | null;
     voided_at: string | null;
     void_reason: string | null;
@@ -1515,8 +1562,9 @@ export async function listRecentPosSales(
     paymentStatus: s.payment_status,
     settledVia: s.settled_via,
     settledAt: s.settled_at,
-    total: Number(s.total),
-    grossTotal: s.gross_total != null ? Number(s.gross_total) : null,
+    // Yang diterima kasir: bagian POS + ready cake (omset kue dibukukan terpisah, tapi uangnya satu transaksi).
+    total: Number(s.total) + Number(s.ready_cake_total ?? 0),
+    grossTotal: s.gross_total != null ? Number(s.gross_total) + Number(s.ready_cake_total ?? 0) : null,
     discountAmount: s.discount_amount != null ? Number(s.discount_amount) : 0,
     voidedAt: s.voided_at,
     voidReason: s.void_reason,
@@ -2030,7 +2078,7 @@ export async function voidPosSale(input: {
   const { data: sale } = await supabase
     .from("pos_sales")
     .select(
-      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id, payment_status, payment_method, settled_at, total"
+      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id, payment_status, payment_method, settled_at, total, ready_cake_total"
     )
     .eq("id", input.saleId)
     .maybeSingle();
@@ -2149,8 +2197,11 @@ export async function voidPosSale(input: {
   }
 
   const cust = sale.customer_name?.trim();
-  // Ready cake yang terjual di transaksi ini kembali ke daftar ready.
+  // Ready cake yang terjual di transaksi ini kembali ke daftar ready, dan pembayarannya sebagai omset kue (beserta
+  // baris kas tunainya) dibatalkan. Dilakukan SETELAH kas POS dikoreksi: kegagalan di sini tidak boleh membatalkan void,
+  // tetapi harus terlihat, karena omset kue yang tersisa memalsukan bonus admin.
   await releaseReadyCakesForSale(adminDb, sale.id);
+  const cakeReverse = await reverseReadyCakeSalePayments(adminDb, sale.id);
   await restoreStockIfAbsorbedByOpname(
     adminDb,
     sale,
@@ -2208,7 +2259,8 @@ export async function voidPosSale(input: {
         transaction_time: jakartaHHMM(now),
         description: `Refund tunai (void QRIS${cust ? ` ${cust}` : ""}): ${reason}`,
         notes: "Dari Void QRIS — uang dikembalikan tunai dari laci kasir",
-        debit: Number(sale.total),
+        // Seluruh uang yang diterima dikembalikan: bagian POS + ready cake.
+        debit: Number(sale.total) + Number(sale.ready_cake_total ?? 0),
         credit: 0,
         running_balance: null,
         category: "Sales Refund",
@@ -2221,5 +2273,11 @@ export async function voidPosSale(input: {
 
   revalidatePath("/pos", "layout");
   revalidatePath("/admin/finance", "layout");
+  revalidatePath("/admin/cake-orders");
+  if (!cakeReverse.ok)
+    return {
+      ok: false,
+      error: `Transaksi sudah dibatalkan, TETAPI pembayaran ready cake-nya gagal dibatalkan (${cakeReverse.error}). Jangan ulangi; minta admin menghapus pembayaran kue itu.`,
+    };
   return { ok: true, data: { saleId: sale.id } };
 }

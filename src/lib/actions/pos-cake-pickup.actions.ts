@@ -44,12 +44,11 @@ import {
   summarizeCakePayment,
   type CakePaymentState,
 } from "@/lib/cake-orders/payment-summary";
-import { CAKE_SETTLEMENT_CASH_CATEGORY } from "@/lib/cashflow/categories";
+import { recordCakeCashSettlement } from "@/lib/cake-orders/pos-cake-cash";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   jakartaDateString,
   jakartaDateMinusDays,
-  jakartaHHMM,
 } from "@/lib/utils/jakarta";
 import { jakartaHourIso } from "@/lib/pos/stock-engine";
 import { classifyPaymentMethod } from "@/lib/cake-orders/payment-method";
@@ -879,7 +878,7 @@ export async function markCakePickedUpAtPos(
     // tidak tutup shift selalu selisih lebih. QRIS TIDAK menulis baris
     // kas: uangnya tidak pernah menyentuh laci. Asimetri ini disengaja.
     if (settleMethod === "cash") {
-      const cashRes = await recordCakeCashSettlement({
+      const cashRes = await recordCakeCashSettlement(await createClient(), {
         bankAccountId: account.id,
         branchLabel: account.default_branch ?? branchLabel,
         amountIdr: recordedIdr,
@@ -925,6 +924,7 @@ export async function markCakePickedUpAtPos(
   revalidatePath("/pos", "layout");
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/admin/finance", "layout");
 
   return {
     ok: true,
@@ -935,96 +935,4 @@ export async function markCakePickedUpAtPos(
       alreadyPickedUp,
     },
   };
-}
-
-/**
- * Cermin pelunasan tunai ke rekening kas cabang.
- *
- * Kategorinya non-operasional supaya TIDAK dobel di PnL (pendapatannya
- * sudah diakui lewat akrual cake dari scheduled_at). Bonus admin cake
- * tidak membaca baris kas ini — ia dihitung langsung dari
- * `cake_order_payments` (custom-cake-bonus.actions.ts).
- *
- * Statement bulanan find-or-create: bulan yang ada pelunasan tapi
- * belum ada transaksi kas lain belum tentu punya statement.
- */
-async function recordCakeCashSettlement(args: {
-  bankAccountId: string;
-  branchLabel: string;
-  amountIdr: number;
-  customerName: string;
-  orderId: string;
-  paymentId: string;
-  userId: string;
-  /** Authorizer yang PIN-nya lolos; null kalau cabang tanpa authorizer. */
-  authorizerName: string | null;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = await createClient();
-  const now = new Date();
-  const date = jakartaDateString(now);
-  const [yStr, mStr] = date.split("-");
-  const periodYear = Number(yStr);
-  const periodMonth = Number(mStr);
-
-  const { data: existing } = await supabase
-    .from("cashflow_statements")
-    .select("id")
-    .eq("bank_account_id", args.bankAccountId)
-    .eq("period_year", periodYear)
-    .eq("period_month", periodMonth)
-    .maybeSingle();
-
-  let statementId: string;
-  if (existing) {
-    statementId = existing.id;
-  } else {
-    const { data: created, error: stmtErr } = await supabase
-      .from("cashflow_statements")
-      .insert({
-        bank_account_id: args.bankAccountId,
-        period_month: periodMonth,
-        period_year: periodYear,
-        opening_balance: 0,
-        closing_balance: 0,
-        status: "draft",
-        created_by: args.userId,
-      })
-      .select("id")
-      .single();
-    if (stmtErr || !created)
-      return { ok: false, error: stmtErr?.message ?? "gagal membuat statement" };
-    statementId = created.id;
-  }
-
-  const { data: maxRow } = await supabase
-    .from("cashflow_transactions")
-    .select("sort_order")
-    .eq("statement_id", statementId)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { error: txErr } = await supabase.from("cashflow_transactions").insert({
-    statement_id: statementId,
-    transaction_date: date,
-    transaction_time: jakartaHHMM(now),
-    description: `Pelunasan cake — ${args.customerName}`,
-    debit: 0,
-    credit: args.amountIdr,
-    running_balance: null,
-    category: CAKE_SETTLEMENT_CASH_CATEGORY,
-    branch: args.branchLabel,
-    // Penanda telusur kalau nanti perlu rekonsiliasi manual. Nama
-    // authorizer ikut di sini, bukan di `description`: deskripsi dibaca
-    // aturan kategorisasi kas, dan menyisipkan nama orang ke dalamnya
-    // bisa mengubah kategori baris secara tak sengaja.
-    notes: `Pelunasan custom cake diterima kasir${
-      args.authorizerName ? ` · otorisasi ${args.authorizerName}` : ""
-    } · cake:${args.orderId}:${args.paymentId}`,
-    sort_order: (maxRow?.sort_order ?? -1) + 1,
-  });
-  if (txErr) return { ok: false, error: txErr.message };
-
-  revalidatePath("/admin/finance", "layout");
-  return { ok: true };
 }

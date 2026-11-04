@@ -2116,6 +2116,7 @@ export type Database = {
           paid_at: string
           payment_option_id: string
           recorded_by_name: string | null
+          pos_sale_id: string | null
         }
         Insert: {
           amount_idr: number
@@ -2130,6 +2131,7 @@ export type Database = {
           paid_at?: string
           payment_option_id: string
           recorded_by_name?: string | null
+          pos_sale_id?: string | null
         }
         Update: {
           amount_idr?: number
@@ -2144,6 +2146,7 @@ export type Database = {
           paid_at?: string
           payment_option_id?: string
           recorded_by_name?: string | null
+          pos_sale_id?: string | null
         }
         Relationships: [
           {
@@ -6896,6 +6899,7 @@ export type Database = {
           product_id: string | null
           product_name: string
           qty: number
+          ready_cake_order_id: string | null
           sale_id: string
           subtotal: number
           sugar_level: string | null
@@ -6910,6 +6914,7 @@ export type Database = {
           product_id?: string | null
           product_name: string
           qty: number
+          ready_cake_order_id?: string | null
           sale_id: string
           subtotal: number
           sugar_level?: string | null
@@ -6924,6 +6929,7 @@ export type Database = {
           product_id?: string | null
           product_name?: string
           qty?: number
+          ready_cake_order_id?: string | null
           sale_id?: string
           subtotal?: number
           sugar_level?: string | null
@@ -6967,6 +6973,7 @@ export type Database = {
           discount_campaign_id: string | null
           fulfillment_type: string | null
           gross_total: number | null
+          ready_cake_total: number
           id: string
           payment_method: string
           payment_status: string
@@ -6995,6 +7002,7 @@ export type Database = {
           discount_campaign_id?: string | null
           fulfillment_type?: string | null
           gross_total?: number | null
+          ready_cake_total?: number
           id?: string
           payment_method: string
           payment_status?: string
@@ -7023,6 +7031,7 @@ export type Database = {
           discount_campaign_id?: string | null
           fulfillment_type?: string | null
           gross_total?: number | null
+          ready_cake_total?: number
           id?: string
           payment_method?: string
           payment_status?: string
