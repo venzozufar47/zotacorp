@@ -76,6 +76,7 @@ export function MaterialOpnameForm({
   const [unitSel, setUnitSel] = useState<Record<string, UnitSel>>({});
   const [reasons, setReasons] = useState<Record<string, VarianceReason>>({});
   const [notes, setNotes] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const unitOf = (r: ProcurementRow): UnitSel => unitSel[r.material.id] ?? defaultUnit(r);
@@ -191,14 +192,14 @@ export function MaterialOpnameForm({
       <div
         key={id}
         className={cn(
-          "space-y-2 rounded-xl border bg-background/40 px-3 py-2",
+          "space-y-1.5 rounded-xl border bg-card px-3 py-2.5",
           v?.outOfTolerance ? "border-destructive/60" : m?.done ? "border-success/50" : "border-border"
         )}
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="min-w-[150px] flex-1">
-            <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
-              {r.material.name}
+        <div className="space-y-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[15px] font-semibold leading-tight">
+              <span className="min-w-0 break-words">{r.material.name}</span>
               {m && (
                 <span
                   className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground"
@@ -210,69 +211,66 @@ export function MaterialOpnameForm({
               )}
               {m?.done && <Check size={14} className="text-success" aria-label="Sudah dihitung hari ini" />}
             </div>
-            <div className="text-[11px] tabular-nums text-muted-foreground">
-              {hasBaseline ? (
-                <>
-                  estimasi {fmtQty(expectedUsage != null ? expectedUsage / factor : null)} {unitLabel}
-                </>
-              ) : (
-                "belum ada hitungan sebelumnya · angkamu jadi patokan"
-              )}
-            </div>
-            {m && m.reasons.length > 0 && !m.done && (
-              <div className="mt-0.5 flex flex-wrap gap-1">
-                {m.reasons.map((x) => (
-                  <span
-                    key={x}
-                    className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                      x === "hitung_ulang" || x === "hampir_habis" ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    {REASON_LABEL[x]}
-                  </span>
-                ))}
-              </div>
-            )}
+            <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground">
+              {hasBaseline ? `est. ${fmtQty(expectedUsage != null ? expectedUsage / factor : null)} ${unitLabel}` : "belum ada patokan"}
+            </span>
           </div>
-          <input
-            value={raw}
-            onChange={(e) => setDraft((d) => ({ ...d, [id]: e.target.value }))}
-            inputMode="decimal"
-            placeholder="fisik"
-            aria-label={`Jumlah fisik ${r.material.name}`}
-            aria-invalid={raw.trim() !== "" && entered == null}
-            className={cn(
-              "h-10 w-24 rounded-lg border bg-background px-2 text-base tabular-nums md:h-9 md:text-sm",
-              raw.trim() !== "" && entered == null ? "border-2 border-destructive" : "border-border"
-            )}
-          />
-          {canSwitch ? (
-            <div className="inline-flex overflow-hidden rounded-lg border border-border text-[11px] font-semibold">
-              {(["purchase", "usage"] as const).map((u) => (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={() => setUnitSel((s) => ({ ...s, [id]: u }))}
-                  className={cn("px-2 py-1.5", sel === u ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+          {m && m.reasons.length > 0 && !m.done && (
+            <div className="flex flex-wrap gap-1">
+              {m.reasons.map((x) => (
+                <span
+                  key={x}
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                    x === "hitung_ulang" || x === "hampir_habis" ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground"
+                  )}
                 >
-                  {u === "purchase" ? r.material.purchase_unit : r.material.usage_unit}
-                </button>
+                  {REASON_LABEL[x]}
+                </span>
               ))}
             </div>
-          ) : (
-            <span className="w-10 text-[11px] text-muted-foreground">{r.material.usage_unit}</span>
           )}
-          <span
-            className={cn(
-              "w-24 text-right text-[11px] font-semibold tabular-nums",
-              !v ? "text-muted-foreground" : v.outOfTolerance ? "text-destructive" : "text-success"
+          <div className="flex items-center gap-2">
+            <input
+              value={raw}
+              onChange={(e) => setDraft((d) => ({ ...d, [id]: e.target.value }))}
+              inputMode="decimal"
+              placeholder="Isi fisik"
+              aria-label={`Jumlah fisik ${r.material.name}`}
+              aria-invalid={raw.trim() !== "" && entered == null}
+              className={cn(
+                "h-12 min-w-0 flex-1 rounded-xl border bg-background px-3 text-base font-semibold tabular-nums",
+                raw.trim() !== "" && entered == null ? "border-2 border-destructive" : "border-border"
+              )}
+            />
+            {canSwitch ? (
+              <div className="inline-flex h-12 shrink-0 overflow-hidden rounded-xl border border-border text-xs font-semibold">
+                {(["purchase", "usage"] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setUnitSel((s) => ({ ...s, [id]: u }))}
+                    aria-pressed={sel === u}
+                    className={cn("min-w-11 px-2.5", sel === u ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                  >
+                    {u === "purchase" ? r.material.purchase_unit : r.material.usage_unit}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="w-12 shrink-0 text-xs font-semibold text-muted-foreground">{r.material.usage_unit}</span>
             )}
-          >
-            {!v || qtyUsage == null
-              ? "—"
-              : `${v.pct > 0 ? "+" : ""}${(v.pct * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%${v.outOfTolerance ? "" : " ✓"}`}
-          </span>
+            <span
+              className={cn(
+                "w-14 shrink-0 text-right text-xs font-bold tabular-nums",
+                !v ? "text-muted-foreground" : v.outOfTolerance ? "text-destructive" : "text-success"
+              )}
+            >
+              {!v || qtyUsage == null
+                ? ""
+                : `${v.pct > 0 ? "+" : ""}${(v.pct * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%${v.outOfTolerance ? "" : " ✓"}`}
+            </span>
+          </div>
         </div>
         {v?.outOfTolerance && (
           <div className="space-y-1.5">
@@ -334,15 +332,18 @@ export function MaterialOpnameForm({
         ))
       )}
 
-      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-20 space-y-2 rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard md:bottom-0">
-        <input
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Catatan opname (opsional)"
-          className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm"
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">
+      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-20 space-y-1.5 rounded-xl border-2 border-foreground bg-card px-2.5 py-2 shadow-hard-sm md:bottom-0">
+        {(noteOpen || notes) && (
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Catatan opname (opsional)"
+            aria-label="Catatan opname"
+            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm"
+          />
+        )}
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 text-xs tabular-nums text-muted-foreground">
             {filled.length} bahan diisi
             {outRows.length > 0 && (
               <>
@@ -363,13 +364,22 @@ export function MaterialOpnameForm({
               </>
             )}
           </span>
+          {!noteOpen && !notes && (
+            <button
+              type="button"
+              onClick={() => setNoteOpen(true)}
+              className="h-10 shrink-0 rounded-xl px-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              + Catatan
+            </button>
+          )}
           <button
             type="button"
             onClick={onSubmit}
             disabled={pending || filled.length === 0 || invalidCount > 0}
-            className="ml-auto h-10 rounded-xl border-2 border-foreground bg-primary px-4 text-sm font-bold disabled:opacity-60"
+            className="h-10 shrink-0 rounded-xl border-2 border-foreground bg-primary px-4 text-sm font-bold disabled:opacity-60"
           >
-            {pending ? "Menyimpan…" : "Simpan opname"}
+            {pending ? "Menyimpan…" : "Simpan"}
           </button>
         </div>
       </div>
