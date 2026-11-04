@@ -61,11 +61,14 @@ export function MaterialOpnameForm({
   businessUnit,
   rows,
   meta,
+  progressNote,
 }: {
   businessUnit: string;
   rows: ProcurementRow[];
   /** Ada = mode "Opname hari ini": daftar urut prioritas + progres. Tidak ada = semua bahan per kategori. */
   meta?: Record<string, CountMeta>;
+  /** Satu baris kemajuan di kartu atas (mis. pendataan awal). */
+  progressNote?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -300,17 +303,21 @@ export function MaterialOpnameForm({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1 rounded-2xl border-2 border-foreground bg-card p-3 text-xs text-muted-foreground shadow-hard-sm">
+      <div className="rounded-2xl border-2 border-foreground bg-card px-3.5 py-3 text-xs text-muted-foreground shadow-hard-sm">
         {todayMode && (
-          <p className="text-sm font-bold text-foreground">
+          <p className="text-sm font-bold text-foreground tabular-nums">
             {doneCount}/{rows.length} bahan dihitung hari ini
           </p>
         )}
-        <p>
-          Isi jumlah <b className="text-foreground">fisik</b> hasil hitung (pilih satuan di sebelah kolom). &ldquo;Estimasi&rdquo; adalah tebakan sistem sejak
-          hitungan terakhir. Tulis desimal dengan KOMA (2,5), titik hanya untuk ribuan (1.250). Persen di kanan = selisih terhadap estimasi; hijau = wajar (dalam toleransi kategori), merah = perlu alasan.
-          {!todayMode && " Bahan yang dikosongkan tidak ikut diopname."}
-        </p>
+        {progressNote && <p className="mt-0.5 tabular-nums">{progressNote}</p>}
+        <details className="mt-1.5">
+          <summary className="cursor-pointer select-none py-1 font-semibold text-primary">Cara mengisi</summary>
+          <p className="pt-1 leading-relaxed">
+            Isi jumlah fisik hasil hitung, pilih satuan di sebelah kolom. Desimal pakai koma (2,5), titik hanya untuk
+            ribuan (1.250). Persen = selisih terhadap estimasi sistem: hijau wajar, merah perlu alasan.
+            {!todayMode && " Bahan yang dikosongkan tidak ikut diopname."}
+          </p>
+        </details>
       </div>
 
       {todayMode ? (

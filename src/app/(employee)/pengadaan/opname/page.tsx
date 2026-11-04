@@ -14,7 +14,6 @@ import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
 import { OFF_WORKDAY_MESSAGE, offWorkdayUserIds } from "@/lib/procurement/workday";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { MaterialOpnameForm, type CountMeta } from "@/components/procurement/MaterialOpnameForm";
-import { OnboardingProgress } from "@/components/procurement/OnboardingProgress";
 
 /**
  * Opname bahan baku. `?bu=` selalu divalidasi ulang terhadap penugasan —
@@ -81,17 +80,6 @@ export default async function OpnameBahanPage({
         </div>
       </div>
 
-      {plan && <OnboardingProgress plan={plan} />}
-
-      {plan && (
-        <p className="text-xs text-muted-foreground">
-          Daftar disusun sistem agar semua bahan terhitung tanpa menghitung semuanya tiap hari, dan tidak berubah
-          sepanjang hari. Kelas A/B/C ditentukan otomatis dari pemakaian (bahan baru diberi kelas sementara).{" "}
-          <Link href={allHref} className="font-semibold text-primary hover:underline">
-            Pilih sendiri dari semua bahan →
-          </Link>
-        </p>
-      )}
       {semua && activeBrand && (
         <p className="text-xs text-muted-foreground">
           <Link href={todayHref} className="font-semibold text-primary hover:underline">
@@ -111,7 +99,19 @@ export default async function OpnameBahanPage({
                 : "Belum ada bahan untuk brand ini."}
         </p>
       ) : (
-        <MaterialOpnameForm businessUnit={activeBrand} rows={rows} meta={meta} />
+        <MaterialOpnameForm
+          businessUnit={activeBrand}
+          rows={rows}
+          meta={meta}
+          progressNote={plan && plan.phase === 1 ? `Pendataan awal ${plan.onboarding.counted}/${plan.onboarding.total} bahan` : undefined}
+        />
+      )}
+      {plan && rows.length > 0 && (
+        <p className="text-center text-xs">
+          <Link href={allHref} className="font-semibold text-primary hover:underline">
+            Pilih sendiri dari semua bahan →
+          </Link>
+        </p>
       )}
     </div>
   );
