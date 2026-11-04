@@ -38,7 +38,10 @@ export function OpnameBanner({ plan, brand }: { plan: CountPlan; brand: string }
         <ClipboardCheck size={22} aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Opname · {shortBrand}</p>
+        <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+          Opname · {shortBrand}
+          {plan.phase === 1 && ` · Pendataan awal ${plan.onboarding.counted}/${plan.onboarding.total}`}
+        </p>
         <p className="text-sm font-bold leading-tight">{started ? "Lanjutkan opname hari ini" : "Opname hari ini belum dilakukan"}</p>
         {started && (
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-valuemin={0} aria-valuemax={plan.total} aria-valuenow={plan.doneCount}>

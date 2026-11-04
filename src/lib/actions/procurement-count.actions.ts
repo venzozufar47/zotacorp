@@ -13,7 +13,7 @@ export async function getTodayCountPlan(businessUnit: string): Promise<ActionRes
     const admin = createAdminClient();
     // Di luar hari kerja petugas, opname dimatikan: tanpa daftar, tanpa banner (owner tidak dibatasi).
     if (!gate.isAdmin && (await offWorkdayUserIds(admin, [gate.userId])).has(gate.userId)) {
-      return { ok: true, data: { enabled: false, items: [], doneCount: 0, total: 0, minutesLeft: 0, offDay: true } };
+      return { ok: true, data: { enabled: false, items: [], doneCount: 0, total: 0, minutesLeft: 0, offDay: true, phase: 2, onboarding: { counted: 0, total: 0 } } };
     }
     return { ok: true, data: await computeCountPlan(admin, businessUnit) };
   } catch {

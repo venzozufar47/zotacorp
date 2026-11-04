@@ -42,6 +42,10 @@ export interface CountPlan {
   minutesLeft: number;
   /** Hari ini bukan hari kerja petugas yang meminta: opname dimatikan (daftar kosong). */
   offDay?: boolean;
+  /** 1 = pendataan awal (masih ada bahan di resep yang belum pernah dihitung), 2 = siklus ABC rutin. */
+  phase: 1 | 2;
+  /** Kemajuan pendataan awal: bahan di resep yang sudah pernah dihitung dari seluruhnya. */
+  onboarding: { counted: number; total: number };
 }
 
 export const isCycleCountBrand = (businessUnit: string) => CYCLE_COUNT_BRANDS.includes(businessUnit);
@@ -73,7 +77,15 @@ async function readFrozenPlan(supabase: DB, businessUnit: string, planDate: stri
  * tidak mengubah daftar sampai besok; yang berubah hanya tanda "sudah dihitung" (dibaca hidup dari opname hari itu).
  */
 export async function computeCountPlan(supabase: DB, businessUnit: string, now = new Date()): Promise<CountPlan> {
-  const empty: CountPlan = { enabled: false, items: [], doneCount: 0, total: 0, minutesLeft: 0 };
+  const empty: CountPlan = {
+    enabled: false,
+    items: [],
+    doneCount: 0,
+    total: 0,
+    minutesLeft: 0,
+    phase: 2,
+    onboarding: { counted: 0, total: 0 },
+  };
   if (!isCycleCountBrand(businessUnit)) return empty;
 
   const { rows, usage } = await loadBrandProcurement(supabase, { businessUnit });
@@ -103,6 +115,23 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
     }
   }
   const countedToday = (id: string) => (hits.get(id) ?? []).some((x) => x.date === today);
+
+  // Bahan di resep (perlu diopname). Bahan di luar resep baru ikut bila sudah punya riwayat hitung.
+  const recipeIds = new Set<string>();
+  {
+    const allIds = rows.map((r) => r.material.id);
+    for (let i = 0; i < allIds.length; i += 100) {
+      const { data } = await supabase
+        .from("costing_recipe_items" as never)
+        .select("material_id")
+        .in("material_id", allIds.slice(i, i + 100));
+      for (const r of (data ?? []) as { material_id: string | null }[]) if (r.material_id) recipeIds.add(r.material_id);
+    }
+  }
+  const eligible = rows.filter((r) => recipeIds.has(r.material.id) || hits.has(r.material.id));
+  const onboardingCounted = eligible.filter((r) => hits.has(r.material.id)).length;
+  const phase: 1 | 2 = onboardingCounted < eligible.length ? 1 : 2;
+  const onboarding = { counted: onboardingCounted, total: eligible.length };
 
   const byId = new Map(rows.map((r) => [r.material.id, r]));
   let frozen = await readFrozenPlan(supabase, businessUnit, today);
@@ -145,6 +174,8 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
         // Sudah dihitung ulang hari ini → tak perlu didahulukan lagi.
         lastOutOfTolerance: lastOut && !(last && last.date === today),
         provisional: provisional.has(id),
+        inRecipe: recipeIds.has(id),
+        everCounted: hits.has(id),
       };
     });
 
@@ -181,5 +212,13 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
     });
   }
   const doneCount = items.filter((i) => i.done).length;
-  return { enabled: true, items, doneCount, total: items.length, minutesLeft: estimateMinutes(items.length - doneCount) };
+  return {
+    enabled: true,
+    items,
+    doneCount,
+    total: items.length,
+    minutesLeft: estimateMinutes(items.length - doneCount),
+    phase,
+    onboarding,
+  };
 }

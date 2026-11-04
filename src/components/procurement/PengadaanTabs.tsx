@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type PengadaanTab = "catat" | "riwayat" | "stok" | "bahan";
+export type PengadaanTab = "catat" | "pesanan" | "riwayat" | "stok" | "bahan";
 
 const TABS: { key: PengadaanTab; label: string; short: string }[] = [
   { key: "catat", label: "Catat belanja", short: "Catat" },
+  { key: "pesanan", label: "Pesanan", short: "Pesanan" },
   { key: "riwayat", label: "Riwayat", short: "Riwayat" },
   { key: "stok", label: "Stok bahan", short: "Stok" },
   { key: "bahan", label: "Daftar bahan", short: "Bahan" },
@@ -16,19 +17,22 @@ export function PengadaanTabs({
   brands,
   activeBrand,
   limited = false,
+  inTransitCount = 0,
 }: {
   active: PengadaanTab;
   brands: string[];
   activeBrand: string | null;
   /** Akun kasir (bukan petugas pengadaan): hanya form catat, tanpa tab lain. */
   limited?: boolean;
+  /** Jumlah pesanan yang belum tiba (badge di tab Pesanan). */
+  inTransitCount?: number;
 }) {
   const href = (tab: PengadaanTab, bu: string | null) =>
     `/pengadaan?tab=${tab}${bu ? `&bu=${encodeURIComponent(bu)}` : ""}`;
   return (
     <div className="space-y-2.5">
       {!limited && (
-      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-5 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
+      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-6 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
         {TABS.map((t) => (
           <Link
             key={t.key}
@@ -42,6 +46,12 @@ export function PengadaanTabs({
           >
             <span className="md:hidden">{t.short}</span>
             <span className="hidden md:inline">{t.label}</span>
+            {t.key === "pesanan" && inTransitCount > 0 && (
+              <span className="ml-1 inline-grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground tabular-nums">
+                {inTransitCount}
+                <span className="sr-only"> pesanan belum tiba</span>
+              </span>
+            )}
           </Link>
         ))}
         {/* Opname bahan punya halaman sendiri — tautan di sini supaya mudah ditemukan. */}

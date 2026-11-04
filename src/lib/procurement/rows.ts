@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { num } from "@/lib/costing/rows";
 import { loadTheoreticalUsage, type TheoreticalUsage } from "./usage";
+import { leadTimeStats, resolveLeadTime, workingDaysBetweenIso, type LeadTimeStats } from "./lead-time";
 import {
   computeProcurement,
   resolveParams,
@@ -91,6 +92,10 @@ export interface ProcurementRow {
   metrics: ProcurementMetrics;
   /** ISO opname terakhir yang memuat bahan ini. */
   lastOpnameAt: string | null;
+  /** Lead time yang dipakai (hari kerja, Minggu libur) beserta asalnya. */
+  lead: { days: number; source: "manual" | "nyata" | "bawaan"; samples: number };
+  /** Pesanan yang belum tiba untuk bahan ini. */
+  inTransit: { qtyUsage: number; count: number; expectedAt: string | null };
   /**
    * Pemakaian harian otomatis (produksi POS × resep, rata-rata 30 hari, satuan pakai). Dipakai sebagai pemakaian
    * harian estimasi saat parameter manualnya belum diisi. null = tak ada data produksi untuk bahan ini.
@@ -227,8 +232,9 @@ export async function loadBrandProcurement(
     }
   }
 
-  // Barang masuk sejak baseline paling tua — disaring per bahan di JS
-  // karena tiap bahan punya cut-off sendiri.
+  // Barang masuk yang TIBA setelah baseline masing-masing bahan. Batas waktunya arrived_at (bukan created_at):
+  // pesanan yang dibuat sebelum opname tetapi tiba sesudahnya tetap menambah stok. arrived_at NULL = masih
+  // dalam perjalanan: tidak menambah stok, tetapi dihitung sebagai pasokan yang akan datang.
   const receiptsByMaterial = new Map<string, number>();
   if (baseline.size > 0) {
     let oldestMs = Number.POSITIVE_INFINITY;
@@ -243,10 +249,10 @@ export async function loadBrandProcurement(
     for (let from = 0; ; from += 1000) {
       const { data } = await supabase
         .from("costing_material_receipts" as never)
-        .select("material_id, qty_usage_units, created_at")
+        .select("material_id, qty_usage_units, arrived_at")
         .eq("business_unit", opts.businessUnit)
-        .gt("created_at", oldestIso!)
-        .order("created_at")
+        .gt("arrived_at", oldestIso!)
+        .order("arrived_at")
         .range(from, from + 999);
       const page = (data ?? []) as Record<string, unknown>[];
       recRows.push(...page);
@@ -256,12 +262,58 @@ export async function loadBrandProcurement(
       const mid = r.material_id as string;
       const b = baseline.get(mid);
       if (!b) continue; // belum pernah opname → barang masuk diabaikan
-      const recMs = Date.parse(r.created_at as string);
+      const recMs = Date.parse(r.arrived_at as string);
       if (!Number.isFinite(recMs) || recMs <= b.atMs) continue;
       receiptsByMaterial.set(
         mid,
         (receiptsByMaterial.get(mid) ?? 0) + num(r.qty_usage_units)
       );
+    }
+  }
+
+  // Pesanan dalam perjalanan (belum tiba), per bahan.
+  const transitByMaterial = new Map<string, { qtyUsage: number; count: number; expectedAt: string | null }>();
+  {
+    const { data } = await supabase
+      .from("costing_material_receipts" as never)
+      .select("material_id, qty_usage_units, expected_at")
+      .eq("business_unit", opts.businessUnit)
+      .is("arrived_at", null)
+      .limit(2000);
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const mid = r.material_id as string;
+      const cur = transitByMaterial.get(mid) ?? { qtyUsage: 0, count: 0, expectedAt: null };
+      const exp = (r.expected_at as string | null) ?? null;
+      cur.qtyUsage += num(r.qty_usage_units);
+      cur.count += 1;
+      if (exp && (!cur.expectedAt || exp < cur.expectedAt)) cur.expectedAt = exp;
+      transitByMaterial.set(mid, cur);
+    }
+  }
+
+  // Lead time NYATA per bahan dari pesanan yang sudah tiba: hari kerja (tanpa Minggu) dari dipesan ke tiba.
+  const leadByMaterial = new Map<string, LeadTimeStats>();
+  {
+    const cutoff = new Date(Date.now() - OPNAME_WINDOW_DAYS * 86_400_000).toISOString();
+    const { data } = await supabase
+      .from("costing_material_receipts" as never)
+      .select("material_id, ordered_at, arrived_at")
+      .eq("business_unit", opts.businessUnit)
+      .not("ordered_at", "is", null)
+      .not("arrived_at", "is", null)
+      .gte("arrived_at", cutoff)
+      .limit(3000);
+    const samples = new Map<string, number[]>();
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const mid = r.material_id as string;
+      const d = workingDaysBetweenIso(r.ordered_at as string, r.arrived_at as string);
+      const arr = samples.get(mid) ?? [];
+      arr.push(d);
+      samples.set(mid, arr);
+    }
+    for (const [mid, arr] of samples) {
+      const st = leadTimeStats(arr);
+      if (st) leadByMaterial.set(mid, st);
     }
   }
 
@@ -290,12 +342,22 @@ export async function loadBrandProcurement(
     const u = usage.byMaterial.get(id);
     const autoDailyUsage = u && usage.days > 0 && u.qty > 0 ? u.qty / usage.days : null;
     // Pemakaian manual menang; kalau belum diisi (0) pakai pemakaian teoretis supaya estimasi ikut berkurang.
-    const effectiveParams =
+    const usageParams =
       params.avgDailyUsage > 0 || autoDailyUsage == null ? params : { ...params, avgDailyUsage: autoDailyUsage };
+    // Lead time dalam HARI KERJA (toko libur Minggu). Pemakaian harian dihitung per hari kalender, jadi lead time
+    // diubah ke ekuivalen kalender (×7/6) agar konsumsi selama menunggu barang tiba tidak terlalu kecil.
+    const lt = resolveLeadTime(params.leadTimeDays, params.leadTimeSigmaDays, leadByMaterial.get(id) ?? null);
+    const effectiveParams = {
+      ...usageParams,
+      leadTimeDays: (lt.days * 7) / 6,
+      leadTimeSigmaDays: lt.sigma == null ? null : (lt.sigma * 7) / 6,
+    };
+    const transit = transitByMaterial.get(id) ?? { qtyUsage: 0, count: 0, expectedAt: null };
     const metrics = computeProcurement(lite, resolveParams(effectiveParams, settings), {
       baselineQty: b ? b.qty : null,
       baselineAtIso: b ? b.atIso : null,
       receiptsSinceQty: receiptsByMaterial.get(id) ?? 0,
+      inTransitQty: transit.qtyUsage,
       atIso,
     });
     rows.push({
@@ -309,6 +371,8 @@ export async function loadBrandProcurement(
       params,
       metrics,
       lastOpnameAt: b ? b.atIso : null,
+      lead: { days: lt.days, source: lt.source, samples: leadByMaterial.get(id)?.samples ?? 0 },
+      inTransit: transit,
       autoDailyUsage,
     });
   }

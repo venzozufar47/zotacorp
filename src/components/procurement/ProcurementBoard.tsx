@@ -322,6 +322,15 @@ export function ProcurementBoard({
                           ≈ {formatRp(m.suggestion.estCost)}
                         </div>
                       </>
+                    ) : m.onHand == null ? (
+                      <span className="text-[11px] font-semibold text-muted-foreground">Opname dulu</span>
+                    ) : m.suggestion?.reason === "dipesan" ? (
+                      <>
+                        <div className="text-[11px] font-bold text-foreground">Sudah dipesan</div>
+                        <div className="text-[10px] text-muted-foreground tabular-nums">
+                          tiba {r.inTransit.expectedAt ?? "—"}
+                        </div>
+                      </>
                     ) : (
                       <span className="text-[11px] text-muted-foreground">—</span>
                     )}

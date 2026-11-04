@@ -139,18 +139,22 @@ export interface StockSnapshotLite {
   receiptsSinceQty: number;
   /** Titik waktu evaluasi (ISO) — biasanya sekarang. */
   atIso: string;
+  /** Σ qty_usage_units pesanan yang sudah dibayar/dipesan tetapi belum tiba (dalam perjalanan). */
+  inTransitQty?: number;
 }
 
 export interface OrderSuggestion {
   qtyPurchaseUnits: number;
   qtyUsageUnits: number;
   estCost: number;
-  reason: "aman" | "eoq" | "order_up_to" | "moq";
+  reason: "aman" | "dipesan" | "eoq" | "order_up_to" | "moq";
 }
 
 export interface ProcurementMetrics {
   /** Estimasi stok, di-clamp ≥ 0. null = belum pernah opname. */
   onHand: number | null;
+  /** Pasokan yang sedang dalam perjalanan (belum tiba, belum masuk onHand). */
+  inTransitQty: number;
   /** Tanpa clamp — negatif = model kelebihan konsumsi, sinyal kuat
    *  "opname sekarang". */
   onHandRaw: number | null;
@@ -281,16 +285,18 @@ export function computeProcurement(
   // ── Saran belanja ────────────────────────────────────────────────────
   let suggestion: OrderSuggestion | null = null;
   if (onHand != null && material.content_per_purchase > 0) {
-    const deficit = reorderPoint - onHand;
+    // Pasokan dalam perjalanan dihitung: bahan yang sudah dipesan tidak disarankan dibeli lagi.
+    const inTransit = Math.max(0, snapshot.inTransitQty ?? 0);
+    const deficit = reorderPoint - (onHand + inTransit);
     if (deficit <= 0) {
       suggestion = {
         qtyPurchaseUnits: 0,
         qtyUsageUnits: 0,
         estCost: 0,
-        reason: "aman",
+        reason: onHand < reorderPoint ? "dipesan" : "aman",
       };
     } else {
-      const base = eoq ?? Math.max(0, orderUpTo - onHand);
+      const base = eoq ?? Math.max(0, orderUpTo - onHand - inTransit);
       let reason: OrderSuggestion["reason"] = eoq != null ? "eoq" : "order_up_to";
       // Jangan pernah memesan kurang dari kekurangannya.
       const qtyUsage = Math.max(base, deficit);
@@ -324,6 +330,7 @@ export function computeProcurement(
 
   return {
     onHand,
+    inTransitQty: Math.max(0, snapshot.inTransitQty ?? 0),
     onHandRaw,
     elapsedDays,
     freshness,

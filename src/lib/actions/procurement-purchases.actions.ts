@@ -26,6 +26,7 @@ import { posAccountFilterForCostingBrand } from "@/lib/costing/brands";
 import { num } from "@/lib/costing/rows";
 import { fetchUnitsMap } from "@/lib/costing/rows";
 import { loadBrandProcurement } from "@/lib/procurement/rows";
+import { addWorkingDays, DEFAULT_LEAD_TIME_DAYS } from "@/lib/procurement/lead-time";
 import { EXPENSE_CATEGORY_VALUES } from "@/lib/procurement/categories";
 import {
   convertQty,
@@ -521,6 +522,12 @@ export interface CreatePurchaseInput {
   replaceId?: string;
   /** Mode edit: pakai foto nota yang sudah tersimpan (tanpa unggah baru). */
   keepReceipt?: boolean;
+  /**
+   * "langsung" (bawaan): barang sudah di tangan, langsung menambah stok. "dipesan": sudah dibayar/dipesan tetapi belum
+   * tiba, stok baru bertambah saat dikonfirmasi tiba (lead time terukur dari sini). Mode edit tanpa nilai ini
+   * mempertahankan status pesanan lama.
+   */
+  delivery?: "langsung" | "dipesan";
 }
 
 interface OldSnapshot {
@@ -778,6 +785,10 @@ async function createPurchaseImpl(
     if (ex) return { ok: false, error: "Nota dengan kode ini sudah ada" };
   }
   const purchaseId = replaceId ?? clientId ?? crypto.randomUUID();
+  // Pesanan dalam perjalanan: edit tanpa pilihan eksplisit mempertahankan status lama.
+  const oldInTransit = (old?.receipts ?? []).filter((r) => r.arrived_at == null);
+  const inTransitMode = input.delivery ? input.delivery === "dipesan" : oldInTransit.length > 0;
+  const orderedAtIso = (oldInTransit[0]?.ordered_at as string | undefined) ?? now.toISOString();
   // Mode edit: identitas & waktu catat nota lama dipertahankan (hitungan kas laci per shift dikunci dari created_at).
   const purchaseTime = old ? ((old.head.purchase_time as string | null) ?? jakartaHHMM(now)) : jakartaHHMM(now);
   const ownerId = old ? ((old.head.created_by as string | null) ?? gate.userId) : gate.userId;
@@ -1117,6 +1128,16 @@ async function createPurchaseImpl(
           notes: "Dari nota belanja pengadaan",
           created_by: ownerId,
           brand_id: c.brandId,
+          ...(inTransitMode
+            ? {
+                ordered_at: orderedAtIso,
+                arrived_at: null,
+                expected_at: addWorkingDays(
+                  date,
+                  Math.ceil(procRows.get(c.materialId)?.lead.days ?? DEFAULT_LEAD_TIME_DAYS)
+                ),
+              }
+            : {}),
         } as never)
         .select("id")
         .single();

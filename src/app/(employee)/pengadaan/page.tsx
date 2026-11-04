@@ -32,8 +32,10 @@ import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
 import { PengadaanTabs, type PengadaanTab } from "@/components/procurement/PengadaanTabs";
 import { PengadaanCatat } from "@/components/procurement/PengadaanCatat";
 import { PurchaseHistory, PurchaseSummaryCard } from "@/components/procurement/PurchaseHistory";
+import { listOrders } from "@/lib/actions/procurement-orders.actions";
+import { OrdersPanel } from "@/components/procurement/OrdersPanel";
 
-const TAB_KEYS: readonly PengadaanTab[] = ["catat", "riwayat", "stok", "bahan"];
+const TAB_KEYS: readonly PengadaanTab[] = ["catat", "pesanan", "riwayat", "stok", "bahan"];
 
 /**
  * Pengadaan & Pengeluaran untuk petugas cabang: catat nota belanja (bahan baku + pengeluaran lain), lihat
@@ -71,6 +73,9 @@ export default async function PengadaanPage({
   const tab: PengadaanTab = limited ? "catat" : (TAB_KEYS.find((k) => k === tabParam) ?? "catat");
 
   const today = jakartaDateString(new Date());
+  // Jumlah pesanan belum tiba untuk badge tab (hanya petugas pengadaan).
+  const ordersRes = !limited && activeBrand ? await listOrders(activeBrand) : null;
+  const inTransitCount = ordersRes && ordersRes.ok ? (ordersRes.data?.inTransit.length ?? 0) : 0;
   const monthStart = `${today.slice(0, 7)}-01`;
 
   return (
@@ -100,9 +105,18 @@ export default async function PengadaanPage({
       ) : (
         <>
           {!limited && <OpnameReminder brand={activeBrand} />}
-          <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} />
+          <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} inTransitCount={inTransitCount} />
           {!limited && tab === "catat" && <PositionBar brand={activeBrand} />}
           {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
+          {tab === "pesanan" && ordersRes && (
+            <div className="mx-auto max-w-xl">
+              {ordersRes.ok && ordersRes.data ? (
+                <OrdersPanel businessUnit={activeBrand} data={ordersRes.data} />
+              ) : (
+                <p className="text-sm text-destructive">{ordersRes.ok ? "Gagal memuat pesanan" : ordersRes.error}</p>
+              )}
+            </div>
+          )}
           {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
           {tab === "bahan" && <BahanTab brand={activeBrand} />}

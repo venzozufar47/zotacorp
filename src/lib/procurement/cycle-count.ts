@@ -18,6 +18,14 @@ export const DAILY_BUDGET = 12;
 export const MINUTES_PER_ITEM = 1.8;
 export const DAILY_SET_SIZE = 4;
 
+/**
+ * Tahap 1 (pendataan awal): selama masih ada bahan di resep yang belum pernah dihitung, daftar harian memprioritaskan
+ * bahan-bahan itu (biaya pemakaian terbesar dulu) dengan kuota lebih besar. Begitu semuanya pernah dihitung, sistem
+ * kembali ke siklus ABC biasa. Hitung ulang karena selisih tetap didahulukan, tetapi dibatasi supaya tidak memakan kuota.
+ */
+export const ONBOARDING_BUDGET = 20;
+export const ONBOARDING_RECHECK_CAP = 3;
+
 export const INTERVAL_DAYS: Record<AbcClass, number> = { A: 3, B: 7, C: 30, D: 90 };
 
 /** Kategori yang cepat rusak: bahan kelas A di sini masuk daftar harian. */
@@ -155,6 +163,10 @@ export interface PlanMaterial {
   lastOutOfTolerance: boolean;
   /** Kelas masih sementara (bahan baru tanpa data pemakaian). */
   provisional?: boolean;
+  /** Bahan dipakai di resep. Bahan di luar resep yang belum pernah dihitung tidak masuk daftar. */
+  inRecipe?: boolean;
+  /** Pernah dihitung (termasuk hari ini). */
+  everCounted?: boolean;
 }
 
 export interface PlanItem {
@@ -167,7 +179,10 @@ const CLASS_RANK: Record<AbcClass, number> = { A: 0, B: 1, C: 2, D: 3 };
 const MS_DAY = 86_400_000;
 
 /** Daftar hitung hari ini: stabil sepanjang hari (hitungan hari ini tidak mengubah susunan, hanya menandai selesai). */
-export function buildTodayPlan(materials: PlanMaterial[], nowMs: number, budget = DAILY_BUDGET): PlanItem[] {
+export function buildTodayPlan(allMaterials: PlanMaterial[], nowMs: number, budget = DAILY_BUDGET): PlanItem[] {
+  // "Perlu diopname" = ada di resep, atau sudah punya riwayat hitung. Selain itu tidak masuk daftar.
+  const materials = allMaterials.filter((m) => m.inRecipe !== false || m.everCounted);
+  const onboarding = materials.some((m) => m.everCounted === false);
   const daysSince = (iso: string | null) => (iso ? Math.max(0, (nowMs - Date.parse(iso)) / MS_DAY) : Number.POSITIVE_INFINITY);
 
   const daily = new Set(
@@ -223,6 +238,19 @@ export function buildTodayPlan(materials: PlanMaterial[], nowMs: number, budget 
         b.ratio - a.ratio ||
         b.m.usageCost - a.m.usageCost
     );
+  if (onboarding) {
+    // Tahap 1: hitung ulang (maks 3) → bahan belum pernah dihitung menurut biaya pemakaian → sisanya ABC sampai kuota biasa.
+    const recheck = rest.filter((c) => c.reasons.includes("hitung_ulang")).slice(0, ONBOARDING_RECHECK_CAP);
+    const taken = new Set(recheck.map((c) => c.m.id));
+    const fresh = rest
+      .filter((c) => c.reasons.includes("belum_pernah") && !taken.has(c.m.id))
+      .sort((a, b) => b.m.usageCost - a.m.usageCost);
+    const picked = [...recheck, ...fresh].slice(0, Math.max(0, ONBOARDING_BUDGET - doneFirst.length));
+    const used = new Set(picked.map((c) => c.m.id));
+    const fill = Math.max(0, DAILY_BUDGET - doneFirst.length - picked.length);
+    const extra = rest.filter((c) => !used.has(c.m.id)).slice(0, fill);
+    return [...doneFirst, ...picked, ...extra].map((c) => ({ id: c.m.id, reasons: c.reasons, done: c.m.countedToday }));
+  }
   const slots = Math.max(0, budget - doneFirst.length);
   return [...doneFirst, ...rest.slice(0, slots)].map((c) => ({ id: c.m.id, reasons: c.reasons, done: c.m.countedToday }));
 }

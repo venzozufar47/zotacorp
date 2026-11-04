@@ -49,7 +49,14 @@ export async function runOpnameReminders(stage: 1 | 2): Promise<OpnameReminderSu
     const short = brand.replace("Haengbocake ", "");
     for (const userId of present) {
       const res = await sendPushToUser(userId, {
-        title: stage === 1 ? "Waktunya opname bahan" : "Opname hari ini belum selesai",
+        title:
+          plan.phase === 1
+            ? stage === 1
+              ? "Pendataan awal bahan"
+              : "Pendataan awal hari ini belum selesai"
+            : stage === 1
+              ? "Waktunya opname bahan"
+              : "Opname hari ini belum selesai",
         body:
           plan.doneCount === 0
             ? `${short}: ${plan.total} bahan perlu dihitung hari ini (±${plan.minutesLeft} menit).`

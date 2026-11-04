@@ -14,6 +14,7 @@ import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
 import { OFF_WORKDAY_MESSAGE, offWorkdayUserIds } from "@/lib/procurement/workday";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { MaterialOpnameForm, type CountMeta } from "@/components/procurement/MaterialOpnameForm";
+import { OnboardingProgress } from "@/components/procurement/OnboardingProgress";
 
 /**
  * Opname bahan baku. `?bu=` selalu divalidasi ulang terhadap penugasan —
@@ -79,6 +80,8 @@ export default async function OpnameBahanPage({
           </p>
         </div>
       </div>
+
+      {plan && <OnboardingProgress plan={plan} />}
 
       {plan && (
         <p className="text-xs text-muted-foreground">

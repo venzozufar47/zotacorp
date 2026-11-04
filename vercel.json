@@ -3,6 +3,10 @@
   "regions": ["sin1"],
   "crons": [
     {
+      "path": "/api/cron/shopping-reminders",
+      "schedule": "0 1 * * *"
+    },
+    {
       "path": "/api/cron/sync-cash-sheets",
       "schedule": "0 18 * * *"
     },

@@ -154,6 +154,8 @@ export function PurchaseForm({
   const [keepReceipt, setKeepReceipt] = useState(!!editing);
   const [uploading, setUploading] = useState(false);
   const [vendor, setVendor] = useState(editing?.vendor ?? "");
+  // Barang sudah di tangan (langsung menambah stok) atau baru dipesan (stok bertambah saat dikonfirmasi tiba).
+  const [delivery, setDelivery] = useState<"langsung" | "dipesan">("langsung");
   const [date, setDate] = useState(editing?.purchaseDate ?? today);
   const [editDate, setEditDate] = useState(!!editing);
   const initialDraft = useMemo(
@@ -286,6 +288,8 @@ export function PurchaseForm({
         purchaseDate: date,
         vendor: vendor.trim() || null,
         lines: payload,
+        // Mode edit tidak mengirim pilihan: server mempertahankan status pesanan lama.
+        delivery: editing || source === "laci" || !lines.some((l) => l.kind === "bahan") ? undefined : delivery,
       });
       if (!res.ok || !res.data) {
         toast.error(res.ok ? "Gagal menyimpan nota" : res.error);
@@ -298,6 +302,7 @@ export function PurchaseForm({
       }
       if (receiptPreview?.startsWith("blob:")) URL.revokeObjectURL(receiptPreview);
       clientIdRef.current = crypto.randomUUID();
+      setDelivery("langsung");
       const nowIso = new Date().toISOString();
       setSessionExpenses((s) => [
         ...s,
@@ -571,6 +576,35 @@ export function PurchaseForm({
             </button>
           )}
         </div>
+        {!editing && source !== "laci" && lines.some((l) => l.kind === "bahan") && (
+          <fieldset className="space-y-1.5 pt-1">
+            <legend className="text-xs font-semibold text-muted-foreground">Kondisi barang</legend>
+            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Kondisi barang">
+              {(
+                [
+                  { key: "langsung", title: "Sudah di tangan", hint: "Langsung masuk stok" },
+                  { key: "dipesan", title: "Dipesan, belum tiba", hint: "Masuk stok saat tiba" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={delivery === o.key}
+                  onClick={() => setDelivery(o.key)}
+                  className={`min-h-12 rounded-xl border-2 px-2.5 py-2 text-left transition ${
+                    delivery === o.key
+                      ? "border-foreground bg-primary text-primary-foreground"
+                      : "border-border bg-card hover:bg-muted"
+                  }`}
+                >
+                  <span className="block text-[13px] font-bold leading-tight">{o.title}</span>
+                  <span className={`block text-[11px] leading-tight ${delivery === o.key ? "opacity-90" : "text-muted-foreground"}`}>{o.hint}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
         {data.vendors.length > 0 && !vendor && (
           <div className="flex flex-wrap gap-1.5">
             {data.vendors.slice(0, 6).map((v) => (
