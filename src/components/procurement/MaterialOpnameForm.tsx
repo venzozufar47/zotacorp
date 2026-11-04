@@ -385,7 +385,7 @@ export function MaterialOpnameForm({
       </div>
 
       {confirmOpen && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm" onClick={() => setConfirmOpen(false)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm" onClick={() => setConfirmOpen(false)}>
           <div className="w-full max-w-sm space-y-3 rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard" onClick={(e) => e.stopPropagation()}>
             <h2 className="flex items-center gap-2 font-semibold">
               <AlertTriangle size={16} className="text-warning" />

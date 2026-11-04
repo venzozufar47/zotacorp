@@ -84,11 +84,11 @@ export function GoodsInDialog({
 
   return (
     <div
-      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      className="fixed inset-0 z-[60] bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-card border-2 border-foreground shadow-hard p-4 space-y-3 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-sm rounded-2xl bg-card border-2 border-foreground shadow-hard p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
