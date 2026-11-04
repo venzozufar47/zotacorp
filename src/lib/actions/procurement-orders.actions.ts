@@ -129,29 +129,28 @@ export async function confirmArrival(input: {
   const nowIso = new Date().toISOString();
   const partial = got < ordered - 1e-9;
   if (!partial) {
-    const { error } = await db
+    const { data: won, error } = await db
       .from("costing_material_receipts" as never)
       .update({ arrived_at: nowIso } as never)
       .eq("id", input.receiptId)
-      .is("arrived_at", null);
+      .is("arrived_at", null)
+      .select("id");
     if (error) return { ok: false, error: error.message };
+    if (!won || won.length === 0) return { ok: false, error: "Pesanan ini sudah dikonfirmasi tiba" };
   } else {
     const ratio = got / ordered;
     const content = num(rec.content_per_purchase_snapshot);
     const total = rec.total_paid == null ? null : num(rec.total_paid);
-    const remainder = {
+    const remainder: Record<string, unknown> = {
       ...rec,
-      id: undefined,
       qty_purchase_units: ordered - got,
       qty_usage_units: (ordered - got) * content,
       total_paid: total == null ? null : Math.round(total * (1 - ratio)),
       arrived_at: null,
     };
-    delete (remainder as Record<string, unknown>).id;
-    // Sisa dibuat dulu: kalau gagal, pesanan asli tidak berubah.
-    const { error: insErr } = await db.from("costing_material_receipts" as never).insert(remainder as never);
-    if (insErr) return { ok: false, error: insErr.message };
-    const { error } = await db
+    delete remainder.id;
+    // Baris asli diperkecil DULU dengan penjaga arrived_at NULL: klik ganda hanya satu yang menang, jadi sisa tidak kembar.
+    const { data: won, error } = await db
       .from("costing_material_receipts" as never)
       .update({
         qty_purchase_units: got,
@@ -160,8 +159,19 @@ export async function confirmArrival(input: {
         arrived_at: nowIso,
       } as never)
       .eq("id", input.receiptId)
-      .is("arrived_at", null);
+      .is("arrived_at", null)
+      .select("id");
     if (error) return { ok: false, error: error.message };
+    if (!won || won.length === 0) return { ok: false, error: "Pesanan ini sudah dikonfirmasi tiba" };
+    const { error: insErr } = await db.from("costing_material_receipts" as never).insert(remainder as never);
+    if (insErr) {
+      // Sisa gagal dicatat: kembalikan pesanan ke keadaan semula supaya tidak ada barang yang "hilang".
+      await db
+        .from("costing_material_receipts" as never)
+        .update({ qty_purchase_units: ordered, qty_usage_units: num(rec.qty_usage_units), total_paid: rec.total_paid, arrived_at: null } as never)
+        .eq("id", input.receiptId);
+      return { ok: false, error: insErr.message };
+    }
   }
   if (rec.brand_id) await rebuildBrandUsage(db, rec.material_id as string).catch(() => undefined);
   revalidate();

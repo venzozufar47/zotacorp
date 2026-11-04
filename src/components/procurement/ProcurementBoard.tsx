@@ -97,7 +97,7 @@ export function ProcurementBoard({
     let oldest: number | null = null;
     for (const r of rows) {
       const s = r.metrics.status;
-      if (s === "habis" || s === "kritis" || s === "menipis") {
+      if ((s === "habis" || s === "kritis" || s === "menipis") && r.metrics.suggestion?.reason !== "dipesan") {
         needBuy++;
         estCost += r.metrics.suggestion?.estCost ?? 0;
       }

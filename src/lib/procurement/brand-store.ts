@@ -129,6 +129,7 @@ export async function rebuildBrandUsage(admin: Admin, materialId: string): Promi
       .select("brand_id, receipt_date, created_at")
       .eq("material_id", materialId)
       .not("brand_id", "is", null)
+      .not("arrived_at", "is", null)
       .order("receipt_date", { ascending: true })
       .order("created_at", { ascending: true }),
     admin.from("costing_material_brand_usage" as never).select("id, brand_id, started_on, source, created_at").eq("material_id", materialId),

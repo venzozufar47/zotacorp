@@ -784,6 +784,8 @@ async function createPurchaseImpl(
     if (ex && ex.created_by === gate.userId) return { ok: true, data: { id: ex.id, total: num(ex.total), flagged: 0 } };
     if (ex) return { ok: false, error: "Nota dengan kode ini sudah ada" };
   }
+  if (input.delivery === "dipesan" && input.moneySource === "laci")
+    return { ok: false, error: "Uang laci hanya untuk belanja yang barangnya langsung di tangan" };
   const purchaseId = replaceId ?? clientId ?? crypto.randomUUID();
   // Pesanan dalam perjalanan: edit tanpa pilihan eksplisit mempertahankan status lama.
   const oldInTransit = (old?.receipts ?? []).filter((r) => r.arrived_at == null);
