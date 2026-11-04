@@ -12,11 +12,20 @@ function tone(count: number, target: number): { text: string; bg: string; bar: s
   return { text: "text-destructive", bg: "bg-destructive/10", bar: "bg-destructive" };
 }
 
-export function FeedbackTargetCard({ summary, href }: { summary: PosFeedbackToday; href: string }) {
+export function FeedbackTargetCard({
+  summary,
+  href,
+  freebies = [],
+}: {
+  summary: PosFeedbackToday;
+  href: string;
+  /** Stok hadiah pengisi feedback (mis. Freebies Tiramisu): hanya dipantau, tidak dijual di kasir. */
+  freebies?: Array<{ name: string; onHand: number }>;
+}) {
   const t = tone(summary.count, summary.target);
   const pct = Math.min(100, Math.round((summary.count / summary.target) * 100));
   return (
-    <Link href={href} aria-label={`Lihat feedback pelanggan ${summary.branch}`} className={`flex min-h-11 h-full items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}>
+    <Link href={href} aria-label={`Lihat feedback pelanggan ${summary.branch}`} className={`flex min-h-11 h-full items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 flex-wrap shadow-[3px_3px_0_0_var(--foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Feedback Hari Ini</p>
         <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
@@ -32,6 +41,17 @@ export function FeedbackTargetCard({ summary, href }: { summary: PosFeedbackToda
           <span className={`block h-full rounded-full ${t.bar}`} style={{ width: `${pct}%` }} />
         </span>
       </div>
+      {freebies.map((f) => (
+        <p
+          key={f.name}
+          className="flex basis-full items-center justify-between gap-2 border-t border-foreground/10 pt-1.5 text-[11px] text-muted-foreground"
+        >
+          <span className="min-w-0 truncate">{f.name}</span>
+          <b className={`shrink-0 tabular-nums ${f.onHand <= 0 ? "text-destructive" : "text-foreground"}`}>
+            {f.onHand <= 0 ? "habis" : `sisa ${f.onHand}`}
+          </b>
+        </p>
+      ))}
     </Link>
   );
 }
