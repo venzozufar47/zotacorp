@@ -1236,7 +1236,9 @@ function PreviewStep({
   const hasSrcDest = txs.some((t) => t.sourceDestination);
   const hasTxDetails = txs.some((t) => t.transactionDetails);
   const hasTime = txs.some((t) => t.time);
-  const rowFlags = computeRowFlags(txs);
+  const rowFlags = computeRowFlags(txs, {
+    requireBranch: presets.branches.length > 0,
+  });
   const [filter, setFilter] = useFlagFilter();
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const toggleRow = (idx: number) =>
@@ -1582,7 +1584,9 @@ function MergedPreview({
     );
   }
   rows.sort((a, b) => a.tx.date.localeCompare(b.tx.date));
-  const mergedFlags = computeRowFlags(rows.map((r) => r.tx));
+  const mergedFlags = computeRowFlags(rows.map((r) => r.tx), {
+    requireBranch: presets.branches.length > 0,
+  });
   const [mergedFilter, setMergedFilter] = useFlagFilter();
 
   const showBranch = presets.branches.length > 0;

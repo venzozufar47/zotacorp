@@ -9,7 +9,7 @@
  */
 
 import { useState } from "react";
-import { CalendarClock, Banknote, Copy, TrendingUp } from "lucide-react";
+import { AlertCircle, CalendarClock, Banknote, Copy, TrendingUp } from "lucide-react";
 
 /** Subset PreviewTx yang dibaca modul ini (struktural, tanpa import silang). */
 export interface FlaggableTx {
@@ -21,12 +21,19 @@ export interface FlaggableTx {
   debit: number;
   credit: number;
   category?: string | null;
+  branch?: string | null;
   duplicate?: boolean;
   effectivePeriodMonth?: number | null;
   effectivePeriodYear?: number | null;
 }
 
-export type FlagKind = "period" | "salary" | "similar" | "outlier";
+export type FlagKind =
+  | "period"
+  | "salary"
+  | "similar"
+  | "outlier"
+  | "nocat"
+  | "nobranch";
 
 export interface RowFlag {
   kind: FlagKind;
@@ -37,7 +44,7 @@ export interface RowFlag {
 }
 
 /** Grup filter di bar atas tabel. */
-export type FlagFilter = "all" | "period" | "salary" | "check";
+export type FlagFilter = "all" | "missing" | "period" | "salary" | "check";
 
 const MONTHS_ID = [
   "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
@@ -55,7 +62,10 @@ function median(nums: number[]): number {
 }
 
 /** Hitung flag tiap baris. Hasil sejajar dengan `txs` (indeks sama). */
-export function computeRowFlags(txs: FlaggableTx[]): RowFlag[][] {
+export function computeRowFlags(
+  txs: FlaggableTx[],
+  opts: { requireBranch: boolean } = { requireBranch: true }
+): RowFlag[][] {
   // Kunci "mirip": tanggal + nominal + pihak yang sama muncul >1 kali di file.
   const similarCount = new Map<string, number>();
   const similarKey = (t: FlaggableTx) =>
@@ -90,6 +100,22 @@ export function computeRowFlags(txs: FlaggableTx[]): RowFlag[][] {
   return txs.map((t) => {
     const flags: RowFlag[] = [];
     if (t.duplicate) return flags;
+
+    // Belum terkategori / belum ada cabang — harus dilengkapi sebelum simpan.
+    if (!t.category) {
+      flags.push({
+        kind: "nocat",
+        label: "Belum dikategori",
+        hint: "Kategori masih kosong. Pilih kategori sebelum disimpan.",
+      });
+    }
+    if (opts.requireBranch && !t.branch) {
+      flags.push({
+        kind: "nobranch",
+        label: "Cabang kosong",
+        hint: "Cabang belum dialokasikan. Pilih cabang (atau All untuk gabungan).",
+      });
+    }
 
     // Periode efektif beda dari bulan tanggal transaksi.
     const em = t.effectivePeriodMonth ?? null;
@@ -141,6 +167,8 @@ export function computeRowFlags(txs: FlaggableTx[]): RowFlag[][] {
 
 export function matchesFilter(flags: RowFlag[], f: FlagFilter): boolean {
   if (f === "all") return true;
+  if (f === "missing")
+    return flags.some((x) => x.kind === "nocat" || x.kind === "nobranch");
   if (f === "check")
     return flags.some((x) => x.kind === "similar" || x.kind === "outlier");
   return flags.some((x) => x.kind === f);
@@ -151,12 +179,15 @@ const KIND_STYLE: Record<FlagKind, string> = {
   salary: "bg-accent/15 text-foreground",
   similar: "bg-warning/15 text-warning",
   outlier: "bg-warning/15 text-warning",
+  nocat: "bg-destructive/10 text-destructive",
+  nobranch: "bg-destructive/10 text-destructive",
 };
 
 function KindIcon({ kind }: { kind: FlagKind }) {
   const p = { size: 10, "aria-hidden": true } as const;
   if (kind === "period") return <CalendarClock {...p} />;
   if (kind === "salary") return <Banknote {...p} />;
+  if (kind === "nocat" || kind === "nobranch") return <AlertCircle {...p} />;
   if (kind === "similar") return <Copy {...p} />;
   return <TrendingUp {...p} />;
 }
@@ -218,6 +249,7 @@ export function FlagFilterBar({
     allFlags.filter((fl) => matchesFilter(fl, f)).length;
   const items: Array<{ id: FlagFilter; label: string; n: number }> = [
     { id: "all", label: "Semua", n: allFlags.length },
+    { id: "missing", label: "Belum lengkap", n: count("missing") },
     { id: "period", label: "Periode beda", n: count("period") },
     { id: "salary", label: "Gaji", n: count("salary") },
     { id: "check", label: "Mirip / tak biasa", n: count("check") },
