@@ -53,7 +53,7 @@ const MONTHS_ID = [
 ];
 
 export function isNeedsAssignment(v: string | null | undefined): boolean {
-  return /^needss*assign/i.test((v ?? "").trim());
+  return /^needs\s*assign/i.test((v ?? "").trim());
 }
 
 function amountOf(t: FlaggableTx): number {
