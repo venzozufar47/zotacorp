@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PayslipVariablesEditor } from "@/components/admin/PayslipVariablesEditor";
 import { PayslipDisputesPanel } from "@/components/admin/PayslipDisputesPanel";
+import {
+  PayslipSanggahanPanel,
+  type SanggahanItem,
+} from "@/components/admin/PayslipSanggahanPanel";
 import { PayslipPaymentsTable, type PaymentRow } from "@/components/admin/PayslipPaymentsTable";
 import { PayslipTabsNav, type PayslipView } from "@/components/admin/PayslipTabsNav";
 import { PayslipViewPersist } from "@/components/admin/PayslipViewPersist";
@@ -164,6 +168,44 @@ export default async function PayslipVariablesPage({
     userName: userMap.get(d.userId) ?? "(karyawan tidak diketahui)",
   }));
 
+  // Sanggahan karyawan periode ini: yang aktif (slip apa pun statusnya,
+  // termasuk yang sedang di-reopen) + riwayat yang sudah tergantikan.
+  const { data: historyRows } =
+    payslipIds.length > 0
+      ? await supabase
+          .from("payslip_response_history")
+          .select("payslip_id, message, responded_at, archived_reason, archived_at")
+          .in("payslip_id", payslipIds)
+          .order("archived_at", { ascending: false })
+      : { data: [] };
+  const sanggahan: SanggahanItem[] = [];
+  for (const r of rows) {
+    const ps = r.payslip;
+    if (!ps) continue;
+    const current =
+      ps.employee_response === "issue" && ps.employee_response_message
+        ? {
+            message: ps.employee_response_message,
+            respondedAt: ps.employee_response_at ?? null,
+          }
+        : null;
+    const history = (historyRows ?? [])
+      .filter((h) => h.payslip_id === ps.id)
+      .map((h) => ({
+        message: h.message,
+        respondedAt: h.responded_at,
+        reason: h.archived_reason,
+      }));
+    if (!current && history.length === 0) continue;
+    sanggahan.push({
+      payslipId: ps.id,
+      userName: r.fullName,
+      payslipStatus: ps.status,
+      current,
+      history,
+    });
+  }
+
   // Pembayaran rows: only finalized payslips, joined with profile name + BU.
   const paymentRows: PaymentRow[] = rows
     .filter((r) => r.payslip?.status === "finalized")
@@ -196,6 +238,8 @@ export default async function PayslipVariablesPage({
       />
 
       <PayslipTabsNav current={view} />
+
+      {view !== "bonus-cake" && <PayslipSanggahanPanel items={sanggahan} />}
 
       {view === "variables" && (
         <>

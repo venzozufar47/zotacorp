@@ -6309,6 +6309,44 @@ export type Database = {
         }
         Relationships: []
       }
+      payslip_response_history: {
+        Row: {
+          archived_at: string
+          archived_reason: string
+          id: string
+          message: string
+          payslip_id: string
+          responded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string
+          archived_reason: string
+          id?: string
+          message: string
+          payslip_id: string
+          responded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          archived_at?: string
+          archived_reason?: string
+          id?: string
+          message?: string
+          payslip_id?: string
+          responded_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payslip_response_history_payslip_id_fkey"
+            columns: ["payslip_id"]
+            isOneToOne: false
+            referencedRelation: "payslips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payslip_deliverables: {
         Row: {
           created_at: string | null
