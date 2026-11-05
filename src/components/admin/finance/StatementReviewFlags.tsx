@@ -116,7 +116,9 @@ export function computeRowFlags(txs: FlaggableTx[]): RowFlag[][] {
       });
     }
 
-    if ((similarCount.get(similarKey(t)) ?? 0) > 1) {
+    // Biaya admin bank memang kembar (nominal tetap, berulang) — bukan indikasi dobel.
+    const isBankAdmin = /^bank administration/i.test(t.category ?? "");
+    if (!isBankAdmin && (similarCount.get(similarKey(t)) ?? 0) > 1) {
       flags.push({
         kind: "similar",
         label: "Mirip baris lain",
