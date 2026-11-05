@@ -11,8 +11,6 @@ import {
   EyeOff,
   ArrowLeft,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
   Layers,
   MapPin,
 } from "lucide-react";
@@ -1324,9 +1322,6 @@ function PreviewStep({
                         Cabang
                       </th>
                     )}
-                    <th className="sticky top-0 z-20 bg-muted w-9 border-b border-border">
-                      <span className="sr-only">Detail</span>
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1334,7 +1329,7 @@ function PreviewStep({
                     const flags = rowFlags[idx];
                     if (!matchesFilter(flags, filter)) return null;
                     const open = expanded.has(idx);
-                    const colSpan = 5 + (presets.branches.length > 0 ? 1 : 0);
+                    const colSpan = 4 + (presets.branches.length > 0 ? 1 : 0);
                     const main = showDescCol
                       ? t.description
                       : t.sourceDestination || t.transactionDetails || t.description;
@@ -1346,8 +1341,24 @@ function PreviewStep({
                     return (
                       <Fragment key={idx}>
                         <tr
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={open}
+                          onClick={(e) => {
+                            // Klik di kontrol (dropdown, tombol) jangan melipat baris.
+                            if ((e.target as HTMLElement).closest("select,button,a,input,option")) return;
+                            toggleRow(idx);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return;
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              toggleRow(idx);
+                            }
+                          }}
                           className={
-                            "align-top " +
+                            "align-top cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 " +
+                            (open ? "bg-muted/30 " : "") +
                             (t.duplicate ? "bg-muted/40 opacity-70" : "")
                           }
                           title={
@@ -1429,23 +1440,6 @@ function PreviewStep({
                               )}
                             </td>
                           )}
-                          <td className="px-1 py-2 border-t border-border/60 text-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleRow(idx)}
-                              aria-expanded={open}
-                              aria-label={
-                                open ? "Tutup detail baris" : "Buka detail baris"
-                              }
-                              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                            >
-                              {open ? (
-                                <ChevronDown size={14} />
-                              ) : (
-                                <ChevronRight size={14} />
-                              )}
-                            </button>
-                          </td>
                         </tr>
                         {open && (
                           <tr>
