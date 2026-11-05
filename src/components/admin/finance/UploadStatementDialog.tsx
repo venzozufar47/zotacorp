@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -11,7 +11,17 @@ import {
   EyeOff,
   ArrowLeft,
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
+import {
+  FlagChips,
+  FlagFilterBar,
+  FlagHints,
+  computeRowFlags,
+  matchesFilter,
+  useFlagFilter,
+} from "./StatementReviewFlags";
 import { formatDateID } from "@/lib/utils/date-formats";
 import {
   Dialog,
@@ -56,6 +66,9 @@ interface PreviewTx {
   runningBalance?: number | null;
   category?: string | null;
   branch?: string | null;
+  /** Periode akuntansi efektif dari aturan auto (hanya dibaca untuk tampilan). */
+  effectivePeriodMonth?: number | null;
+  effectivePeriodYear?: number | null;
   /**
    * True kalau tx ini sudah ada di DB (dedup hit). Tetap ditampilkan
    * di tabel preview supaya verifikasi saldo match dengan apa yang
@@ -1219,13 +1232,20 @@ function PreviewStep({
     patch: Partial<Pick<PreviewTx, "category" | "branch">>
   ) => void;
 }) {
-  // Adaptive columns — hide source/details/time/notes when no data,
-  // but always show Saldo (computed from running total) and Catatan.
   const txs = preview.transactions;
   const hasSrcDest = txs.some((t) => t.sourceDestination);
   const hasTxDetails = txs.some((t) => t.transactionDetails);
-  const hasNotes = txs.some((t) => t.notes);
   const hasTime = txs.some((t) => t.time);
+  const rowFlags = computeRowFlags(txs);
+  const [filter, setFilter] = useFlagFilter();
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const toggleRow = (idx: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
   // "Keterangan" column: show description directly when source +
   // details are both empty (BCA CSV style).
   const showDescCol = !hasSrcDest && !hasTxDetails;
@@ -1271,181 +1291,229 @@ function PreviewStep({
         </div>
       )}
 
-      {/* Transactions preview */}
-      {preview.transactions.length === 0 ? (
+      {/* Transactions preview — tingkat 1 ringkas + chip flag; detail
+          (debit/kredit/saldo/catatan/periode) dibuka per baris. */}
+      {txs.length === 0 ? (
         <p className="text-sm text-muted-foreground italic py-4 text-center">
           Tidak ada transaksi baru untuk ditambahkan.
         </p>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
-          <div className="overflow-auto max-h-[min(65vh,640px)]">
-            <table className="w-full text-xs border-separate border-spacing-0">
-              {/* Columns mirror the rekening koran PDF layout so admin
-                  recognises the data 1:1. Sticky bg is applied on each
-                  <th> — header floats over scrolling rows. */}
-              <thead className="text-muted-foreground uppercase tracking-wider">
-                <tr>
-                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
-                    Tanggal{hasTime ? " & Jam" : ""}
-                  </th>
-                  {showDescCol && (
-                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-80 border-b border-border">
-                      Keterangan
-                    </th>
-                  )}
-                  {hasSrcDest && (
-                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
-                      Sumber / Tujuan
-                    </th>
-                  )}
-                  {hasTxDetails && (
-                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
-                      Detail Transaksi
-                    </th>
-                  )}
-                  {hasNotes && (
-                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
-                      Catatan
-                    </th>
-                  )}
-                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
-                    Debit
-                  </th>
-                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
-                    Kredit
-                  </th>
-                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-32 border-b border-border">
-                    Saldo
-                  </th>
-                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
-                    Kategori
-                  </th>
-                  {presets.branches.length > 0 && (
+        <div className="space-y-2">
+          <FlagFilterBar allFlags={rowFlags} value={filter} onChange={setFilter} />
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="overflow-auto max-h-[min(65vh,640px)]">
+              <table className="w-full text-xs border-separate border-spacing-0">
+                <thead className="text-muted-foreground uppercase tracking-wider">
+                  <tr>
                     <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
-                      Cabang
+                      Tanggal
                     </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.transactions.map((t, idx) => (
-                  <tr
-                    key={idx}
-                    className={
-                      "align-top " +
-                      (t.duplicate ? "bg-muted/40 opacity-70" : "")
-                    }
-                    title={
-                      t.duplicate
-                        ? "Duplikat — sudah ada di DB, tidak akan ditambah lagi saat commit"
-                        : undefined
-                    }
-                  >
-                    <td className="px-3 py-2 text-foreground whitespace-nowrap font-mono tabular-nums border-t border-border/60">
-                      <div className="flex items-baseline gap-1.5">
-                        <span>{formatDateID(t.date)}</span>
-                        {t.duplicate && (
-                          <span className="text-[9px] font-sans font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                            Dup
-                          </span>
-                        )}
-                      </div>
-                      {hasTime && t.time && (
-                        <div className="text-muted-foreground text-[10px]">
-                          {t.time}
-                        </div>
-                      )}
-                    </td>
-                    {showDescCol && (
-                      <td className="px-3 py-2 text-foreground border-t border-border/60">
-                        <span className="block line-clamp-2 leading-snug break-words" title={t.description}>
-                          {t.description || "—"}
-                        </span>
-                      </td>
-                    )}
-                    {hasSrcDest && (
-                      <td className="px-3 py-2 text-foreground border-t border-border/60">
-                        <span className="block line-clamp-2 leading-snug break-words" title={t.sourceDestination ?? ""}>
-                          {t.sourceDestination || "—"}
-                        </span>
-                      </td>
-                    )}
-                    {hasTxDetails && (
-                      <td className="px-3 py-2 text-foreground border-t border-border/60">
-                        <span className="block line-clamp-2 leading-snug break-words" title={t.transactionDetails ?? ""}>
-                          {t.transactionDetails || "—"}
-                        </span>
-                      </td>
-                    )}
-                    {/* Catatan — read-only di preview; bisa diedit
-                        setelah data masuk ke ledger. Hanya muncul kalau
-                        ada minimal satu baris yang punya notes (CSV Jago
-                        kolom Notes), supaya bank tanpa notes tidak nampak
-                        kolom kosong. */}
-                    {hasNotes && (
-                      <td className="px-3 py-2 text-foreground border-t border-border/60">
-                        <span
-                          className="block line-clamp-2 leading-snug break-words text-muted-foreground"
-                          title={t.notes ?? ""}
-                        >
-                          {t.notes || "—"}
-                        </span>
-                      </td>
-                    )}
-                    <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
-                      {t.debit > 0 ? (
-                        <span className="text-destructive">
-                          {formatIDR(t.debit)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
-                      {t.credit > 0 ? (
-                        <span className="text-success">{formatIDR(t.credit)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground whitespace-nowrap border-t border-border/60">
-                      {formatIDR(computedRunningBalances[idx] ?? 0)}
-                    </td>
-                    <td className="px-3 py-2 border-t border-border/60">
-                      {t.duplicate ? (
-                        <span className="text-[10px] text-muted-foreground italic">
-                          (sudah di DB)
-                        </span>
-                      ) : (
-                        <CategoryCell
-                          tx={t}
-                          presets={presets}
-                          onChange={(v) => onPatchRow(idx, { category: v })}
-                        />
-                      )}
-                    </td>
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 border-b border-border">
+                      Transaksi
+                    </th>
+                    <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-36 border-b border-border">
+                      Nominal
+                    </th>
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
+                      Kategori
+                    </th>
                     {presets.branches.length > 0 && (
-                      <td className="px-3 py-2 border-t border-border/60">
-                        {t.duplicate ? (
-                          <span className="text-[10px] text-muted-foreground italic">
-                            —
-                          </span>
-                        ) : (
-                          <BranchCell
-                            value={t.branch ?? null}
-                            branches={presets.branches}
-                            onChange={(v) => onPatchRow(idx, { branch: v })}
-                          />
-                        )}
-                      </td>
+                      <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
+                        Cabang
+                      </th>
                     )}
+                    <th className="sticky top-0 z-20 bg-muted w-9 border-b border-border">
+                      <span className="sr-only">Detail</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {txs.map((t, idx) => {
+                    const flags = rowFlags[idx];
+                    if (!matchesFilter(flags, filter)) return null;
+                    const open = expanded.has(idx);
+                    const colSpan = 5 + (presets.branches.length > 0 ? 1 : 0);
+                    const main = showDescCol
+                      ? t.description
+                      : t.sourceDestination || t.transactionDetails || t.description;
+                    const sub = showDescCol
+                      ? null
+                      : t.sourceDestination
+                      ? t.transactionDetails
+                      : null;
+                    return (
+                      <Fragment key={idx}>
+                        <tr
+                          className={
+                            "align-top " +
+                            (t.duplicate ? "bg-muted/40 opacity-70" : "")
+                          }
+                          title={
+                            t.duplicate
+                              ? "Duplikat — sudah ada di DB, tidak akan ditambah lagi saat commit"
+                              : undefined
+                          }
+                        >
+                          <td className="px-3 py-2 text-foreground whitespace-nowrap font-mono tabular-nums border-t border-border/60">
+                            <div className="flex items-baseline gap-1.5">
+                              <span>{formatDateID(t.date)}</span>
+                              {t.duplicate && (
+                                <span className="text-[9px] font-sans font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                                  Dup
+                                </span>
+                              )}
+                            </div>
+                            {hasTime && t.time && (
+                              <div className="text-muted-foreground text-[10px]">
+                                {t.time}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-foreground border-t border-border/60">
+                            <span
+                              className="block line-clamp-1 leading-snug break-words"
+                              title={main ?? ""}
+                            >
+                              {main || "—"}
+                            </span>
+                            {sub && (
+                              <span
+                                className="block line-clamp-1 leading-snug text-muted-foreground"
+                                title={sub}
+                              >
+                                {sub}
+                              </span>
+                            )}
+                            <FlagChips flags={flags} />
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
+                            {t.debit > 0 ? (
+                              <span className="text-destructive">
+                                −{formatIDR(t.debit)}
+                              </span>
+                            ) : t.credit > 0 ? (
+                              <span className="text-success">
+                                +{formatIDR(t.credit)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 border-t border-border/60">
+                            {t.duplicate ? (
+                              <span className="text-[10px] text-muted-foreground italic">
+                                (sudah di DB)
+                              </span>
+                            ) : (
+                              <CategoryCell
+                                tx={t}
+                                presets={presets}
+                                onChange={(v) => onPatchRow(idx, { category: v })}
+                              />
+                            )}
+                          </td>
+                          {presets.branches.length > 0 && (
+                            <td className="px-3 py-2 border-t border-border/60">
+                              {t.duplicate ? (
+                                <span className="text-[10px] text-muted-foreground italic">
+                                  —
+                                </span>
+                              ) : (
+                                <BranchCell
+                                  value={t.branch ?? null}
+                                  branches={presets.branches}
+                                  onChange={(v) => onPatchRow(idx, { branch: v })}
+                                />
+                              )}
+                            </td>
+                          )}
+                          <td className="px-1 py-2 border-t border-border/60 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleRow(idx)}
+                              aria-expanded={open}
+                              aria-label={
+                                open ? "Tutup detail baris" : "Buka detail baris"
+                              }
+                              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                            >
+                              {open ? (
+                                <ChevronDown size={14} />
+                              ) : (
+                                <ChevronRight size={14} />
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr>
+                            <td
+                              colSpan={colSpan}
+                              className="px-3 py-3 bg-muted/30 border-t border-border/60"
+                            >
+                              <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4 text-[11px]">
+                                <DetailItem
+                                  label="Debit"
+                                  value={t.debit > 0 ? formatIDR(t.debit) : "—"}
+                                />
+                                <DetailItem
+                                  label="Kredit"
+                                  value={t.credit > 0 ? formatIDR(t.credit) : "—"}
+                                />
+                                <DetailItem
+                                  label="Saldo"
+                                  value={formatIDR(computedRunningBalances[idx] ?? 0)}
+                                />
+                                <DetailItem
+                                  label="Periode efektif"
+                                  value={
+                                    t.effectivePeriodMonth && t.effectivePeriodYear
+                                      ? `${MONTHS_ID[(t.effectivePeriodMonth - 1 + 12) % 12]} ${t.effectivePeriodYear}`
+                                      : "Sama dengan tanggal transaksi"
+                                  }
+                                />
+                                <DetailItem
+                                  label="Sumber / Tujuan"
+                                  value={t.sourceDestination || "—"}
+                                />
+                                <DetailItem
+                                  label="Detail transaksi"
+                                  value={t.transactionDetails || "—"}
+                                />
+                                <DetailItem label="Catatan" value={t.notes || "—"} />
+                                <DetailItem
+                                  label="Keterangan"
+                                  value={t.description || "—"}
+                                />
+                              </div>
+                              {flags.length > 0 && (
+                                <div className="mt-3">
+                                  <FlagHints flags={flags} />
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </div>
+      <div className="text-foreground break-words">{value}</div>
     </div>
   );
 }
@@ -1507,6 +1575,8 @@ function MergedPreview({
     );
   }
   rows.sort((a, b) => a.tx.date.localeCompare(b.tx.date));
+  const mergedFlags = computeRowFlags(rows.map((r) => r.tx));
+  const [mergedFilter, setMergedFilter] = useFlagFilter();
 
   const showBranch = presets.branches.length > 0;
   const anyUnverified =
@@ -1600,6 +1670,12 @@ function MergedPreview({
           Tidak ada transaksi baru untuk ditambahkan.
         </p>
       ) : (
+        <>
+        <FlagFilterBar
+          allFlags={mergedFlags}
+          value={mergedFilter}
+          onChange={setMergedFilter}
+        />
         <div className="rounded-xl border border-border overflow-hidden">
           <div className="overflow-auto max-h-[min(60vh,560px)]">
             <table className="w-full text-xs border-separate border-spacing-0">
@@ -1631,7 +1707,8 @@ function MergedPreview({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ fileIdx, rowIdx, period, tx }, i) => (
+                {rows.map(({ fileIdx, rowIdx, period, tx }, i) =>
+                  !matchesFilter(mergedFlags[i], mergedFilter) ? null : (
                   <tr
                     key={`${fileIdx}-${rowIdx}-${i}`}
                     className={"align-top " + (tx.duplicate ? "bg-muted/40 opacity-70" : "")}
@@ -1654,6 +1731,7 @@ function MergedPreview({
                       >
                         {tx.description || tx.sourceDestination || "—"}
                       </span>
+                      <FlagChips flags={mergedFlags[i]} />
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
                       {tx.debit > 0 ? (
@@ -1698,11 +1776,13 @@ function MergedPreview({
                       </td>
                     )}
                   </tr>
-                ))}
+                  )
+                )}
               </tbody>
             </table>
           </div>
         </div>
+        </>
       )}
     </div>
   );
