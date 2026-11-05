@@ -33,7 +33,8 @@ export type FlagKind =
   | "similar"
   | "outlier"
   | "nocat"
-  | "nobranch";
+  | "nobranch"
+  | "needs";
 
 export interface RowFlag {
   kind: FlagKind;
@@ -50,6 +51,10 @@ const MONTHS_ID = [
   "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
   "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
 ];
+
+export function isNeedsAssignment(v: string | null | undefined): boolean {
+  return /^needss*assign/i.test((v ?? "").trim());
+}
 
 function amountOf(t: FlaggableTx): number {
   return Math.max(t.debit, t.credit);
@@ -100,6 +105,15 @@ export function computeRowFlags(
   return txs.map((t) => {
     const flags: RowFlag[] = [];
     if (t.duplicate) return flags;
+
+    // "Needs Assignment" bukan kategori/cabang sungguhan — penanda tunggu alokasi.
+    if (isNeedsAssignment(t.category) || isNeedsAssignment(t.branch)) {
+      flags.push({
+        kind: "needs",
+        label: "Needs Assignment",
+        hint: "Kategori/cabang masih Needs Assignment (bukan cabang sungguhan). Menunggu dialokasikan.",
+      });
+    }
 
     // Belum terkategori / belum ada cabang — harus dilengkapi sebelum simpan.
     if (!t.category) {
@@ -168,7 +182,9 @@ export function computeRowFlags(
 export function matchesFilter(flags: RowFlag[], f: FlagFilter): boolean {
   if (f === "all") return true;
   if (f === "missing")
-    return flags.some((x) => x.kind === "nocat" || x.kind === "nobranch");
+    return flags.some(
+      (x) => x.kind === "nocat" || x.kind === "nobranch" || x.kind === "needs"
+    );
   if (f === "check")
     return flags.some((x) => x.kind === "similar" || x.kind === "outlier");
   return flags.some((x) => x.kind === f);
@@ -179,6 +195,7 @@ const KIND_STYLE: Record<FlagKind, string> = {
   salary: "bg-accent/15 text-foreground",
   similar: "bg-warning/15 text-warning",
   outlier: "bg-warning/15 text-warning",
+  needs: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
   nocat: "bg-destructive/10 text-destructive",
   nobranch: "bg-destructive/10 text-destructive",
 };
@@ -187,7 +204,7 @@ function KindIcon({ kind }: { kind: FlagKind }) {
   const p = { size: 10, "aria-hidden": true } as const;
   if (kind === "period") return <CalendarClock {...p} />;
   if (kind === "salary") return <Banknote {...p} />;
-  if (kind === "nocat" || kind === "nobranch") return <AlertCircle {...p} />;
+  if (kind === "needs" || kind === "nocat" || kind === "nobranch") return <AlertCircle {...p} />;
   if (kind === "similar") return <Copy {...p} />;
   return <TrendingUp {...p} />;
 }

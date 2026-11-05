@@ -19,6 +19,7 @@ import {
   FlagFilterBar,
   FlagHints,
   computeRowFlags,
+  isNeedsAssignment,
   matchesFilter,
   useFlagFilter,
 } from "./StatementReviewFlags";
@@ -2018,7 +2019,15 @@ function BranchCell({
   // Badge: satu cabang = solid, gabungan ("All" / beberapa cabang) =
   // outline putus-putus + ikon kelompok, kosong = abu-abu.
   const isCombined = value === "All" || (!!value && /[,&+]/.test(value));
-  const badge = !value ? (
+  const badge = isNeedsAssignment(value) ? (
+    <span
+      title="Bukan cabang — menunggu dialokasikan"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-orange-500/15 text-orange-600 dark:text-orange-400"
+    >
+      <AlertTriangle size={10} aria-hidden />
+      Needs Assignment
+    </span>
+  ) : !value ? (
     <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-muted text-muted-foreground">
       Belum diisi
     </span>
