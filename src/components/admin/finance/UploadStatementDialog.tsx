@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Layers,
+  MapPin,
 } from "lucide-react";
 import {
   FlagChips,
@@ -1318,7 +1320,7 @@ function PreviewStep({
                       Kategori
                     </th>
                     {presets.branches.length > 0 && (
-                      <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
+                      <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
                         Cabang
                       </th>
                     )}
@@ -1700,7 +1702,7 @@ function MergedPreview({
                     Kategori
                   </th>
                   {showBranch && (
-                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
                       Cabang
                     </th>
                   )}
@@ -1993,22 +1995,47 @@ function BranchCell({
   branches: readonly string[];
   onChange: (v: string | null) => void;
 }) {
-  return (
-    <select
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || null)}
-      className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs transition-all focus:text-sm focus:h-10 focus:relative focus:z-10 focus:shadow-lg focus:ring-2 focus:ring-primary/30 focus:outline-none"
+  // Badge: satu cabang = solid, gabungan ("All" / beberapa cabang) =
+  // outline putus-putus + ikon kelompok, kosong = abu-abu.
+  const isCombined = value === "All" || (!!value && /[,&+]/.test(value));
+  const badge = !value ? (
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-muted text-muted-foreground">
+      Belum diisi
+    </span>
+  ) : isCombined ? (
+    <span
+      title="Gabungan cabang"
+      className="inline-flex items-center gap-1 rounded border border-dashed border-primary/60 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary"
     >
-      <option value="">—</option>
-      {branches.map((b) => (
-        <option key={b} value={b}>
-          {b}
-        </option>
-      ))}
-      {value && !branches.includes(value) && (
-        <option value={value}>{value} (custom)</option>
-      )}
-    </select>
+      <Layers size={10} aria-hidden />
+      {value === "All" ? "Semua cabang" : value}
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-primary text-primary-foreground">
+      <MapPin size={10} aria-hidden />
+      {value}
+    </span>
+  );
+  return (
+    <div className="space-y-1">
+      {badge}
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        aria-label="Ubah cabang"
+        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs transition-all focus:text-sm focus:h-10 focus:relative focus:z-10 focus:shadow-lg focus:ring-2 focus:ring-primary/30 focus:outline-none"
+      >
+        <option value="">—</option>
+        {branches.map((b) => (
+          <option key={b} value={b}>
+            {b}
+          </option>
+        ))}
+        {value && !branches.includes(value) && (
+          <option value={value}>{value} (custom)</option>
+        )}
+      </select>
+    </div>
   );
 }
 
