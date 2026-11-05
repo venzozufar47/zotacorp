@@ -29,7 +29,8 @@ export type PendingConfirmationItem = {
     | "subscription"
     | "sop_review"
     | "sop_issue"
-    | "selfie_override";
+    | "selfie_override"
+    | "payslip_issue";
   /** Khusus subscription / SOP: teks panjang ("Jatuh tempo 3 hari lagi"). */
   detail?: string;
   /** Khusus subscription / SOP: lencana singkat untuk Inbox ("H-3", "Hari ini"). */
@@ -520,6 +521,39 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     detail: r.selfie_ai_note?.split("\n").filter(Boolean).join(" · ") || "Foto selfie absen belum sesuai aturan",
   }));
 
+  // Sanggahan karyawan pada slip gaji (payslips.employee_response = 'issue').
+  // Sengaja tidak difilter status slip: slip yang sudah di-reopen tetap
+  // butuh perhatian sampai difinalisasi ulang (yang mereset respon).
+  const { data: psIssues } = await supabase
+    .from("payslips")
+    .select(
+      "id, user_id, month, year, status, employee_response_message, employee_response_at, profiles!inner(full_name, avatar_url, avatar_seed)"
+    )
+    .eq("employee_response", "issue")
+    .order("employee_response_at", { ascending: false })
+    .limit(100);
+  const payslipIssueItems: PendingConfirmationItem[] = (psIssues ?? []).map((r) => {
+    const prof = r.profiles as unknown as {
+      full_name: string | null;
+      avatar_url: string | null;
+      avatar_seed: string | null;
+    } | null;
+    return {
+      rowId: r.id,
+      kind: "payslip_issue",
+      hasPerson: true,
+      userId: r.user_id,
+      employeeName: prof?.full_name || "Karyawan",
+      userAvatarUrl: prof?.avatar_url ?? null,
+      userAvatarSeed: prof?.avatar_seed ?? null,
+      // Tanggal 1 bulan slip — dipakai notifHref untuk membuka periode yang benar.
+      date: `${r.year}-${String(r.month).padStart(2, "0")}-01`,
+      at: r.employee_response_at ?? undefined,
+      detail: r.employee_response_message ?? "Karyawan menyanggah slip gajinya",
+      shortLabel: r.status === "draft" ? "Slip dibuka kembali" : undefined,
+    };
+  });
+
   // Urutan = prioritas di Inbox beranda (yang hanya memuat 6 teratas): hal yang
   // memblokir orang (pendaftar, tugas, tiket) di atas pengingat berkala
   // (langganan, tinjau SOP) supaya pengingat tidak menenggelamkan persetujuan.
@@ -527,6 +561,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     ...taskItems,
     ...simItems,
     ...ticketItems,
+    ...payslipIssueItems,
     ...registrationItems,
     ...selfieItems,
     ...issueItems,

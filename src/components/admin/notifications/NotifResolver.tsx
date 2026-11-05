@@ -628,6 +628,25 @@ function NotifResolver({
       );
       break;
 
+    case "payslip_issue":
+      content = (
+        <>
+          <Body>
+            <p className="rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap break-words">{text}</p>
+            <p className="text-muted-foreground">
+              Cek slipnya, koreksi bila perlu (buka kembali lalu finalisasi ulang). Pesan ini tetap bisa dibaca
+              di riwayat sanggahan walau slip difinalisasi ulang.
+            </p>
+          </Body>
+          {item.href && (
+            <Link href={item.href} className={`${btnPrimary} w-full`}>
+              Buka slip gaji <ArrowRight size={14} />
+            </Link>
+          )}
+        </>
+      );
+      break;
+
     case "selfie_override":
       content = (
         <>

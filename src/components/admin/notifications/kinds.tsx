@@ -40,6 +40,7 @@ export const NOTIF_KINDS: Record<NotifKind, KindMeta> = {
   sop_review: { label: "SOP", Icon: ClipboardList, tone: "warn" },
   sop_issue: { label: "Masukan SOP", Icon: MessageSquareWarning, tone: "warn" },
   selfie_override: { label: "Absen ditolak AI", Icon: ScanFace, tone: "warn" },
+  payslip_issue: { label: "Sanggahan slip", Icon: MessageSquareWarning, tone: "bad" },
   dispute: { label: "Dispute", Icon: MessageSquareWarning, tone: "bad" },
 };
 
@@ -116,6 +117,8 @@ export function notifDesc(p: PendingConfirmationItem): string {
       return p.detail ?? "Nomor SIM lewat tenggat — perlu isi pulsa";
     case "ticket":
       return p.detail ? `Eskalasi tiket: ${p.detail}` : "Tiket perlu ditangani";
+    case "payslip_issue":
+      return p.detail ? `Sanggah slip gaji: ${p.detail}` : "Karyawan menyanggah slip gajinya";
     case "registration":
       return "Menunggu ACC akun";
     case "late_proof":
@@ -148,6 +151,8 @@ export function notifHref(p: PendingConfirmationItem): string | undefined {
       return "/admin/sim-cards";
     case "ticket":
       return "/admin/tickets";
+    case "payslip_issue":
+      return `/admin/payslips/variables?view=payments&month=${Number(p.date.slice(5, 7))}&year=${p.date.slice(0, 4)}`;
     case "selfie_override":
       return `/admin/attendance?focus=${p.rowId}&selfie=1`;
     default:

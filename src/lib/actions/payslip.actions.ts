@@ -24,7 +24,7 @@ import { attendanceAffectsPay, shortDayLabel } from "@/lib/payslip/attendance-ga
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
-import { sendPushToUser } from "@/lib/push/web-push";
+import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { formatRp } from "@/lib/cashflow/format";
 
@@ -2235,8 +2235,29 @@ export async function submitPayslipResponse(
     .eq("id", payslipId);
   if (error) return { error: error.message };
 
+  // Sanggahan baru -> beri tahu admin lewat push (best-effort, tidak menggagalkan aksi).
+  if (kind === "issue") {
+    try {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name, nickname")
+        .eq("id", user.id)
+        .maybeSingle();
+      const who = prof?.nickname?.trim() || prof?.full_name?.trim() || "Karyawan";
+      const monthName = ID_MONTHS[payslip.month - 1] ?? String(payslip.month);
+      await sendPushToAdmins({
+        title: `${who} menyanggah slip gaji`,
+        body: `${monthName} ${payslip.year}: ${trimmed.slice(0, 120)}`,
+        url: `/admin/payslips/variables?view=payments&month=${payslip.month}&year=${payslip.year}`,
+      });
+    } catch (err) {
+      console.error("[payslip] push admin sanggahan failed:", err);
+    }
+  }
+
   revalidatePath("/payslips");
   revalidatePath("/admin/payslips/variables");
+  revalidatePath("/admin");
   return { ok: true };
 }
 
