@@ -28,6 +28,7 @@ import {
   isReadyCakeInStock,
   isReadyCakeSoldViaPos,
   recordReadyCakeExit,
+  reverseReadyCakeFreeClaimExit,
   recordReadyCakeProduced,
   retractReadyCakeProduced,
   reverseReadyCakeExit,
@@ -964,13 +965,15 @@ export async function setCakeOrderFreeClaim(
   const { data: existingRaw } = await supabase
     .from("cake_orders" as never)
     .select(
-      "status, base_price_idr, add_ons_idr, discount_kind, discount_value, delivery_fee_idr"
+      "status, is_ready_stock, free_claim, base_price_idr, add_ons_idr, discount_kind, discount_value, delivery_fee_idr"
     )
     .eq("id", id)
     .maybeSingle();
   if (!existingRaw) return { ok: false, error: "Order tidak ditemukan" };
   const existing = existingRaw as unknown as {
     status: CakeOrder["status"];
+    is_ready_stock: boolean;
+    free_claim: boolean;
     base_price_idr: number;
     add_ons_idr: number;
     discount_kind: "none" | "percent" | "nominal";
@@ -986,6 +989,10 @@ export async function setCakeOrderFreeClaim(
 
   const now = new Date().toISOString();
   if (on) {
+    // Ready cake di stok: kue langsung diserahkan ke karyawan, jadi kartu selesai & stok Ready Cake keluar dengan alasan
+    // "klaim karyawan" (bukan susut). Tanpa ini stok tetap menghitung kue yang sudah tidak ada dan opname kasir
+    // berikutnya menemukan "kurang" yang memaksa kasir membayar selisih.
+    const handedOver = existing.is_ready_stock && existing.status === "ready";
     const { error } = await supabase
       .from("cake_orders" as never)
       .update({
@@ -996,10 +1003,25 @@ export async function setCakeOrderFreeClaim(
         payment_status: "paid",
         paid_idr: 0,
         paid_at: now,
+        ...(handedOver
+          ? { status: "done", picked_up_at: now, picked_up_by: gate.userId, picked_up_via: "staff_board" }
+          : {}),
       } as never)
       .eq("id", id);
     if (error) return { ok: false, error: error.message };
+    if (existing.is_ready_stock) await recordReadyCakeExit(supabase, id, "free_claim", gate.userId);
   } else {
+    if (existing.is_ready_stock && existing.free_claim) {
+      // Batalkan klaim: kue kembali ke stok dan ke kolom Siap bila tadi ditutup otomatis oleh klaim.
+      await reverseReadyCakeFreeClaimExit(supabase, id);
+      if (existing.status === "done") {
+        await supabase
+          .from("cake_orders" as never)
+          .update({ status: "ready", picked_up_at: null, picked_up_by: null, picked_up_via: null } as never)
+          .eq("id", id)
+          .eq("picked_up_via", "staff_board");
+      }
+    }
     const discountIdr = computeDiscountIdr(
       existing.base_price_idr + existing.add_ons_idr,
       existing.discount_kind,

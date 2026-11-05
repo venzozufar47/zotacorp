@@ -155,9 +155,18 @@ export function isWithdrawalReason(v: unknown): v is WithdrawalReason {
   return typeof v === "string" && (WITHDRAWAL_REASONS as string[]).includes(v);
 }
 
+/**
+ * Alasan yang hanya ditulis sistem (bukan pilihan kasir di dialog penarikan, jadi TIDAK masuk `WITHDRAWAL_REASONS` dan
+ * ditolak `isWithdrawalReason`). Semuanya bukan susut.
+ */
+const SYSTEM_WITHDRAWAL_REASON_LABELS: Record<string, string> = {
+  klaim_karyawan: "Klaim gratis karyawan (Ready Cake)",
+};
+
 /** Label siap tampil; null/invalid → null supaya caller bisa skip. */
 export function withdrawalReasonLabel(v: unknown): string | null {
-  return isWithdrawalReason(v) ? WITHDRAWAL_REASON_META[v].label : null;
+  if (isWithdrawalReason(v)) return WITHDRAWAL_REASON_META[v].label;
+  return typeof v === "string" ? (SYSTEM_WITHDRAWAL_REASON_LABELS[v] ?? null) : null;
 }
 
 /** Nilai tak dikenal (termasuk baris lama ber-`null`) dianggap BUKAN susut. */

@@ -83,12 +83,14 @@ async function resolveSku(db: Db, order: Pick<OrderRow, "branch" | "is_diy">): P
   return { accountId: acc.id, productId: product.id, variantId: variant?.id ?? null };
 }
 
-type ExitKind = "handover" | "discard" | "cancel";
+type ExitKind = "handover" | "discard" | "cancel" | "free_claim";
 
 const EXIT_META: Record<ExitKind, { reason: string | null; notes: string }> = {
   handover: { reason: null, notes: "Diserahkan ke pelanggan (kasir POS)" },
   discard: { reason: "rusak", notes: "Dibuang (admin cake)" },
   cancel: { reason: "koreksi_input", notes: "Pesanan ready dibatalkan" },
+  // Klaim gratis karyawan (perk / giveaway): kue diserahkan ke karyawan tanpa lewat kasir, jadi stok harus keluar di sini.
+  free_claim: { reason: "klaim_karyawan", notes: "Klaim gratis karyawan (dicatat admin cake)" },
 };
 
 async function movementExists(db: Db, orderId: string, type: "production" | "withdrawal"): Promise<boolean> {
@@ -108,10 +110,12 @@ async function insertMovement(
   orderId: string,
   type: "production" | "withdrawal",
   reason: string | null,
-  notes: string
+  notes: string,
+  createdBy: string | null = null
 ): Promise<void> {
   const now = new Date();
   await db.from("pos_stock_movements").insert({
+    ...(createdBy ? { created_by: createdBy } : {}),
     bank_account_id: sku.accountId,
     product_id: sku.productId,
     variant_id: sku.variantId,
@@ -151,7 +155,12 @@ export async function retractReadyCakeProduced(db: Db, orderId: string): Promise
 }
 
 /** Kue keluar dari stok (diserahkan / dibuang / dibatalkan). Hanya bila pernah tercatat masuk dan belum keluar. */
-export async function recordReadyCakeExit(db: Db, orderId: string, kind: ExitKind): Promise<void> {
+export async function recordReadyCakeExit(
+  db: Db,
+  orderId: string,
+  kind: ExitKind,
+  createdBy: string | null = null
+): Promise<void> {
   try {
     const order = await loadOrder(db, orderId);
     if (!order?.is_ready_stock) return;
@@ -160,7 +169,21 @@ export async function recordReadyCakeExit(db: Db, orderId: string, kind: ExitKin
     const sku = await resolveSku(db, order);
     if (!sku) return;
     const meta = EXIT_META[kind];
-    await insertMovement(db, sku, orderId, "withdrawal", meta.reason, meta.notes);
+    await insertMovement(db, sku, orderId, "withdrawal", meta.reason, meta.notes, createdBy);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Klaim gratis dibatalkan: tarik HANYA baris keluar bertanda klaim karyawan (serah terima kasir tidak disentuh). */
+export async function reverseReadyCakeFreeClaimExit(db: Db, orderId: string): Promise<void> {
+  try {
+    await db
+      .from("pos_stock_movements")
+      .delete()
+      .eq("cake_order_id", orderId)
+      .eq("type", "withdrawal")
+      .eq("withdrawal_reason", "klaim_karyawan");
   } catch {
     /* best-effort */
   }
