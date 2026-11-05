@@ -12,6 +12,14 @@ import { toast } from "sonner";
 import { Plus, Trash2, ChevronDown, ChevronRight, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TextAutocomplete } from "@/components/ui/text-autocomplete";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatDateID } from "@/lib/utils/date-formats";
 import {
   upsertSalaryAllocations,
@@ -171,6 +179,14 @@ function SalaryRow({
       : [{ employeeName: "", branch: branches[0] ?? "", amount: "" }]
   );
   const [isPending, startTransition] = useTransition();
+  const employeeNames = useMemo(
+    () => employeeSuggestions.map((e) => e.name),
+    [employeeSuggestions]
+  );
+  const branchByName = useMemo(
+    () => new Map(employeeSuggestions.map((e) => [e.name, e.branch])),
+    [employeeSuggestions]
+  );
 
   const allocatedTotal = drafts.reduce(
     (s, d) => s + (Number(d.amount) || 0),
@@ -281,24 +297,30 @@ function SalaryRow({
           <div className="space-y-1.5">
             {drafts.map((d, idx) => (
               <div key={idx} className="flex gap-2 items-start">
-                <Input
-                  list="employee-suggestions"
+                <TextAutocomplete
                   value={d.employeeName}
-                  onChange={(e) => handleEmployeePick(idx, e.target.value)}
+                  onValueChange={(v) => handleEmployeePick(idx, v)}
+                  options={employeeNames}
+                  hint={(n) => branchByName.get(n)}
                   placeholder="Nama karyawan"
-                  className="flex-1 text-sm h-8"
+                  aria-label="Nama karyawan"
+                  className="flex-1"
                 />
-                <select
+                <Select
                   value={d.branch}
-                  onChange={(e) => updateDraft(idx, { branch: e.target.value })}
-                  className="w-32 text-sm px-2 h-8 rounded border border-border bg-background"
+                  onValueChange={(v) => updateDraft(idx, { branch: v as string })}
                 >
-                  {branches.map((b) => (
-                    <option key={b} value={b}>
-                      {branchOptionLabel(b)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger size="sm" className="w-52 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} className="min-w-72">
+                    {branches.map((b) => (
+                      <SelectItem key={b} value={b}>
+                        {branchOptionLabel(b)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   type="number"
                   value={d.amount}
@@ -319,11 +341,6 @@ function SalaryRow({
               </div>
             ))}
           </div>
-          <datalist id="employee-suggestions">
-            {employeeSuggestions.map((e) => (
-              <option key={e.name} value={e.name} />
-            ))}
-          </datalist>
 
           <div className="flex items-center justify-between pt-2">
             <Button
