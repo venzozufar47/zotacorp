@@ -182,9 +182,7 @@ export function computeRowFlags(
 export function matchesFilter(flags: RowFlag[], f: FlagFilter): boolean {
   if (f === "all") return true;
   if (f === "missing")
-    return flags.some(
-      (x) => x.kind === "nocat" || x.kind === "nobranch" || x.kind === "needs"
-    );
+    return flags.some((x) => x.kind === "nocat" || x.kind === "nobranch");
   if (f === "check")
     return flags.some((x) => x.kind === "similar" || x.kind === "outlier");
   return flags.some((x) => x.kind === f);
