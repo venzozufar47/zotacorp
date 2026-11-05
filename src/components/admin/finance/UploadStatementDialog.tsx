@@ -14,6 +14,7 @@ import {
   Layers,
   MapPin,
 } from "lucide-react";
+import { getNonOperatingCategories } from "@/lib/cashflow/categories";
 import {
   FlagChips,
   FlagFilterBar,
@@ -641,6 +642,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
           <MergedPreview
             batch={batch}
             presets={presets}
+            businessUnit={account?.businessUnit ?? ""}
             noBalanceBank={noBalanceBank}
             onPatchRow={patchMergedRow}
           />
@@ -696,6 +698,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
           <PreviewStep
             preview={preview}
             presets={presets}
+            businessUnit={account?.businessUnit ?? ""}
             noBalanceBank={noBalanceBank}
             onPatchRow={(idx, patch) => {
               setPreview((prev) =>
@@ -1222,11 +1225,13 @@ function FormStep(props: FormStepProps) {
 function PreviewStep({
   preview,
   presets,
+  businessUnit,
   noBalanceBank,
   onPatchRow,
 }: {
   preview: PreviewResult;
   presets: CategoryPresets;
+  businessUnit: string;
   noBalanceBank: boolean;
   onPatchRow: (
     idx: number,
@@ -1239,6 +1244,7 @@ function PreviewStep({
   const hasTime = txs.some((t) => t.time);
   const rowFlags = computeRowFlags(txs, {
     requireBranch: presets.branches.length > 0,
+    operatingCredit: operatingCreditOf(presets, businessUnit),
   });
   const [filter, setFilter] = useFlagFilter();
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
@@ -1517,6 +1523,15 @@ function PreviewStep({
   );
 }
 
+/** Kategori kredit operasional = preset kredit dikurangi non-operasional (sama dengan alokasi revenue). */
+function operatingCreditOf(
+  presets: CategoryPresets,
+  businessUnit: string
+): ReadonlySet<string> {
+  const nonOp = new Set(getNonOperatingCategories(businessUnit));
+  return new Set(presets.credit.filter((c) => !nonOp.has(c)));
+}
+
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
@@ -1545,11 +1560,13 @@ function periodLabel(p: PreviewResult): string {
 function MergedPreview({
   batch,
   presets,
+  businessUnit,
   noBalanceBank,
   onPatchRow,
 }: {
   batch: BatchItem[];
   presets: CategoryPresets;
+  businessUnit: string;
   noBalanceBank: boolean;
   onPatchRow: (
     fileIdx: number,
@@ -1587,6 +1604,7 @@ function MergedPreview({
   rows.sort((a, b) => a.tx.date.localeCompare(b.tx.date));
   const mergedFlags = computeRowFlags(rows.map((r) => r.tx), {
     requireBranch: presets.branches.length > 0,
+    operatingCredit: operatingCreditOf(presets, businessUnit),
   });
   const [mergedFilter, setMergedFilter] = useFlagFilter();
 

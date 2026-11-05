@@ -9,7 +9,7 @@
  */
 
 import { useState } from "react";
-import { AlertCircle, CalendarClock, Banknote, Copy, TrendingUp } from "lucide-react";
+import { AlertCircle, CalendarClock, Banknote, Copy, PieChart, TrendingUp } from "lucide-react";
 
 /** Subset PreviewTx yang dibaca modul ini (struktural, tanpa import silang). */
 export interface FlaggableTx {
@@ -34,7 +34,8 @@ export type FlagKind =
   | "outlier"
   | "nocat"
   | "nobranch"
-  | "needs";
+  | "needs"
+  | "revpot";
 
 export interface RowFlag {
   kind: FlagKind;
@@ -45,7 +46,13 @@ export interface RowFlag {
 }
 
 /** Grup filter di bar atas tabel. */
-export type FlagFilter = "all" | "missing" | "period" | "salary" | "check";
+export type FlagFilter =
+  | "all"
+  | "missing"
+  | "pot"
+  | "period"
+  | "salary"
+  | "check";
 
 const MONTHS_ID = [
   "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
@@ -69,7 +76,11 @@ function median(nums: number[]): number {
 /** Hitung flag tiap baris. Hasil sejajar dengan `txs` (indeks sama). */
 export function computeRowFlags(
   txs: FlaggableTx[],
-  opts: { requireBranch: boolean } = { requireBranch: true }
+  opts: {
+    requireBranch: boolean;
+    /** Kategori kredit operasional unit ini (untuk flag pot revenue). */
+    operatingCredit?: ReadonlySet<string>;
+  } = { requireBranch: true }
 ): RowFlag[][] {
   // Kunci "mirip": tanggal + nominal + pihak yang sama muncul >1 kali di file.
   const similarCount = new Map<string, number>();
@@ -131,6 +142,21 @@ export function computeRowFlags(
       });
     }
 
+    // Revenue operasional tanpa cabang → masuk pot "Alokasi revenue per cabang
+    // (bulanan)"; sama dengan aturan listRevenueMonthAllocations.
+    if (
+      t.credit > 0 &&
+      t.category &&
+      opts.operatingCredit?.has(t.category) &&
+      (!t.branch || t.branch === "All")
+    ) {
+      flags.push({
+        kind: "revpot",
+        label: "Revenue tanpa cabang",
+        hint: "Revenue operasional dengan cabang All/kosong: masuk pot yang dibagi per cabang di Alokasi revenue bulanan (bulan periode efektifnya). Tanpa alokasi, PnL membagi rata.",
+      });
+    }
+
     // Periode efektif beda dari bulan tanggal transaksi.
     const em = t.effectivePeriodMonth ?? null;
     const ey = t.effectivePeriodYear ?? null;
@@ -181,6 +207,7 @@ export function computeRowFlags(
 
 export function matchesFilter(flags: RowFlag[], f: FlagFilter): boolean {
   if (f === "all") return true;
+  if (f === "pot") return flags.some((x) => x.kind === "revpot");
   if (f === "missing")
     return flags.some((x) => x.kind === "nocat" || x.kind === "nobranch");
   if (f === "check")
@@ -193,6 +220,7 @@ const KIND_STYLE: Record<FlagKind, string> = {
   salary: "bg-accent/15 text-foreground",
   similar: "bg-warning/15 text-warning",
   outlier: "bg-warning/15 text-warning",
+  revpot: "bg-primary/10 text-primary",
   needs: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
   nocat: "bg-destructive/10 text-destructive",
   nobranch: "bg-destructive/10 text-destructive",
@@ -201,6 +229,7 @@ const KIND_STYLE: Record<FlagKind, string> = {
 function KindIcon({ kind }: { kind: FlagKind }) {
   const p = { size: 10, "aria-hidden": true } as const;
   if (kind === "period") return <CalendarClock {...p} />;
+  if (kind === "revpot") return <PieChart {...p} />;
   if (kind === "salary") return <Banknote {...p} />;
   if (kind === "needs" || kind === "nocat" || kind === "nobranch") return <AlertCircle {...p} />;
   if (kind === "similar") return <Copy {...p} />;
@@ -265,6 +294,7 @@ export function FlagFilterBar({
   const items: Array<{ id: FlagFilter; label: string; n: number }> = [
     { id: "all", label: "Semua", n: allFlags.length },
     { id: "missing", label: "Belum lengkap", n: count("missing") },
+    { id: "pot", label: "Revenue tanpa cabang", n: count("pot") },
     { id: "period", label: "Periode beda", n: count("period") },
     { id: "salary", label: "Gaji", n: count("salary") },
     { id: "check", label: "Mirip / tak biasa", n: count("check") },
