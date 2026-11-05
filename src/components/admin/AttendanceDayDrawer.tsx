@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/utils/date";
 import { formatRp } from "@/lib/cashflow/format";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
+import { RejectReasonDialog } from "@/components/admin/RejectReasonDialog";
 import {
   reviewLateProof,
   setLogWorkdayClassification,
@@ -111,6 +112,7 @@ export function AttendanceDayDrawer({
   const [stats, setStats] = useState<EmployeeDrawerData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [reviewing, setReviewing] = useState<"accept" | "reject" | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const [classifying, setClassifying] = useState(false);
 
   useEffect(() => {
@@ -160,14 +162,15 @@ export function AttendanceDayDrawer({
   const wa =
     stats?.whatsappNumber != null ? normalizePhone(stats.whatsappNumber) : null;
 
-  async function handleReview(decision: "approved" | "rejected") {
+  async function handleReview(decision: "approved" | "rejected", note?: string) {
     if (!subject?.logId) return;
     setReviewing(decision === "approved" ? "accept" : "reject");
     try {
-      const res = await reviewLateProof(subject.logId, decision);
+      const res = await reviewLateProof(subject.logId, decision, note);
       if ("error" in res && res.error) {
         toast.error(res.error);
       } else {
+        setRejectOpen(false);
         toast.success(
           decision === "approved" ? "Proof accepted" : "Marked unexcused"
         );
@@ -449,7 +452,7 @@ export function AttendanceDayDrawer({
             <>
               <button
                 type="button"
-                onClick={() => handleReview("rejected")}
+                onClick={() => setRejectOpen(true)}
                 disabled={reviewing !== null}
                 className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[12.5px] font-medium bg-card border border-border/70 hover:bg-muted transition disabled:opacity-60"
               >
@@ -519,6 +522,14 @@ export function AttendanceDayDrawer({
           )}
         </footer>
       </aside>
+      <RejectReasonDialog
+        open={rejectOpen}
+        title="Tolak bukti keterlambatan"
+        description="Alasan penolakan wajib diisi dan terlihat oleh karyawan."
+        busy={reviewing === "reject"}
+        onCancel={() => setRejectOpen(false)}
+        onConfirm={(reason) => void handleReview("rejected", reason)}
+      />
     </div>,
     document.body
   );

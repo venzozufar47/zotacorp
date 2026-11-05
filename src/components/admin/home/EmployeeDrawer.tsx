@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { PhotoLightbox } from "@/components/shared/PhotoLightbox";
+import { RejectReasonDialog } from "@/components/admin/RejectReasonDialog";
 import {
   getEmployeeDrawerData,
   getEmployeeApprovals,
@@ -101,6 +102,8 @@ export function EmployeeDrawer({
   const [loading, setLoading] = useState(false);
   /** Approval item id currently being approved/rejected (disables its row). */
   const [actingId, setActingId] = useState<string | null>(null);
+  /** Item whose rejection reason is being typed in the pop-up. */
+  const [rejecting, setRejecting] = useState<EmployeeApproval | null>(null);
   useEffect(() => {
     if (!subject) {
       setData(null);
@@ -132,18 +135,20 @@ export function EmployeeDrawer({
 
   async function handleApproval(
     item: EmployeeApproval,
-    decision: "approved" | "rejected"
+    decision: "approved" | "rejected",
+    note?: string
   ) {
     setActingId(item.id);
     try {
       const res =
         item.kind === "late_proof"
-          ? await reviewLateProof(item.id, decision)
-          : await reviewOvertimeRequest(item.id, decision);
+          ? await reviewLateProof(item.id, decision, note)
+          : await reviewOvertimeRequest(item.id, decision, note);
       if (res && "error" in res && res.error) {
         toast.error(res.error);
         return;
       }
+      setRejecting(null);
       toast.success(decision === "approved" ? "Disetujui" : "Ditolak");
       // Optimistically drop the resolved item; refresh so the Home inbox
       // count + list re-render from the server.
@@ -270,7 +275,7 @@ export function EmployeeDrawer({
                         acting={actingId === item.id}
                         disabled={actingId !== null}
                         onApprove={() => handleApproval(item, "approved")}
-                        onReject={() => handleApproval(item, "rejected")}
+                        onReject={() => setRejecting(item)}
                       />
                     ))}
                   </ul>
@@ -382,6 +387,18 @@ export function EmployeeDrawer({
           />
         </footer>
       </aside>
+      <RejectReasonDialog
+        open={rejecting !== null}
+        title={
+          rejecting?.kind === "late_proof" ? "Tolak bukti keterlambatan" : "Tolak lembur"
+        }
+        description="Alasan penolakan wajib diisi dan terlihat oleh karyawan."
+        busy={actingId !== null}
+        onCancel={() => setRejecting(null)}
+        onConfirm={(reason) => {
+          if (rejecting) void handleApproval(rejecting, "rejected", reason);
+        }}
+      />
     </div>,
     document.body
   );
