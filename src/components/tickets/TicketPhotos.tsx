@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ImageIcon, Loader2, X } from "lucide-react";
+import { ImageIcon, Loader2 } from "lucide-react";
 import { getTicketAttachmentSignedUrl } from "@/lib/actions/tickets.actions";
+import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import type { TicketAttachment } from "@/lib/tickets/types";
 
 /**
- * Tombol "N foto" → buka galeri lightbox. URL foto (bucket privat) dibuat
- * on-demand lewat server action signed URL (600s) saat dibuka.
+ * Tombol "N foto" → buka penampil foto layar penuh (PhotoLightbox: di-portal ke body, bisa zoom & geser).
+ * Dulu galeri ini overlay `fixed` biasa di dalam kartu bertransform, sehingga hanya menutupi area kartu dan bukan layar.
+ * URL foto (bucket privat) dibuat on-demand lewat server action signed URL (600s) saat dibuka.
  */
 export function TicketPhotos({
   attachments,
@@ -18,24 +20,24 @@ export function TicketPhotos({
   /** Teks setelah jumlah, mis. "foto" atau "foto bukti selesai". */
   label?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [urls, setUrls] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<LightboxPhoto[]>([]);
 
   if (!attachments || attachments.length === 0) return null;
 
   async function openGallery() {
-    setOpen(true);
-    if (urls.length > 0) return;
+    if (photos.length > 0) return setIndex(0);
     setLoading(true);
-    const out: string[] = [];
+    const out: LightboxPhoto[] = [];
     for (const a of attachments) {
       const res = await getTicketAttachmentSignedUrl(a.path);
-      if (res.ok) out.push(res.data!.url);
+      if (res.ok) out.push({ url: res.data!.url, title: `Foto ${out.length + 1} dari ${attachments.length}` });
     }
-    setUrls(out);
     setLoading(false);
-    if (out.length === 0) toast.error("Gagal memuat foto.");
+    if (out.length === 0) return void toast.error("Gagal memuat foto.");
+    setPhotos(out);
+    setIndex(0);
   }
 
   return (
@@ -43,46 +45,13 @@ export function TicketPhotos({
       <button
         type="button"
         onClick={openGallery}
-        className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-primary hover:underline"
+        disabled={loading}
+        className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-primary hover:underline disabled:opacity-60"
       >
-        <ImageIcon size={13} /> {attachments.length} {label}
+        {loading ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} {attachments.length} {label}
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-[60] bg-foreground/70 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setOpen(false)}
-        >
-          <button
-            type="button"
-            className="absolute top-4 right-4 grid place-items-center size-10 rounded-full bg-card border-2 border-foreground"
-            onClick={() => setOpen(false)}
-            aria-label="Tutup"
-          >
-            <X size={18} />
-          </button>
-          <div
-            className="max-w-3xl w-full max-h-[85vh] overflow-y-auto space-y-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {loading ? (
-              <div className="grid place-items-center py-16 text-white">
-                <Loader2 size={26} className="animate-spin" />
-              </div>
-            ) : (
-              urls.map((u, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={i}
-                  src={u}
-                  alt={`foto ${i + 1}`}
-                  className="w-full rounded-xl border-2 border-foreground bg-card"
-                />
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      <PhotoLightbox photos={photos} index={index} onIndexChange={setIndex} onClose={() => setIndex(null)} />
     </>
   );
 }
