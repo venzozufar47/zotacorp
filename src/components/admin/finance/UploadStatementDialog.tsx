@@ -1397,6 +1397,17 @@ function PreviewStep({
                                 {sub}
                               </span>
                             )}
+                            {t.notes && t.notes !== main && t.notes !== sub && (
+                              <span
+                                className="block line-clamp-1 leading-snug text-foreground font-medium"
+                                title={t.notes}
+                              >
+                                <span className="text-muted-foreground font-normal">
+                                  Catatan:{" "}
+                                </span>
+                                {t.notes}
+                              </span>
+                            )}
                             <FlagChips flags={flags} />
                           </td>
                           <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
@@ -1727,6 +1738,17 @@ function MergedPreview({
                       >
                         {tx.description || tx.sourceDestination || "—"}
                       </span>
+                      {tx.notes && !tx.description.includes(tx.notes) && (
+                        <span
+                          className="block line-clamp-1 leading-snug font-medium"
+                          title={tx.notes}
+                        >
+                          <span className="text-muted-foreground font-normal">
+                            Catatan:{" "}
+                          </span>
+                          {tx.notes}
+                        </span>
+                      )}
                       <FlagChips flags={mergedFlags[i]} />
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
