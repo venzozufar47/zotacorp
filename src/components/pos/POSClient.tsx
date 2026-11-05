@@ -18,7 +18,6 @@ import {
   Loader2,
   Minus,
   Plus,
-  Printer,
   Search,
   Settings,
   ShoppingBasket,
@@ -74,6 +73,7 @@ import {
 } from "@/lib/pos/sugar-levels";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
+import { PosTopbarProvider } from "./pos-topbar-context";
 
 /** Dipakai sebagai bawaan agar identitas array tidak berganti tiap render. */
 const NO_CAMPAIGNS: PosDiscountCampaign[] = [];
@@ -1245,6 +1245,7 @@ export function POSClient({
   );
 
   return (
+    <PosTopbarProvider value={{ openStrukSettings: () => setStrukSettingsOpen(true) }}>
     <div
       data-pos-shell
       data-pos-palette={posPalette(basePath)}
@@ -1281,15 +1282,6 @@ export function POSClient({
         ) : (
           shiftSlot
         )}
-        <button
-          type="button"
-          onClick={() => setStrukSettingsOpen(true)}
-          className="size-9 rounded-full border border-border bg-card text-foreground inline-flex items-center justify-center shrink-0"
-          aria-label="Setelan struk"
-          title="Setelan struk"
-        >
-          <Printer size={16} />
-        </button>
         <button
           type="button"
           onClick={() => setCartOpen(true)}
@@ -1798,6 +1790,7 @@ export function POSClient({
         />
       )}
     </div>
+    </PosTopbarProvider>
   );
 }
 

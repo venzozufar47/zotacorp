@@ -2,8 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Loader2, LogOut, Power, Receipt, ShieldAlert } from "lucide-react";
+import { Loader2, LogOut, Power, Printer, Receipt, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -14,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { exitIncidentalSession, forceCloseShift } from "@/lib/actions/pos-shift.actions";
 import { PosShiftWizard } from "./PosShiftWizard";
+import { PosRefreshButton, PosTopbarMenu } from "./PosTopbarMenu";
+import { usePosTopbarActions } from "./pos-topbar-context";
 
 interface Props {
   mode: "shift" | "incidental";
@@ -44,6 +45,7 @@ export function PosShiftControls({
   isAdmin,
 }: Props) {
   const router = useRouter();
+  const { openStrukSettings } = usePosTopbarActions();
   const [closing, setClosing] = useState(false);
   const [forceOpen, setForceOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -59,6 +61,10 @@ export function PosShiftControls({
     });
   }
 
+  const struk = openStrukSettings
+    ? { icon: <Printer size={15} />, label: "Setelan struk", onSelect: openStrukSettings }
+    : null;
+
   if (mode === "incidental") {
     return (
       <>
@@ -67,18 +73,19 @@ export function PosShiftControls({
           <span className="hidden sm:inline">Insidentil · </span>
           {userName}
         </span>
-        <button
-          type="button"
-          onClick={exitIncidental}
+        <PosRefreshButton />
+        <PosTopbarMenu
           disabled={pending}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
-        >
-          {pending ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />}
-          Keluar
-        </button>
+          items={[
+            ...(struk ? [struk] : []),
+            { icon: <LogOut size={15} />, label: "Keluar mode insidentil", onSelect: exitIncidental },
+          ]}
+        />
       </>
     );
   }
+
+  const expenseHref = `/pengadaan?tab=catat&bu=${encodeURIComponent(`Haengbocake ${accountName.includes("Semarang") || basePath === "/posmamaya" ? "Semarang" : "Pare"}`)}`;
 
   return (
     <>
@@ -88,33 +95,19 @@ export function PosShiftControls({
         {cashier?.name}
         {openedAtLabel ? <span className="hidden md:inline"> · {openedAtLabel}</span> : null}
       </span>
-      {/* Pengeluaran uang laci: dicatat di Pengadaan & Pengeluaran (sumber uang: laci kasir). */}
-      <Link
-        href={`/pengadaan?tab=catat&bu=${encodeURIComponent(`Haengbocake ${accountName.includes("Semarang") || basePath === "/posmamaya" ? "Semarang" : "Pare"}`)}`}
-        prefetch={false}
-        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground hover:bg-muted"
-      >
-        <Receipt size={13} />
-        <span className="hidden sm:inline">Pengeluaran</span>
-      </Link>
-      <button
-        type="button"
-        onClick={() => setClosing(true)}
-        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-      >
-        <Power size={13} />
-        Tutup shift
-      </button>
-      {isAdmin && (
-        <button
-          type="button"
-          onClick={() => setForceOpen(true)}
-          className="hidden h-9 shrink-0 items-center gap-1.5 rounded-full border border-destructive/40 px-3 text-xs font-semibold text-destructive hover:bg-destructive/10 sm:inline-flex"
-        >
-          <ShieldAlert size={13} />
-          Tutup paksa
-        </button>
-      )}
+      <PosRefreshButton />
+      {/* Aksi jarang/berisiko dilipat ke menu. Pengeluaran uang laci: dicatat di Pengadaan & Pengeluaran
+          (sumber uang: laci kasir). */}
+      <PosTopbarMenu
+        items={[
+          { icon: <Receipt size={15} />, label: "Pengeluaran", href: expenseHref },
+          ...(struk ? [struk] : []),
+          { icon: <Power size={15} />, label: "Tutup shift", onSelect: () => setClosing(true) },
+          ...(isAdmin
+            ? [{ icon: <ShieldAlert size={15} />, label: "Tutup paksa", onSelect: () => setForceOpen(true), danger: true }]
+            : []),
+        ]}
+      />
 
       {closing && cashier && (
         <PosShiftWizard
