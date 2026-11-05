@@ -5,7 +5,7 @@
  *
  * MURNI TAMPILAN: semua flag dihitung dari data transaksi yang sudah ada di
  * respons preview. Tidak mengubah parser, aturan auto-kategori, ataupun
- * payload commit. "Needs Assignment" sengaja TIDAK jadi flag — itu bagian Ika.
+ * payload commit. "Needs Assignment" diberi flag oranye sendiri (bukan cabang).
  */
 
 import { useState } from "react";
