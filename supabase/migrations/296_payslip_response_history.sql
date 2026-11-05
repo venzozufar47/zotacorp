@@ -29,7 +29,7 @@ create policy prh_self_select on public.payslip_response_history for select to a
 
 -- Grant eksplisit (tabel baru: Supabase berhenti memberi grant otomatis mulai 30 Okt 2026). Tulis hanya lewat trigger
 -- (security definer), jadi authenticated cukup select.
-grant select on public.payslip_response_history to anon, authenticated;
+grant select on public.payslip_response_history to authenticated;
 grant select, insert, update, delete on public.payslip_response_history to service_role;
 
 create or replace function public.archive_payslip_issue_message()
