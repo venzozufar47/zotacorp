@@ -2152,6 +2152,8 @@ export async function finalizePayslip(payslipId: string) {
       employee_response: "pending",
       employee_response_message: null,
       employee_response_at: null,
+      admin_issue_reply: null,
+      admin_issue_reply_at: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", payslipId)
@@ -2253,6 +2255,55 @@ export async function submitPayslipResponse(
     } catch (err) {
       console.error("[payslip] push admin sanggahan failed:", err);
     }
+  }
+
+  revalidatePath("/payslips");
+  revalidatePath("/admin/payslips/variables");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/**
+ * Admin menutup sanggahan slip gaji tanpa harus membuka & finalisasi ulang (mis. slip sudah benar). Respon karyawan
+ * kembali 'pending' supaya mereka bisa konfirmasi lagi; pesan sanggahan diarsipkan trigger ke riwayat (alasan
+ * 'answered' + balasan admin), sedangkan balasan terakhir tetap di slip supaya karyawan bisa membacanya.
+ */
+export async function answerPayslipIssue(
+  payslipId: string,
+  reply?: string
+): Promise<{ ok: true } | { error: string }> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+  const supabase = await createClient();
+
+  const trimmed = (reply ?? "").trim();
+  const { data, error } = await supabase
+    .from("payslips")
+    .update({
+      employee_response: "pending",
+      employee_response_message: null,
+      employee_response_at: null,
+      admin_issue_reply: trimmed || null,
+      admin_issue_reply_at: new Date().toISOString(),
+    })
+    .eq("id", payslipId)
+    .eq("employee_response", "issue")
+    .select("user_id, month, year")
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "Sanggahan sudah ditutup atau slip tidak ditemukan." };
+
+  try {
+    const monthName = ID_MONTHS[data.month - 1] ?? String(data.month);
+    await sendPushToUser(data.user_id, {
+      title: "Sanggahan slip gaji ditanggapi",
+      body: trimmed
+        ? `Slip ${monthName} ${data.year}: ${trimmed.slice(0, 120)}`
+        : `Slip gaji ${monthName} ${data.year} sudah ditinjau admin. Ketuk untuk melihat.`,
+      url: "/payslips",
+    });
+  } catch (err) {
+    console.error("[payslip] push tanggapan sanggahan failed:", err);
   }
 
   revalidatePath("/payslips");

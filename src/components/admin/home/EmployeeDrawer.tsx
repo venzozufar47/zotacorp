@@ -26,7 +26,7 @@ import {
 } from "@/lib/actions/admin-home.actions";
 import { reviewLateProof } from "@/lib/actions/attendance.actions";
 import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
-import { approveRegistration } from "@/lib/actions/pending-registrations.actions";
+import { approveRegistration, rejectRegistration } from "@/lib/actions/pending-registrations.actions";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
@@ -160,6 +160,21 @@ export function EmployeeDrawer({
   }
 
   const [approvingReg, setApprovingReg] = useState(false);
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  async function dismissRegistration() {
+    if (!subject) return;
+    setApprovingReg(true);
+    const res = await rejectRegistration(subject.userId);
+    setApprovingReg(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    setConfirmingReject(false);
+    toast.success(`Pendaftaran ${subject.fullName} ditolak.`);
+    router.refresh();
+    onClose();
+  }
   async function activateRegistration() {
     if (!subject) return;
     setApprovingReg(true);
@@ -254,6 +269,35 @@ export function EmployeeDrawer({
                 )}
                 Aktifkan akun
               </button>
+              {confirmingReject ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={dismissRegistration}
+                    disabled={approvingReg}
+                    className="flex-1 h-8 rounded-full text-[12px] font-medium bg-destructive text-white disabled:opacity-50"
+                  >
+                    Ya, tolak pendaftaran
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingReject(false)}
+                    disabled={approvingReg}
+                    className="h-8 px-3 rounded-full text-[12px] font-medium border border-border bg-card hover:bg-muted disabled:opacity-50"
+                  >
+                    Batal
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingReject(true)}
+                  disabled={approvingReg}
+                  className="w-full h-8 rounded-full text-[12px] font-medium border border-border bg-card hover:bg-muted disabled:opacity-50"
+                >
+                  Tolak pendaftaran
+                </button>
+              )}
             </section>
           )}
           {loading || !data ? (

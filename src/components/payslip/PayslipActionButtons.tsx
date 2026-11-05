@@ -192,6 +192,20 @@ export function PayslipActionButtons({
 
       {/* Response state — pending shows primary actions; otherwise shows
           the current status with edit/cancel affordances. */}
+      {response === "pending" && p.admin_issue_reply_at && (
+        <div
+          className="rounded-xl p-3 space-y-0.5"
+          style={{ background: "#eef6ff", border: "1px solid #c7defa" }}
+        >
+          <p className="text-[12.5px] font-semibold" style={{ color: "#1d4f91" }}>
+            Sanggahanmu sudah ditanggapi admin · {formatDateTime(p.admin_issue_reply_at)}
+          </p>
+          <p className="text-[12.5px] whitespace-pre-wrap break-words" style={{ color: "#1d4f91" }}>
+            {p.admin_issue_reply || "Slip sudah ditinjau. Silakan konfirmasi, atau sanggah lagi bila masih ada yang kurang."}
+          </p>
+        </div>
+      )}
+
       {response === "pending" && (
         <div className="grid grid-cols-2 gap-3">
           <Button

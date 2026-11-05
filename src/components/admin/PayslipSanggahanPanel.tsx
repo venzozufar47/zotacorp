@@ -15,7 +15,7 @@ export interface SanggahanItem {
   /** Sanggahan yang masih aktif di slip (belum tergantikan). */
   current: SanggahanEntry | null;
   /** Sanggahan lama yang sudah dikosongkan / diganti, terbaru dulu. */
-  history: Array<SanggahanEntry & { reason: string }>;
+  history: Array<SanggahanEntry & { reason: string; adminReply?: string | null }>;
 }
 
 function fmt(iso: string | null): string {
@@ -72,9 +72,12 @@ export function PayslipSanggahanPanel({ items }: { items: SanggahanItem[] }) {
                       label={
                         h.reason === "refinalized"
                           ? "Sebelum slip difinalisasi ulang"
-                          : "Sebelum diubah karyawan"
+                          : h.reason === "answered"
+                            ? "Sudah ditanggapi admin"
+                            : "Sebelum diubah karyawan"
                       }
                       entry={h}
+                      reply={h.adminReply}
                       muted
                     />
                   ))}
@@ -91,10 +94,12 @@ export function PayslipSanggahanPanel({ items }: { items: SanggahanItem[] }) {
 function Quote({
   label,
   entry,
+  reply,
   muted,
 }: {
   label: string;
   entry: SanggahanEntry;
+  reply?: string | null;
   muted?: boolean;
 }) {
   return (
@@ -106,6 +111,15 @@ function Quote({
       <p className="text-sm whitespace-pre-wrap break-words bg-muted/40 rounded-md p-2 mt-0.5">
         {entry.message}
       </p>
+      {reply && (
+        <p className="text-sm whitespace-pre-wrap break-words border-l-2 border-primary/40 pl-2 mt-1">
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+            Balasan admin
+          </span>
+          <br />
+          {reply}
+        </p>
+      )}
     </div>
   );
 }

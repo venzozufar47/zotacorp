@@ -6311,6 +6311,7 @@ export type Database = {
       }
       payslip_response_history: {
         Row: {
+          admin_reply: string | null
           archived_at: string
           archived_reason: string
           id: string
@@ -6320,6 +6321,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          admin_reply?: string | null
           archived_at?: string
           archived_reason: string
           id?: string
@@ -6329,6 +6331,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          admin_reply?: string | null
           archived_at?: string
           archived_reason?: string
           id?: string
@@ -6582,6 +6585,8 @@ export type Database = {
           employee_response: string
           employee_response_at: string | null
           employee_response_message: string | null
+          admin_issue_reply: string | null
+          admin_issue_reply_at: string | null
           expected_work_days: number
           extra_day_bonus: number
           extra_work_pay: number
@@ -6623,6 +6628,8 @@ export type Database = {
           employee_response?: string
           employee_response_at?: string | null
           employee_response_message?: string | null
+          admin_issue_reply?: string | null
+          admin_issue_reply_at?: string | null
           expected_work_days?: number
           extra_day_bonus?: number
           extra_work_pay?: number
@@ -6664,6 +6671,8 @@ export type Database = {
           employee_response?: string
           employee_response_at?: string | null
           employee_response_message?: string | null
+          admin_issue_reply?: string | null
+          admin_issue_reply_at?: string | null
           expected_work_days?: number
           extra_day_bonus?: number
           extra_work_pay?: number

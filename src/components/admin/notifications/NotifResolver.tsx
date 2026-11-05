@@ -13,6 +13,7 @@ import { markChecklistReviewed, resolveItemIssue } from "@/lib/actions/cleaning-
 import { recordSimTopup } from "@/lib/actions/sim-cards.actions";
 import { ownerDecideTicket } from "@/lib/actions/tickets.actions";
 import { resolvePayslipDispute } from "@/lib/actions/payslip-disputes.actions";
+import { answerPayslipIssue } from "@/lib/actions/payslip.actions";
 import { markSelfieOverrideReviewed } from "@/lib/actions/attendance-selfie.actions";
 import { AttendanceCoachingForm } from "./AttendanceCoachingForm";
 import {
@@ -634,12 +635,29 @@ function NotifResolver({
           <Body>
             <p className="rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap break-words">{text}</p>
             <p className="text-muted-foreground">
-              Cek slipnya, koreksi bila perlu (buka kembali lalu finalisasi ulang). Pesan ini tetap bisa dibaca
-              di riwayat sanggahan walau slip difinalisasi ulang.
+              Cek slipnya. Bila perlu dikoreksi, buka slip lalu finalisasi ulang. Bila slip sudah benar, tulis
+              balasan lalu tandai sudah ditanggapi. Pesan ini tetap bisa dibaca di riwayat sanggahan.
             </p>
           </Body>
+          <label className="block text-xs font-medium">
+            Balasan untuk karyawan (opsional)
+            <textarea className={inputCls} rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
+          </label>
+          <button
+            type="button"
+            disabled={pending}
+            className={`${btnPrimary} w-full`}
+            onClick={() =>
+              run(async () => {
+                const r = await answerPayslipIssue(item.rowId, note);
+                return "error" in r ? r.error : null;
+              }, "Sanggahan ditandai sudah ditanggapi")
+            }
+          >
+            {pending && <Loader2 size={14} className="animate-spin" />} Tandai sudah ditanggapi
+          </button>
           {item.href && (
-            <Link href={item.href} className={`${btnPrimary} w-full`}>
+            <Link href={item.href} className={`${btnGhost} w-full`}>
               Buka slip gaji <ArrowRight size={14} />
             </Link>
           )}

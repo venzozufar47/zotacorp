@@ -174,7 +174,7 @@ export default async function PayslipVariablesPage({
     payslipIds.length > 0
       ? await supabase
           .from("payslip_response_history")
-          .select("payslip_id, message, responded_at, archived_reason, archived_at")
+          .select("payslip_id, message, responded_at, archived_reason, archived_at, admin_reply")
           .in("payslip_id", payslipIds)
           .order("archived_at", { ascending: false })
       : { data: [] };
@@ -195,6 +195,7 @@ export default async function PayslipVariablesPage({
         message: h.message,
         respondedAt: h.responded_at,
         reason: h.archived_reason,
+        adminReply: h.admin_reply,
       }));
     if (!current && history.length === 0) continue;
     sanggahan.push({

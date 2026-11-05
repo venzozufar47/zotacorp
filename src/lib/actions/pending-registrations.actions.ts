@@ -13,7 +13,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentRole } from "@/lib/supabase/cached";
+import { getCurrentRole, getCurrentUser } from "@/lib/supabase/cached";
 
 export type PendingRegistration = {
   id: string;
@@ -50,6 +50,32 @@ export async function getPendingRegistrations(): Promise<PendingRegistration[]> 
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Tolak pendaftar (mis. salah daftar / bukan karyawan). Akun tidak dihapus: ditandai `resigned_at` sehingga tidak lagi
+ * dihitung "pendaftar menunggu" dan hilang dari Inbox, tetap tidak bisa login. Hanya untuk akun yang benar-benar pending.
+ */
+export async function rejectRegistration(userId: string): Promise<ActionResult> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { ok: false, error: "Forbidden" };
+  const user = await getCurrentUser();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ resigned_at: new Date().toISOString(), resigned_by: user?.id ?? null })
+    .eq("id", userId)
+    .eq("is_active", false)
+    .is("resigned_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Pendaftar tidak ditemukan / sudah diproses." };
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/users");
+  return { ok: true };
+}
 
 /**
  * ACC pendaftar → aktifkan akun (is_active = true). Dibatasi ke akun yang
