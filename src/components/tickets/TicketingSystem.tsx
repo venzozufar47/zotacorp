@@ -1,27 +1,46 @@
 "use client";
 
 import { useState } from "react";
-import { Ticket as TicketIcon, Inbox, CheckCircle2, Archive, ChevronDown, Users, ClipboardCheck, Eye } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { TicketForm } from "./TicketForm";
-import { TicketCard } from "./TicketCard";
+import { StatusChip, TicketCard, type TicketContext } from "./TicketCard";
 import { BranchQueueCard } from "./BranchQueueCard";
 import {
+  agoLabel,
   formatDuration,
   isTicketOpen,
   needsFilerConfirmation,
+  TICKET_CATEGORY_LABELS,
   type Ticket,
   type TicketQueueSummary,
   type TicketViewerRole,
 } from "@/lib/tickets/types";
 import { OWNER_LEVEL } from "@/lib/tickets/chain-logic";
+import { useIsDesktop } from "@/lib/tickets/use-desktop";
+import { cn } from "@/lib/utils";
 import type { StudioHeadKpi, TicketFormOptions } from "@/lib/actions/tickets.actions";
 
+type Person = { id: string; name: string };
+type Tab = "perlu" | "saya" | "pantau";
+
+interface Entry {
+  t: Ticket;
+  ctx: TicketContext;
+  sup?: Person[];
+  team?: Person[];
+  /** Judul kelompok kecil di dalam tab "Perlu saya". */
+  group?: string;
+}
+
 /**
- * Halaman "Ticketing System" role-adaptive, dua arah dengan hierarki per cabang. Dipakai route employee (/tickets)
- * & admin (/admin/tickets) dengan komponen sama.
+ * Halaman Tiket untuk karyawan, atasan, dan owner (komponen sama di /tickets dan /admin/tickets).
  *
- * Penanggung jawab sebuah tiket = anggota tingkat `handlerLevel` di cabangnya (owner untuk level 99). Tiket di
- * cabang saya yang dipegang tingkat lain hanya dipantau.
+ * Tiga tab: "Perlu saya" (yang menunggu tindakanku), "Tiket saya", dan "Pantau" (tiket di cabang yang dipegang
+ * orang lain; untuk karyawan: antrean rekan sekantor, baca-saja). Baris hanya memuat judul, status, dan siapa;
+ * isi lengkap dan tombol aksi terbuka saat baris diketuk. Di layar lebar (>= 1024px) detail tampil di panel kanan.
+ *
+ * Penanggung jawab sebuah tiket = penerima langsung (orang) atau owner; tiket di cabangku yang dipegang orang lain
+ * hanya dipantau.
  */
 export function TicketingSystem({
   viewerRole,
@@ -44,7 +63,7 @@ export function TicketingSystem({
   kpi?: StudioHeadKpi | null;
   formOptions: TicketFormOptions;
 }) {
-  const [showArchive, setShowArchive] = useState(false);
+  const isDesktop = useIsDesktop();
   const isOwner = viewerRole === "owner";
   const isManager = viewerRole === "head" || isOwner;
 
@@ -60,181 +79,293 @@ export function TicketingSystem({
   const toAct = open.filter((t) => heldByMe(t) && (t.status === "open" || t.status === "in_progress"));
   // Pantau saja: dipegang tingkat lain / penerima tiket 'turun'; tiket yang saya buat sudah ada di "Tiket saya".
   const monitor = open.filter((t) => !heldByMe(t) && t.createdBy !== uid);
-
   const assignedActive = assignedToMe.filter((t) => isTicketOpen(t.status) || (t.status === "resolved" && !t.confirmedAt));
 
-  // "Tiket saya": yang sudah selesai (dan sudah dikonfirmasi pembuat) atau dibatalkan disembunyikan ke arsip. Tiket
-  // selesai yang MASIH menunggu konfirmasi pembuat tetap tampil.
+  // "Tiket saya": yang sudah selesai (dan dikonfirmasi pembuat) atau dibatalkan masuk arsip. Tiket selesai yang MASIH
+  // menunggu konfirmasi pembuat tetap tampil.
   const isArchived = (t: Ticket) => t.status === "cancelled" || (t.status === "resolved" && !needsFilerConfirmation(t));
   const myActive = myTickets.filter((t) => !isArchived(t));
   const myArchived = myTickets.filter(isArchived);
 
-  return (
-    <div className="space-y-6 animate-fade-up">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {viewerRole === "filer"
-              ? "Laporkan kebutuhan barang, kerusakan, atau masalah ke atasan di cabangmu. Tiket dari owner untukmu juga muncul di sini."
-              : viewerRole === "head"
-                ? "Tindaklanjuti laporan tim cabangmu. Eskalasi ke tingkat di atasmu jika di luar kendali."
-                : "Keputusan eskalasi, tiket ke bawah, dan pemantauan semua cabang."}
-          </p>
-        </div>
-        <TicketForm uid={uid} options={formOptions} isOwner={isOwner} />
+  const perlu: Entry[] = [
+    ...toDecide.map((t) => ({ t, ctx: "escalation" as const, sup: formOptions.mySuperiors[t.branchId], group: "Keputusan eskalasi" })),
+    ...myActive.filter(needsFilerConfirmation).map((t) => ({ t, ctx: "mine" as const, group: "Perlu kamu konfirmasi" })),
+    ...assignedActive
+      .filter((t) => t.status !== "resolved")
+      .map((t) => ({ t, ctx: "assigned" as const, team: formOptions.myTeam[t.branchId], group: "Dari owner" })),
+    ...toAct.map((t) => ({
+      t,
+      ctx: "queue" as const,
+      sup: formOptions.mySuperiors[t.branchId],
+      team: formOptions.forwardTargets?.[t.branchId],
+      group: "Perlu ditindak",
+    })),
+    // Sudah kukerjakan, menunggu owner mengonfirmasi: tidak butuh tindakanku, jadi tidak dihitung di lencana.
+    ...assignedActive
+      .filter((t) => t.status === "resolved")
+      .map((t) => ({ t, ctx: "assigned" as const, group: "Menunggu konfirmasi owner" })),
+  ];
+  const perluCount = perlu.filter((e) => e.group !== "Menunggu konfirmasi owner").length;
+  const saya: Entry[] = myActive.map((t) => ({ t, ctx: "mine" as const }));
+  const arsip: Entry[] = myArchived.map((t) => ({ t, ctx: "mine" as const }));
+  const pantau: Entry[] = monitor.map((t) => ({ t, ctx: "monitor" as const }));
+
+  const showPerlu = isManager || perlu.length > 0;
+  const showPantau = isManager ? true : branchQueue.length > 0;
+  const [tab, setTab] = useState<Tab>(perluCount > 0 ? "perlu" : "saya");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const activeTab: Tab = tab === "perlu" && !showPerlu ? "saya" : tab;
+
+  const entries = activeTab === "perlu" ? perlu : activeTab === "saya" ? [...saya, ...arsip] : pantau;
+  const found = entries.find((e) => e.t.id === openId) ?? null;
+  // Di desktop panel detail selalu terisi (tiket pertama bila belum ada yang dipilih).
+  const selected = found ?? (isDesktop ? entries[0] ?? null : null);
+
+  function pick(id: string) {
+    setOpenId((cur) => (isDesktop ? id : cur === id ? null : id));
+  }
+
+  const tabs: { id: Tab; label: string; count: number; urgent?: boolean }[] = [
+    ...(showPerlu ? [{ id: "perlu" as const, label: "Perlu saya", count: perluCount, urgent: true }] : []),
+    { id: "saya", label: "Tiket saya", count: saya.length },
+    ...(showPantau ? [{ id: "pantau" as const, label: isManager ? "Pantau" : "Cabang", count: isManager ? pantau.length : branchQueue.length }] : []),
+  ];
+
+  const summary =
+    isManager && kpi ? (
+      <p className="text-sm text-muted-foreground tabular-nums">
+        <b className="text-foreground">{kpi.openCount + kpi.inProgressCount + kpi.escalatedCount + kpi.ownerHandlingCount}</b> aktif
+        {" · "}
+        <b className="text-foreground">{kpi.resolvedThisMonth}</b> selesai bulan ini
+        {" · "}
+        rata-rata <b className="text-foreground">{kpi.avgResolutionMs != null ? formatDuration(kpi.avgResolutionMs) : "—"}</b>
+      </p>
+    ) : (
+      <p className="text-sm text-muted-foreground tabular-nums">
+        <b className="text-foreground">{myActive.length}</b> tiket aktif
+      </p>
+    );
+
+  const list = (
+    <div className="space-y-3">
+      <div role="tablist" aria-label="Daftar tiket" className={cn("grid gap-1 rounded-xl bg-muted p-1", tabs.length === 3 ? "grid-cols-[1.25fr_1.25fr_1fr]" : "grid-cols-2")}>
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === t.id}
+            onClick={() => {
+              setTab(t.id);
+              setOpenId(null);
+            }}
+            className={cn(
+              "flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-[13px] font-semibold transition-colors",
+              activeTab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {t.label}
+            {t.count > 0 && (
+              <span
+                className={cn(
+                  "min-w-5 rounded-full px-1.5 text-center text-[11px] font-bold tabular-nums",
+                  t.urgent ? "bg-destructive text-white" : "bg-foreground/10 text-foreground"
+                )}
+              >
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {/* KPI penanganan */}
-      {isManager && kpi && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <Kpi label="Belum selesai" value={kpi.openCount + kpi.inProgressCount + kpi.escalatedCount + kpi.ownerHandlingCount} tone="warn" />
-          <Kpi label="Selesai (bln ini)" value={kpi.resolvedThisMonth} tone="good" />
-          <Kpi label="Total selesai" value={kpi.resolvedCount} />
-          <Kpi
-            label="Rata-rata pengerjaan"
-            value={kpi.avgResolutionMs != null ? formatDuration(kpi.avgResolutionMs) : "—"}
-            hint="Hanya tiket laporan karyawan yang diselesaikan di rantai cabang. Tiket yang eskalasinya di-ACC atasan tidak dihitung."
-          />
-        </div>
-      )}
-
-      {/* Eskalasi yang menunggu keputusan saya */}
-      {isManager && (toDecide.length > 0 || isOwner) && (
-        <Section
-          icon={<Inbox size={16} />}
-          title={isOwner ? "Perlu keputusan owner" : "Perlu keputusan saya"}
-          count={toDecide.length}
-          empty="Tidak ada eskalasi yang menunggu."
-        >
-          {toDecide.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="escalation" mySuperiors={formOptions.mySuperiors[t.branchId]} />
-          ))}
-        </Section>
-      )}
-
-      {/* Tiket 'turun' dari owner untuk saya */}
-      {assignedActive.length > 0 && (
-        <Section icon={<ClipboardCheck size={16} />} title="Untuk saya (dari owner)" count={assignedActive.length} empty="">
-          {assignedActive.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="assigned" myTeam={formOptions.myTeam[t.branchId]} />
-          ))}
-        </Section>
-      )}
-
-      {/* Tiket yang sedang saya pegang */}
-      {isManager && (
-        <Section icon={<TicketIcon size={16} />} title="Perlu ditindak" count={toAct.length} empty="Antrian bersih — tidak ada tiket menunggu tindakanmu. 🎉">
-          {toAct.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="queue" mySuperiors={formOptions.mySuperiors[t.branchId]} myTeam={formOptions.forwardTargets?.[t.branchId]} />
-          ))}
-        </Section>
-      )}
-
-      {/* Pemantauan */}
-      {isManager && monitor.length > 0 && (
-        <Section
-          icon={<Eye size={16} />}
-          title={isOwner ? "Pemantauan semua cabang" : "Pemantauan cabang"}
-          count={monitor.length}
-          empty=""
-        >
-          {monitor.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="monitor" />
-          ))}
-        </Section>
-      )}
-
-      {/* Antrian sesama cabang — karyawan biasa; atasan/owner sudah melihat lewat bagian di atas. Read-only. */}
-      {viewerRole === "filer" && (
-        <Section
-          icon={<Users size={16} />}
-          title="Antrian sesama cabang"
-          count={branchQueue.length}
-          empty="Belum ada tiket aktif dari rekan sekantor."
-        >
+      {activeTab === "pantau" && !isManager ? (
+        <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
           {branchQueue.map((t) => (
             <BranchQueueCard key={t.id} ticket={t} />
           ))}
-        </Section>
-      )}
-
-      {/* Tiket saya (semua peran yang bisa membuat) */}
-      <Section
-        icon={<CheckCircle2 size={16} />}
-        title="Tiket saya"
-        count={myActive.length}
-        empty={myArchived.length > 0 ? "Tidak ada tiket aktif." : "Belum ada tiket. Ketuk “Buat Tiket” untuk melapor."}
-      >
-        {myActive.map((t) => (
-          <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="mine" />
-        ))}
-      </Section>
-
-      {myArchived.length > 0 && (
-        <section className="space-y-3">
-          <button type="button" onClick={() => setShowArchive((v) => !v)} aria-expanded={showArchive} className="flex w-full items-center gap-2 text-left">
-            <span className="text-muted-foreground">
-              <Archive size={16} />
-            </span>
-            <h2 className="font-display font-bold text-base">Arsip tiket selesai</h2>
-            <span className="text-xs font-semibold text-muted-foreground rounded-full bg-muted px-2 py-0.5">{myArchived.length}</span>
-            <ChevronDown size={16} className={`ml-auto text-muted-foreground transition-transform ${showArchive ? "rotate-180" : ""}`} />
-          </button>
-          {showArchive && (
-            <div className="space-y-3">
-              {myArchived.map((t) => (
-                <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="mine" />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-    </div>
-  );
-}
-
-function Section({
-  icon,
-  title,
-  count,
-  empty,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  count: number;
-  empty: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">{icon}</span>
-        <h2 className="font-display font-bold text-base">{title}</h2>
-        <span className="text-xs font-semibold text-muted-foreground rounded-full bg-muted px-2 py-0.5">{count}</span>
-      </div>
-      {count === 0 ? (
-        <p className="text-[13px] text-muted-foreground py-4 text-center rounded-2xl border border-dashed border-border">{empty}</p>
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          {activeTab === "perlu"
+            ? "Tidak ada yang menunggu tindakanmu."
+            : activeTab === "saya"
+              ? "Belum ada tiket. Ketuk Buat Tiket untuk melapor."
+              : "Tidak ada tiket lain yang dipantau."}
+        </p>
       ) : (
-        <div className="space-y-3">{children}</div>
+        <>
+          <Rows
+            entries={activeTab === "saya" ? saya : entries}
+            selectedId={selected?.t.id ?? null}
+            openId={isDesktop ? null : openId}
+            onPick={pick}
+            viewerRole={viewerRole}
+            groups={activeTab === "perlu"}
+          />
+          {activeTab === "saya" && arsip.length > 0 && (
+            <details className="group">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 px-1 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+                <ChevronDown size={16} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+                Arsip ({arsip.length})
+              </summary>
+              <Rows
+                entries={arsip}
+                selectedId={selected?.t.id ?? null}
+                openId={isDesktop ? null : openId}
+                onPick={pick}
+                viewerRole={viewerRole}
+              />
+            </details>
+          )}
+        </>
       )}
-    </section>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">{summary}</div>
+        <TicketForm uid={uid} options={formOptions} isOwner={isOwner} />
+      </div>
+
+      {isDesktop ? (
+        <div className="grid grid-cols-[minmax(340px,420px)_minmax(0,1fr)] items-start gap-6">
+          {list}
+          <div className="sticky top-20">
+            {selected && !(activeTab === "pantau" && !isManager) ? (
+              <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <TicketCard
+                  key={selected.t.id}
+                  ticket={selected.t}
+                  viewerRole={viewerRole}
+                  context={selected.ctx}
+                  mySuperiors={selected.sup}
+                  myTeam={selected.team}
+                  embedded
+                />
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+                Pilih tiket di sebelah kiri untuk melihat detailnya.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        list
+      )}
+    </div>
   );
 }
 
-function Kpi({ label, value, tone, hint }: { label: string; value: string | number; tone?: "warn" | "good"; hint?: string }) {
-  return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard-sm" title={hint}>
-      <div
-        className={
-          "font-display font-bold text-xl tabular-nums " +
-          (tone === "warn" ? "text-warning" : tone === "good" ? "text-success" : "text-foreground")
-        }
-      >
-        {value}
+/** Daftar baris ringkas. Di layar kecil baris yang diketuk membuka detail tepat di bawahnya. */
+function Rows({
+  entries,
+  selectedId,
+  openId,
+  onPick,
+  viewerRole,
+  groups = false,
+}: {
+  entries: Entry[];
+  selectedId: string | null;
+  openId: string | null;
+  onPick: (id: string) => void;
+  viewerRole: TicketViewerRole;
+  groups?: boolean;
+}) {
+  let lastGroup: string | undefined;
+  const nodes: React.ReactNode[] = [];
+  let current: React.ReactNode[] = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    nodes.push(
+      <div key={`g-${nodes.length}`} className="space-y-1.5">
+        {groups && lastGroup && <p className="px-1 text-xs font-semibold text-muted-foreground">{lastGroup}</p>}
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">{current}</ul>
       </div>
-      <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
-    </div>
+    );
+    current = [];
+  };
+  for (const e of entries) {
+    if (groups && e.group !== lastGroup) {
+      flush();
+      lastGroup = e.group;
+    }
+    const expanded = openId === e.t.id;
+    current.push(
+      <li key={e.t.id} className={cn(selectedId === e.t.id && "bg-accent/40")}>
+        <TicketRow ticket={e.t} ctx={e.ctx} expanded={expanded} onClick={() => onPick(e.t.id)} />
+        {expanded && (
+          <div className="border-t border-border bg-muted/20">
+            <TicketCard
+              ticket={e.t}
+              viewerRole={viewerRole}
+              context={e.ctx}
+              mySuperiors={e.sup}
+              myTeam={e.team}
+              embedded
+              showHeader={false}
+            />
+          </div>
+        )}
+      </li>
+    );
+  }
+  flush();
+  return <div className="space-y-3">{nodes}</div>;
+}
+
+function TicketRow({
+  ticket,
+  ctx,
+  expanded,
+  onClick,
+}: {
+  ticket: Ticket;
+  ctx: TicketContext;
+  expanded: boolean;
+  onClick: () => void;
+}) {
+  const who =
+    ticket.direction === "down"
+      ? `Untuk ${ticket.assigneeName ?? "seluruh cabang"}`
+      : ctx !== "mine" && ticket.createdByName
+        ? ticket.createdByName
+        : null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      className="flex min-h-14 w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+    >
+      <span className="min-w-0 flex-1 space-y-1">
+        <span className="flex items-start gap-2">
+          {ticket.priority === "urgent" && (
+            <span className="mt-1.5 size-2 shrink-0 rounded-full bg-destructive" title="Mendesak" aria-label="Mendesak" />
+          )}
+          <span className="line-clamp-2 break-words text-sm font-semibold leading-snug">{ticket.title}</span>
+        </span>
+        <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+          <StatusChip ticket={ticket} />
+          <span className="truncate">{ticket.branch}</span>
+          <span>{TICKET_CATEGORY_LABELS[ticket.category]}</span>
+          {who && (
+            <>
+              <span className="truncate">{who}</span>
+            </>
+          )}
+          <span>{agoLabel(ticket.createdAt)}</span>
+        </span>
+      </span>
+      <ChevronDown
+        size={16}
+        className={cn("mt-1 shrink-0 text-muted-foreground transition-transform lg:hidden", expanded && "rotate-180")}
+        aria-hidden
+      />
+    </button>
   );
 }

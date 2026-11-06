@@ -87,7 +87,7 @@ function BranchPeople({
   }
 
   return (
-    <section className="rounded-2xl border-2 border-foreground bg-card p-3.5">
+    <section className="rounded-xl border border-border bg-card p-3.5">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h3 className="font-display text-[14px] font-bold">{item.branch.label}</h3>
         <span className="text-[11px] text-muted-foreground">{people.length} orang</span>
@@ -128,7 +128,7 @@ function BranchPeople({
                 disabled={busy.has(p.userId)}
                 onChange={(e) => e.target.value && save(p.userId, [...p.superiorIds, e.target.value])}
                 aria-label={`Tambah atasan untuk ${p.name}`}
-                className="h-8 max-w-[11rem] rounded-lg border-2 border-border bg-background px-2 text-[12px]"
+                className="h-9 max-w-[11rem] rounded-lg border border-input bg-background px-2 text-[12px]"
               >
                 <option value="">+ Atasan</option>
                 {candidates.map((c) => (

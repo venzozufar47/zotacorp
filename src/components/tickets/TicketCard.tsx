@@ -13,6 +13,9 @@ import {
   Loader2,
   ImagePlus,
   Users,
+  ShieldCheck,
+  Clock,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,7 +60,22 @@ import {
  * escalation : eskalasi yang menunggu keputusan saya (ACC / tolak), atau yang sudah saya ACC (selesaikan)
  * monitor    : tiket di cabang saya yang dipegang tingkat lain (hanya pantau)
  */
-type Context = "mine" | "assigned" | "queue" | "escalation" | "monitor";
+export type TicketContext = "mine" | "assigned" | "queue" | "escalation" | "monitor";
+type Context = TicketContext;
+
+/** Label status berwarna. Satu gaya untuk baris daftar dan detail. */
+export function StatusChip({ ticket }: { ticket: Ticket }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-tight",
+        STATUS_TONE[ticket.status]
+      )}
+    >
+      {ticketStatusLabel(ticket)}
+    </span>
+  );
+}
 
 interface NotePrompt {
   title: string;
@@ -80,10 +98,16 @@ export function TicketCard({
   context,
   mySuperiors = [],
   myTeam = [],
+  embedded = false,
+  showHeader = true,
 }: {
   ticket: Ticket;
   viewerRole: TicketViewerRole;
   context: Context;
+  /** Tanpa bingkai sendiri (dipakai di dalam baris daftar atau panel detail). */
+  embedded?: boolean;
+  /** false = judul dan status sudah tampil di baris di atasnya. */
+  showHeader?: boolean;
   /** Atasan langsung saya di cabang tiket ini (tujuan eskalasi). */
   mySuperiors?: { id: string; name: string }[];
   /** Bawahan langsung saya di cabang tiket ini (tujuan "Teruskan" untuk tiket dari owner). */
@@ -200,65 +224,50 @@ export function TicketCard({
   const atOwner = ticket.direction === "up" && ticket.handlerLevel >= OWNER_LEVEL;
 
   return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm space-y-2.5">
-      <div className="flex items-start gap-2">
-        {ticket.priority === "urgent" && (
-          <span
-            className="mt-1 size-2.5 rounded-full bg-destructive shrink-0"
-            title="Mendesak"
-          />
-        )}
-        <p className="font-display font-bold text-[15px] leading-snug flex-1 min-w-0">
-          {ticket.title}
-        </p>
-        <span
-          className={cn(
-            "shrink-0 rounded-full border-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-            STATUS_TONE[ticket.status]
-          )}
-        >
-          {ticketStatusLabel(ticket)}
-        </span>
-      </div>
+    <div className={cn("space-y-3", embedded ? "p-4" : "rounded-xl border border-border bg-card p-4")}>
+      {showHeader ? (
+        <div className="space-y-1.5">
+          <div className="flex items-start gap-2">
+            {ticket.priority === "urgent" && (
+              <span className="mt-1.5 size-2.5 shrink-0 rounded-full bg-destructive" title="Mendesak" aria-label="Mendesak" />
+            )}
+            <h3 className="min-w-0 flex-1 break-words font-display text-base font-bold leading-snug">{ticket.title}</h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <StatusChip ticket={ticket} />
+            <span className="font-semibold text-foreground">{ticket.branchLabel ?? ticket.branch}</span>
+            <span>·</span>
+            <span>{TICKET_CATEGORY_LABELS[ticket.category]}</span>
+            {context !== "mine" && ticket.createdByName && (
+              <>
+                <span>·</span>
+                <span className="inline-flex items-center gap-1">
+                  <EmployeeAvatar
+                    size="sm"
+                    full_name={ticket.createdByName}
+                    avatar_url={ticket.createdByAvatarUrl ?? null}
+                    avatar_seed={ticket.createdByAvatarSeed ?? null}
+                  />
+                  {ticket.createdByName}
+                </span>
+              </>
+            )}
+            <span>·</span>
+            <span>{agoLabel(ticket.createdAt)}</span>
+          </div>
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground">
-        <span className="font-semibold text-foreground">{ticket.branchLabel ?? ticket.branch}</span>
-        {ticket.direction === "down" && (
-          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Dari owner</span>
-        )}
-        <span>·</span>
-        <span>{TICKET_CATEGORY_LABELS[ticket.category]}</span>
-        {ticket.direction === "down" && (
-          <>
-            <span>·</span>
-            <span>
-              Untuk: {ticket.assigneeName ?? "seluruh cabang (belum diambil)"}
-              {ticket.delegatedFromName ? ` (diteruskan oleh ${ticket.delegatedFromName})` : ""}
-            </span>
-          </>
-        )}
-        {context !== "mine" && ticket.createdByName && (
-          <>
-            <span>·</span>
-            <span className="inline-flex items-center gap-1">
-              <EmployeeAvatar
-                size="sm"
-                full_name={ticket.createdByName}
-                avatar_url={ticket.createdByAvatarUrl ?? null}
-                avatar_seed={ticket.createdByAvatarSeed ?? null}
-              />
-              {ticket.createdByName}
-            </span>
-          </>
-        )}
-        <span>·</span>
-        <span>{agoLabel(ticket.createdAt)}</span>
-      </div>
+      {ticket.direction === "down" && (
+        <p className="text-xs text-muted-foreground">
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">Dari owner</span>{" "}
+          Untuk {ticket.assigneeName ?? "seluruh cabang (belum diambil)"}
+          {ticket.delegatedFromName ? `, diteruskan oleh ${ticket.delegatedFromName}` : ""}
+        </p>
+      )}
 
       {ticket.description && (
-        <p className="text-[13px] leading-snug text-foreground/90 whitespace-pre-wrap">
-          {ticket.description}
-        </p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-snug text-foreground/90">{ticket.description}</p>
       )}
 
       {reportPhotos.length > 0 && <TicketPhotos attachments={reportPhotos} />}
@@ -278,28 +287,36 @@ export function TicketCard({
         <NoteLine tone="warn" label="Belum beres (dari pelapor)" text={ticket.disputeNote} />
       )}
       {ticket.status === "resolved" && (
-        <div className="text-[11.5px] text-success font-medium">
-          ✓ Selesai{resMs != null ? ` dalam ${formatDuration(resMs)}` : ""}
-          {ticket.resolutionNote ? ` — ${ticket.resolutionNote}` : ""}
-          {resolutionPhotos.length > 0 && (
-            <span className="block mt-0.5">
-              <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />
+        <div className="space-y-1 text-xs">
+          <p className="flex items-start gap-1.5 font-medium text-success">
+            <CheckCircle2 size={14} className="mt-px shrink-0" aria-hidden />
+            <span className="break-words">
+              Selesai{resMs != null ? ` dalam ${formatDuration(resMs)}` : ""}
+              {ticket.resolutionNote ? `. ${ticket.resolutionNote}` : ""}
             </span>
-          )}
+          </p>
+          {resolutionPhotos.length > 0 && <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />}
           {ticket.verification && ticket.verification.length > 0 && (
-            <span className="block text-foreground/80">
-              🛡 Verifikasi:{" "}
-              {ticket.verification
-                .map((v) => `${v.name} ${v.status === "verified" ? "✓" : v.status === "rejected" ? "✗" : "(menunggu)"}`)
-                .join(", ")}
-            </span>
+            <p className="flex items-start gap-1.5 text-foreground/80">
+              <ShieldCheck size={14} className="mt-px shrink-0" aria-hidden />
+              <span>
+                Verifikasi:{" "}
+                {ticket.verification
+                  .map((v) => `${v.name} ${v.status === "verified" ? "(sudah)" : v.status === "rejected" ? "(menolak)" : "(menunggu)"}`)
+                  .join(", ")}
+              </span>
+            </p>
           )}
           {ticket.confirmedAt ? (
-            <span className="block text-success/80">
-              {ticket.confirmedBy ? "✓✓ Dikonfirmasi pelapor" : "✓ Dikonfirmasi otomatis (tidak ada respons 7 hari)"}
-            </span>
+            <p className="flex items-center gap-1.5 text-success/80">
+              <CheckCircle2 size={14} aria-hidden />
+              {ticket.confirmedBy ? "Dikonfirmasi pelapor" : "Dikonfirmasi otomatis (tidak ada respons 7 hari)"}
+            </p>
           ) : (
-            <span className="block text-warning">⏳ Menunggu konfirmasi pelapor</span>
+            <p className="flex items-center gap-1.5 text-warning">
+              <Clock size={14} aria-hidden />
+              Menunggu konfirmasi pelapor
+            </p>
           )}
         </div>
       )}
@@ -397,7 +414,7 @@ export function TicketCard({
                   ? "Catatan (wajib)…"
                   : "Catatan (opsional)…"
             }
-            className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm resize-y"
+            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-y"
           />
           {prompt?.choose && (
             <label className="block space-y-1">
@@ -405,7 +422,7 @@ export function TicketCard({
               <select
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
-                className="h-10 w-full rounded-xl border-2 border-border bg-background px-3 text-sm"
+                className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
               >
                 <option value="">{prompt.choose.label}</option>
                 {prompt.choose.options.map((o) => (
@@ -425,7 +442,7 @@ export function TicketCard({
                 {files.map((f, i) => (
                   <div
                     key={i}
-                    className="relative size-16 rounded-lg border-2 border-foreground overflow-hidden bg-muted"
+                    className="relative size-16 rounded-lg border border-border overflow-hidden bg-muted"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -447,7 +464,7 @@ export function TicketCard({
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    className="grid place-items-center size-16 rounded-lg border-2 border-dashed border-foreground/40 text-muted-foreground hover:bg-muted transition"
+                    className="grid place-items-center size-16 rounded-lg border border-dashed border-foreground/40 text-muted-foreground hover:bg-muted transition"
                   >
                     <ImagePlus size={20} />
                   </button>
@@ -503,7 +520,7 @@ function NoteLine({
         ? "bg-pop-pink/15 border-foreground/20"
         : "bg-accent border-[var(--teal-500)]/40";
   return (
-    <div className={cn("rounded-lg border px-2.5 py-1.5 text-[12px]", cls)}>
+    <div className={cn("rounded-lg border px-2.5 py-1.5 text-xs", cls)}>
       <span className="font-semibold">{label}:</span> {text}
     </div>
   );
@@ -545,23 +562,25 @@ function ActionBar({
 }) {
   const s = ticket.status;
   const btns: React.ReactNode[] = [];
+  /** Aksi jarang dipakai: dilipat di bawah "Opsi lain". */
+  const more: React.ReactNode[] = [];
   const here = holderLabel(ticket.handlerLevel, ticket.handlerName);
 
   if (context === "mine") {
     if (s === "open" || s === "in_progress")
-      btns.push(
-        <Button key="cancel" variant="ghost" size="xs" disabled={pending} onClick={onCancel}>
+      more.push(
+        <Button key="cancel" variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
           <XIcon size={13} /> Batalkan
         </Button>
       );
     if (needsFilerConfirmation(ticket)) {
       btns.push(
-        <Button key="confirm" variant="emerald" size="xs" disabled={pending} onClick={onConfirm}>
+        <Button key="confirm" variant="emerald" size="sm" disabled={pending} onClick={onConfirm}>
           <CheckCircle2 size={13} /> Konfirmasi selesai
         </Button>
       );
       btns.push(
-        <Button key="dispute" variant="outline" size="xs" disabled={pending} onClick={onDispute}>
+        <Button key="dispute" variant="outline" size="sm" disabled={pending} onClick={onDispute}>
           <ThumbsDown size={13} /> Belum beres
         </Button>
       );
@@ -585,25 +604,25 @@ function ActionBar({
   if (context === "queue" || context === "assigned") {
     if (s === "open")
       btns.push(
-        <Button key="start" size="xs" disabled={pending} onClick={onStart}>
+        <Button key="start" size="sm" disabled={pending} onClick={onStart}>
           <Play size={13} /> {context === "assigned" && !ticket.assigneeId ? "Ambil" : "Mulai"}
         </Button>
       );
     if (s === "open" || s === "in_progress") {
       btns.push(
-        <Button key="resolve" variant="emerald" size="xs" disabled={pending} onClick={onResolveDirect}>
+        <Button key="resolve" variant="emerald" size="sm" disabled={pending} onClick={onResolveDirect}>
           <CheckCircle2 size={13} /> Selesai
         </Button>
       );
       if (!atOwner)
-        btns.push(
-          <Button key="esc" variant="outline" size="xs" disabled={pending} onClick={onEscalate}>
+        more.push(
+          <Button key="esc" variant="outline" size="sm" disabled={pending} onClick={onEscalate}>
             <ArrowUpCircle size={13} /> {ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi"}
           </Button>
         );
       if (canDelegate)
-        btns.push(
-          <Button key="delegate" variant="outline" size="xs" disabled={pending} onClick={onDelegate}>
+        more.push(
+          <Button key="delegate" variant="outline" size="sm" disabled={pending} onClick={onDelegate}>
             <Users size={13} /> Teruskan
           </Button>
         );
@@ -660,24 +679,37 @@ function ActionBar({
   if (context === "escalation") {
     if (s === "escalated") {
       btns.push(
-        <Button key="acc" variant="emerald" size="xs" disabled={pending} onClick={onAccept}>
+        <Button key="acc" variant="emerald" size="sm" disabled={pending} onClick={onAccept}>
           <ThumbsUp size={13} /> ACC (ambil alih)
         </Button>
       );
       btns.push(
-        <Button key="rej" variant="outline" size="xs" disabled={pending} onClick={onReject}>
+        <Button key="rej" variant="outline" size="sm" disabled={pending} onClick={onReject}>
           <ThumbsDown size={13} /> Tolak
         </Button>
       );
     }
     if (s === "owner_handling")
       btns.push(
-        <Button key="ownres" variant="emerald" size="xs" disabled={pending} onClick={onResolveDirect}>
+        <Button key="ownres" variant="emerald" size="sm" disabled={pending} onClick={onResolveDirect}>
           <CheckCircle2 size={13} /> Tandai selesai
         </Button>
       );
   }
 
-  if (btns.length === 0) return null;
-  return <div className="flex flex-wrap items-center gap-2 pt-0.5">{btns}</div>;
+  if (btns.length === 0 && more.length === 0) return null;
+  return (
+    <div className="space-y-1 pt-0.5">
+      {btns.length > 0 && <div className="flex flex-wrap items-center gap-2">{btns}</div>}
+      {more.length > 0 && (
+        <details className="group">
+          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1 text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+            Opsi lain
+            <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="flex flex-wrap gap-2 pt-1">{more}</div>
+        </details>
+      )}
+    </div>
+  );
 }

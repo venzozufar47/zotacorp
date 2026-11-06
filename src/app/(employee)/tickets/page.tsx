@@ -32,7 +32,7 @@ export default async function TicketsPage() {
   return (
     <>
       <RealtimeRefresher channel="tickets-emp" table="tickets" />
-      <PageHeader title="Tiket" subtitle="Laporan, tugas, dan eskalasi di cabangmu." />
+      <PageHeader title="Tiket" />
       <TicketingSystem
         viewerRole={role}
         uid={user.id}

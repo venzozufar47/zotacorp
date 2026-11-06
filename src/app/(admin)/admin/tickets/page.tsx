@@ -38,7 +38,7 @@ export default async function AdminTicketsPage() {
       <div className="relative z-20">
         <PageHeader
           title="Tiket"
-          subtitle="Eskalasi, tiket ke karyawan, pemantauan semua cabang, dan pengaturan hierarki penanganan."
+          subtitle="Eskalasi, tiket ke karyawan, dan pemantauan semua cabang."
           action={hierarchy ? <HierarchyManager data={hierarchy} /> : undefined}
         />
       </div>

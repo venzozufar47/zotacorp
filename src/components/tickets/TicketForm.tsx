@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Loader2, ImagePlus, X } from "lucide-react";
+import { ChevronDown, Plus, Loader2, ImagePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -130,7 +130,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
         toast.error(res.error);
         return;
       }
-      toast.success(mode === "report" ? "Tiket terkirim 🙏" : "Tiket ditugaskan");
+      toast.success(mode === "report" ? "Tiket terkirim" : "Tiket ditugaskan");
       reset();
       setOpen(false);
       router.refresh();
@@ -150,10 +150,10 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
           <DialogTitle>{mode === "report" ? "Buat Tiket Baru" : "Tugaskan Tiket ke Bawah"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Cabang">
-              {mode === "report" ? (
+        <div className="space-y-4">
+          {mode === "report" ? (
+            options.fileBranches.length > 1 && (
+              <Field label="Cabang">
                 <Select value={reportBranch} onChange={setReportBranch}>
                   {options.fileBranches.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -161,47 +161,46 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
                     </option>
                   ))}
                 </Select>
-              ) : (
-                <Select
-                  value={assignBranch}
-                  onChange={(v) => {
-                    setAssignBranch(v);
-                    setAssignee(WHOLE_BRANCH);
-                  }}
-                >
-                  {options.downTargets.map((t) => (
-                    <option key={t.branch.id} value={t.branch.id}>
-                      {t.branch.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <Field label="Prioritas">
-              <Select value={priority} onChange={(v) => setPriority(v as TicketPriority)}>
-                <option value="normal">Normal</option>
-                <option value="urgent">Mendesak</option>
+              </Field>
+            )
+          ) : (
+            <Field label="Cabang">
+              <Select
+                value={assignBranch}
+                onChange={(v) => {
+                  setAssignBranch(v);
+                  setAssignee(WHOLE_BRANCH);
+                }}
+              >
+                {options.downTargets.map((t) => (
+                  <option key={t.branch.id} value={t.branch.id}>
+                    {t.branch.label}
+                  </option>
+                ))}
               </Select>
             </Field>
-          </div>
+          )}
 
           {mode === "report" && !isOwner && (
             <Field label="Kirim ke">
               {supers.length > 1 ? (
-                <Select value={toUser} onChange={setToUser}>
-                  <option value="">Pilih atasan…</option>
-                  {supers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
+                <>
+                  <Select value={toUser} onChange={setToUser}>
+                    <option value="">Pilih atasan…</option>
+                    {supers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Kamu punya lebih dari satu atasan. Pilih siapa yang menerima.</p>
+                </>
               ) : (
-                <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm">{supers.length === 1 ? supers[0].name : "Owner"}</p>
+                <p className="text-sm">
+                  {supers.length === 1 ? supers[0].name : "Owner"}
+                  <span className="text-xs text-muted-foreground">{supers.length === 1 ? " (atasan langsungmu)" : ""}</span>
+                </p>
               )}
-              <p className="text-[11px] text-muted-foreground">
-                {supers.length > 1 ? "Kamu punya lebih dari satu atasan — pilih siapa yang menerima tiket ini." : "Atasan langsungmu menerima tiket ini."}
-              </p>
             </Field>
           )}
 
@@ -210,7 +209,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
               <Select value={assignee} onChange={setAssignee}>
                 <option value={WHOLE_BRANCH}>Seluruh karyawan cabang (yang pertama mengambil)</option>
                 {coordinators.length > 0 && (
-                  <optgroup label="Koordinator cabang — meneruskan ke timnya">
+                  <optgroup label="Koordinator cabang (meneruskan ke timnya)">
                     {coordinators.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.name}
@@ -219,7 +218,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
                   </optgroup>
                 )}
                 {teamMembers.length > 0 && (
-                  <optgroup label="Anggota tim — langsung ke orangnya">
+                  <optgroup label="Anggota tim (langsung ke orangnya)">
                     {teamMembers.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.name}
@@ -228,62 +227,81 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
                   </optgroup>
                 )}
               </Select>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {assignee === WHOLE_BRANCH
-                  ? "Semua orang di cabang diberi tahu; yang pertama mengambil yang mengerjakan. Koordinator bisa meneruskannya ke timnya."
+                  ? "Semua orang di cabang diberi tahu; yang pertama mengambil yang mengerjakan."
                   : coordinators.some((c) => c.id === assignee)
-                    ? "Koordinator menerima tiket ini lalu meneruskannya ke anggota timnya bila perlu. Kamu yang mengonfirmasi selesai."
-                    : "Langsung ke orangnya; atasan langsungnya diberi tahu dan bisa memantau. Penerima melampirkan foto bukti, kamu yang mengonfirmasi selesai."}
+                    ? "Koordinator meneruskan ke anggota timnya bila perlu. Kamu yang mengonfirmasi selesai."
+                    : "Langsung ke orangnya; atasannya diberi tahu. Kamu yang mengonfirmasi selesai."}
               </p>
             </Field>
           )}
 
-          <Field label="Kategori">
-            <Select value={category} onChange={(v) => setCategory(v as TicketCategory)}>
-              {(Object.keys(TICKET_CATEGORY_LABELS) as TicketCategory[]).map((c) => (
-                <option key={c} value={c}>
-                  {TICKET_CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </Select>
-          </Field>
           <Field label="Judul">
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={mode === "report" ? "mis. AC ruang edit mati" : "mis. Rapikan gudang bahan"}
               maxLength={160}
+              className="h-11"
             />
           </Field>
+
+          <div className="space-y-1.5">
+            <span className="text-xs font-semibold text-muted-foreground">Kategori</span>
+            <div role="radiogroup" aria-label="Kategori" className="flex flex-wrap gap-2">
+              {(Object.keys(TICKET_CATEGORY_LABELS) as TicketCategory[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={category === c}
+                  onClick={() => setCategory(c)}
+                  className={
+                    "h-11 rounded-full border px-4 text-sm font-semibold transition-colors " +
+                    (category === c
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {TICKET_CATEGORY_LABELS[c]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Field label="Deskripsi (opsional)">
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               maxLength={4000}
-              placeholder={mode === "report" ? "Jelaskan detail masalah / kebutuhannya…" : "Jelaskan apa yang perlu dilakukan…"}
-              className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm resize-y"
+              placeholder={mode === "report" ? "Jelaskan detail masalah atau kebutuhannya" : "Jelaskan apa yang perlu dilakukan"}
+              className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm"
             />
           </Field>
 
-          <VerifierPicker
-            people={options.verifierPeople}
-            value={verifier}
-            onChange={setVerifier}
-            excludeIds={mode === "assign" && assignee !== WHOLE_BRANCH ? [assignee] : []}
-          />
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={priority === "urgent"}
+              onChange={(e) => setPriority(e.target.checked ? "urgent" : "normal")}
+              className="size-4"
+            />
+            Tandai mendesak
+          </label>
 
           <div className="space-y-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Foto (opsional, bisa lebih dari 1)</span>
+            <span className="text-xs font-semibold text-muted-foreground">Foto (opsional, bisa lebih dari 1)</span>
             <div className="flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <div key={i} className="relative size-16 rounded-lg border-2 border-foreground overflow-hidden bg-muted">
+                <div key={i} className="relative size-16 overflow-hidden rounded-lg border border-border bg-muted">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={previews[i]} alt={`foto ${i + 1}`} className="size-full object-cover" />
                   <button
                     type="button"
                     onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}
-                    className="absolute top-0.5 right-0.5 grid place-items-center size-5 rounded-full bg-foreground text-background"
+                    className="absolute right-0.5 top-0.5 grid size-5 place-items-center rounded-full bg-foreground text-background"
                     aria-label="Hapus foto"
                   >
                     <X size={12} />
@@ -294,7 +312,8 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="grid place-items-center size-16 rounded-lg border-2 border-dashed border-foreground/40 text-muted-foreground hover:bg-muted transition"
+                  aria-label="Tambah foto"
+                  className="grid size-16 place-items-center rounded-lg border border-dashed border-foreground/40 text-muted-foreground transition hover:bg-muted"
                 >
                   <ImagePlus size={20} />
                 </button>
@@ -312,6 +331,21 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
               }}
             />
           </div>
+
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronDown size={16} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+              Verifikasi penyelesaian <span className="font-normal">(opsional)</span>
+            </summary>
+            <div className="pt-1">
+              <VerifierPicker
+                people={options.verifierPeople}
+                value={verifier}
+                onChange={setVerifier}
+                excludeIds={mode === "assign" && assignee !== WHOLE_BRANCH ? [assignee] : []}
+              />
+            </div>
+          </details>
         </div>
 
         <DialogFooter>
@@ -339,7 +373,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -347,7 +381,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Select({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-10 rounded-xl border-2 border-border bg-background px-3 text-sm">
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm">
       {children}
     </select>
   );
