@@ -276,7 +276,7 @@ export function ProfileForm({
               value={state.gender || undefined}
               onValueChange={(v) => set("gender", v ?? "")}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={pf.selectPlaceholder} />
               </SelectTrigger>
               <SelectContent>
@@ -307,7 +307,7 @@ export function ProfileForm({
                 value={state.shirt_size || undefined}
                 onValueChange={(v) => set("shirt_size", v ?? "")}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder={pf.selectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
@@ -477,7 +477,7 @@ export function ProfileForm({
                 set("job_role", "");
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={pf.selectBusinessUnit} />
               </SelectTrigger>
               <SelectContent>
@@ -493,7 +493,7 @@ export function ProfileForm({
               onValueChange={(v) => set("job_role", v ?? "")}
               disabled={!state.business_unit}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue
                   placeholder={state.business_unit ? pf.selectRole : pf.pickBusinessUnitFirst}
                 />

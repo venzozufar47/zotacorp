@@ -145,7 +145,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
             })
           }
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue placeholder={pf.selectProvince} />
           </SelectTrigger>
           <SelectContent>
@@ -164,7 +164,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
           }
           disabled={!provinceCode || loading.regencies}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue
               placeholder={
                 !provinceCode
@@ -189,7 +189,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
           onValueChange={(v) => onChange({ kecamatan: v ?? "", kelurahan: "" })}
           disabled={!regencyCode || loading.districts}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue
               placeholder={
                 !regencyCode
@@ -214,7 +214,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
           onValueChange={(v) => onChange({ kelurahan: v ?? "" })}
           disabled={!districtCode || loading.villages}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue
               placeholder={
                 !districtCode
