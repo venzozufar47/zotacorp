@@ -40,14 +40,15 @@ export function PengadaanTabs({
             aria-current={active === t.key ? "page" : undefined}
             prefetch={false}
             className={cn(
-              "whitespace-nowrap rounded-lg px-0.5 py-2 text-center text-[12.5px] font-semibold transition md:px-3.5 md:py-1.5 md:text-sm",
+              "relative min-w-0 whitespace-nowrap rounded-lg px-0.5 py-2 text-center text-[12.5px] font-semibold transition md:px-3.5 md:py-1.5 md:text-sm",
               active === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <span className="md:hidden">{t.short}</span>
             <span className="hidden md:inline">{t.label}</span>
             {t.key === "pesanan" && inTransitCount > 0 && (
-              <span className="ml-1 inline-grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground tabular-nums">
+              // Mobile: lencana menempel di pojok kanan atas label (tidak melebarkan sel tab dan menimpa tab sebelah); desktop: sejajar label.
+              <span className="absolute -top-1.5 right-0 inline-grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground tabular-nums md:static md:ml-1">
                 {inTransitCount}
                 <span className="sr-only"> pesanan belum tiba</span>
               </span>
