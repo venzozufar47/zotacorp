@@ -3,7 +3,19 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, Download, Lock, CheckCircle2, Image as ImageIcon } from "lucide-react";
+import {
+  Camera,
+  Download,
+  Lock,
+  CheckCircle2,
+  FileText,
+  PenLine,
+  RefreshCw,
+  Image as ImageIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Disclosure, DisclosureGroup } from "@/components/account/Disclosure";
 import {
   signEmploymentContract,
   getContractRenderData,
@@ -182,144 +194,197 @@ export function ContractSignClient({
     await downloadContractPdf(res.data);
   };
 
+  const identityComplete = IDENTITY_FIELDS.every((f) => idf[f.key].trim() !== "");
+  // Identitas yang sudah terisi dari profil cukup diringkas; dibuka hanya bila perlu dikoreksi.
+  const [editIdentity, setEditIdentity] = useState(!identityComplete);
+  const withLampiran = shouldRenderLampiran(contract.body_markdown, lampiran);
+
   return (
     <div className="space-y-4">
-      {updateRequired && (
-        <div className="rounded-xl border-2 border-foreground bg-warning/40 px-4 py-3 space-y-1">
-          <p className="text-sm font-bold">
-            Kontrak diperbarui — mohon tanda tangani ulang
-          </p>
-          <p className="text-xs text-foreground/80">
-            Ada perubahan pada kontrakmu. Baca ringkasannya di bawah, lalu tanda
-            tangani ulang versi terbaru ini.
-          </p>
-          {contract.update_note && (
-            <p className="text-xs">
-              <span className="font-semibold">Perubahan:</span>{" "}
+      {/* Status dulu: apa yang diminta dari karyawan */}
+      {updateRequired ? (
+        <StatusBanner
+          tone="warning"
+          icon={<RefreshCw size={18} aria-hidden />}
+          title="Kontrak diperbarui, tanda tangani ulang"
+        >
+          {contract.update_note ? (
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Perubahan:</span>{" "}
               {contract.update_note}
             </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Baca versi terbaru di bawah, lalu tanda tangani ulang.
+            </p>
           )}
-        </div>
-      )}
-
-      {signed && (
-        <div className="flex items-center gap-2 rounded-xl border-2 border-foreground bg-pop-emerald/20 px-4 py-3">
-          <CheckCircle2 size={18} className="text-foreground" />
-          <span className="text-sm font-medium flex-1">
-            Kontrak sudah kamu tandatangani
-            {contract.employee_signed_at
-              ? ` pada ${new Date(contract.employee_signed_at).toLocaleString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
-              : ""}
-            .
-          </span>
-          <button
-            type="button"
-            onClick={download}
-            disabled={downloading}
-            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-foreground bg-card px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
-          >
-            <Download size={14} /> Unduh PDF
-          </button>
-        </div>
-      )}
-
-      {/* Dokumen */}
-      <div className="rounded-2xl border-2 border-foreground bg-white shadow-hard-sm">
-        <div className="px-5 sm:px-8 py-6 max-w-[760px] mx-auto text-[13px] text-foreground leading-relaxed">
-          <BlocksHtml blocks={blocks} />
-
-          {/* Lampiran 1 — hanya bila kontrak punya lampiran */}
-          {shouldRenderLampiran(contract.body_markdown, lampiran) && (
-            <>
-              <hr className="my-6 border-border" />
-              <h2 className="text-center font-bold text-base mb-3">
-                LAMPIRAN 1: DESKRIPSI PEKERJAAN
-              </h2>
-              <p className="mb-1">
-                <strong>Nama:</strong> {lampiran?.nama || contract.fields?.nama || "—"}
-                {" · "}
-                <strong>Posisi:</strong> {lampiran?.posisi || contract.fields?.jabatan || "—"}
-              </p>
-              <p className="mb-3">
-                <strong>Cabang:</strong> {lampiran?.cabang || contract.fields?.cabang || "—"}
-              </p>
-              <LampiranList title="B. Tujuan Posisi" items={lampiran?.tujuan} />
-              <LampiranList title="C. Tanggung Jawab Utama" items={lampiran?.tanggung_jawab} />
-              <LampiranList title="D. SOP yang Relevan" items={lampiran?.sop} />
-              <LampiranList title="E. Indikator Kinerja (KPI)" items={lampiran?.kpi} />
-              <LampiranList title="F. Waktu Kerja / Shift" items={lampiran?.shift} />
-            </>
+        </StatusBanner>
+      ) : signed ? (
+        <StatusBanner
+          tone="success"
+          icon={<CheckCircle2 size={18} aria-hidden />}
+          title="Sudah kamu tandatangani"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 gap-1.5"
+              onClick={download}
+              loading={downloading}
+            >
+              <Download size={14} /> PDF
+            </Button>
+          }
+        >
+          {contract.employee_signed_at && (
+            <p className="text-sm text-muted-foreground">
+              {new Date(contract.employee_signed_at).toLocaleString("id-ID", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
           )}
-        </div>
-      </div>
-
-      {/* Sign panel */}
-      {!signed && (
-        <div className="rounded-2xl border-2 border-foreground bg-card p-5 space-y-4">
-          <h3 className="font-display font-bold">
-            {updateRequired ? "Tanda tangani ulang kontrak" : "Tanda tangani kontrak"}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Lengkapi identitas pribadimu (wajib — sebagian terisi otomatis dari
-            profil), bubuhkan tanda tangan, lalu setujui pernyataan di bawah.
-            Meterai Rp10.000 dibubuhkan terpisah oleh perusahaan.
+        </StatusBanner>
+      ) : (
+        <StatusBanner
+          tone="warning"
+          icon={<PenLine size={18} aria-hidden />}
+          title="Menunggu tanda tanganmu"
+        >
+          <p className="text-sm text-muted-foreground">
+            Baca isi kontrak, lalu tanda tangani di bagian bawah.
           </p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {IDENTITY_FIELDS.map((f) => {
-              const label = (
-                <span className="text-xs font-medium text-muted-foreground">
-                  {f.label} <span className="text-destructive">*</span>
-                </span>
-              );
-              // Tempat & tanggal lahir lewat dropdown supaya format seragam
-              // ("Surakarta", "20 September 1999").
-              if (f.key === "tempat_lahir" || f.key === "tgl_lahir") {
-                return (
-                  <div key={f.key} className="space-y-1 sm:col-span-2">
-                    {label}
-                    {f.key === "tempat_lahir" ? (
-                      <BirthPlacePicker
-                        value={idf.tempat_lahir}
-                        onChange={(v) => setIdf((s) => ({ ...s, tempat_lahir: v }))}
-                        disabled={pending}
-                      />
-                    ) : (
-                      <BirthDatePicker
-                        value={idf.tgl_lahir}
-                        onChange={(v) => setIdf((s) => ({ ...s, tgl_lahir: v }))}
-                        disabled={pending}
-                      />
-                    )}
-                  </div>
-                );
-              }
-              return (
-                <label
-                  key={f.key}
-                  className={`block space-y-1 ${f.full ? "sm:col-span-2" : ""}`}
-                >
-                  {label}
-                  <input
-                    value={idf[f.key]}
-                    onChange={(e) =>
-                      setIdf((s) => ({ ...s, [f.key]: e.target.value }))
-                    }
-                    className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                    required
-                  />
-                </label>
-              );
-            })}
+        </StatusBanner>
+      )}
+
+      {/* Dokumen: terbuka saat belum ditandatangani, tertutup setelahnya */}
+      <DisclosureGroup>
+        <Disclosure
+          title="Isi kontrak"
+          icon={FileText}
+          summary={withLampiran ? "Perjanjian Kerja dan Lampiran" : "Perjanjian Kerja"}
+          defaultOpen={!signed}
+        >
+          <div className="mx-auto max-w-[760px] rounded-xl border border-border bg-card px-4 py-5 text-[13px] leading-relaxed text-foreground sm:px-8">
+            <BlocksHtml blocks={blocks} />
+
+            {/* Lampiran 1: hanya bila kontrak punya lampiran */}
+            {withLampiran && (
+              <>
+                <hr className="my-6 border-border" />
+                <h2 className="mb-3 text-center text-base font-bold">
+                  LAMPIRAN 1: DESKRIPSI PEKERJAAN
+                </h2>
+                <p className="mb-1">
+                  <strong>Nama:</strong> {lampiran?.nama || contract.fields?.nama || "—"}
+                  {" · "}
+                  <strong>Posisi:</strong> {lampiran?.posisi || contract.fields?.jabatan || "—"}
+                </p>
+                <p className="mb-3">
+                  <strong>Cabang:</strong> {lampiran?.cabang || contract.fields?.cabang || "—"}
+                </p>
+                <LampiranList title="B. Tujuan Posisi" items={lampiran?.tujuan} />
+                <LampiranList title="C. Tanggung Jawab Utama" items={lampiran?.tanggung_jawab} />
+                <LampiranList title="D. SOP yang Relevan" items={lampiran?.sop} />
+                <LampiranList title="E. Indikator Kinerja (KPI)" items={lampiran?.kpi} />
+                <LampiranList title="F. Waktu Kerja / Shift" items={lampiran?.shift} />
+              </>
+            )}
           </div>
-          <div className="space-y-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Foto KTP{" "}
-              {!hasSavedKtp && <span className="text-destructive">*</span>}
-            </span>
+        </Disclosure>
+      </DisclosureGroup>
+
+      {/* Panel tanda tangan: tiga langkah */}
+      {!signed && (
+        <div className="space-y-5 rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <div>
+            <h2 className="font-display text-base font-semibold">
+              {updateRequired ? "Tanda tangani ulang" : "Tanda tangani kontrak"}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Meterai Rp10.000 dibubuhkan terpisah oleh perusahaan.
+            </p>
+          </div>
+
+          <Step n={1} title="Identitas">
+            {!editIdentity ? (
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium">{idf.nama}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    NIK {idf.nik} · {idf.tempat_lahir}, {idf.tgl_lahir}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">{idf.alamat}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 shrink-0 text-muted-foreground"
+                  onClick={() => setEditIdentity(true)}
+                >
+                  Ubah
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {IDENTITY_FIELDS.map((f) => {
+                  const label = (
+                    <span className="text-xs text-muted-foreground">
+                      {f.label} <span className="text-destructive">*</span>
+                    </span>
+                  );
+                  // Tempat & tanggal lahir lewat dropdown supaya format seragam
+                  // ("Surakarta", "20 September 1999").
+                  if (f.key === "tempat_lahir" || f.key === "tgl_lahir") {
+                    return (
+                      <div key={f.key} className="space-y-1 sm:col-span-2">
+                        {label}
+                        {f.key === "tempat_lahir" ? (
+                          <BirthPlacePicker
+                            value={idf.tempat_lahir}
+                            onChange={(v) => setIdf((s) => ({ ...s, tempat_lahir: v }))}
+                            disabled={pending}
+                          />
+                        ) : (
+                          <BirthDatePicker
+                            value={idf.tgl_lahir}
+                            onChange={(v) => setIdf((s) => ({ ...s, tgl_lahir: v }))}
+                            disabled={pending}
+                          />
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <label
+                      key={f.key}
+                      className={`block space-y-1 ${f.full ? "sm:col-span-2" : ""}`}
+                    >
+                      {label}
+                      <Input
+                        value={idf[f.key]}
+                        onChange={(e) =>
+                          setIdf((s) => ({ ...s, [f.key]: e.target.value }))
+                        }
+                        required
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </Step>
+
+          <Step n={2} title="Foto KTP" required={!hasSavedKtp}>
             <p className="text-xs text-muted-foreground">
               {hasSavedKtp
                 ? "Foto KTP kamu sudah tersimpan. Unggah lagi hanya bila ingin menggantinya."
-                : "Foto KTP asli kamu (seluruh kartu terlihat jelas, tidak buram). Hanya dilihat admin untuk administrasi kepegawaian dan tidak dimasukkan ke dokumen kontrak."}
+                : "Seluruh kartu terlihat jelas dan tidak buram. Hanya admin yang melihatnya, untuk administrasi kepegawaian. Foto tidak masuk ke dokumen kontrak."}
             </p>
             <input
               ref={ktpCameraRef}
@@ -343,22 +408,24 @@ export function ContractSignClient({
               }}
             />
             <div className="grid grid-cols-2 gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                className="min-h-11 gap-2"
                 disabled={pending}
                 onClick={() => ktpCameraRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-xl border-2 border-foreground bg-card px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
               >
                 <Camera size={16} /> {ktpFile ? "Foto ulang" : "Ambil foto"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                className="min-h-11 gap-2"
                 disabled={pending}
                 onClick={() => ktpGalleryRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-xl border-2 border-foreground bg-card px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
               >
-                <ImageIcon size={16} /> Pilih dari galeri
-              </button>
+                <ImageIcon size={16} /> Dari galeri
+              </Button>
             </div>
             {ktpPreview && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -368,41 +435,95 @@ export function ContractSignClient({
                 className="max-h-48 w-auto rounded-lg border border-border"
               />
             )}
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground">Tanda tangan</span>
+          </Step>
+
+          <Step n={3} title="Tanda tangan" required>
             <SignaturePad onBlob={setSigBlob} disabled={pending} />
-          </div>
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5 size-4 accent-primary"
-            />
-            <span className="text-xs leading-relaxed text-foreground">
-              Saya menyatakan telah membaca, memahami, dan menyetujui seluruh isi
-              Perjanjian Kerja
-              {shouldRenderLampiran(contract.body_markdown, lampiran)
-                ? " beserta Lampiran"
-                : ""}{" "}
-              ini, termasuk pemrosesan data pribadi saya (termasuk foto KTP) untuk
-              administrasi kepegawaian, dan menandatanganinya secara elektronik
-              dengan sadar tanpa paksaan. Tanda tangan elektronik ini sah sebagai
-              alat bukti sesuai UU ITE.
-            </span>
-          </label>
-          <button
+            <label className="flex cursor-pointer items-start gap-2.5 pt-1">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 size-5 shrink-0 accent-primary"
+              />
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                Saya sudah membaca, memahami, dan menyetujui seluruh isi Perjanjian
+                Kerja{withLampiran ? " beserta Lampiran" : ""} ini, termasuk
+                pemrosesan data pribadi saya (termasuk foto KTP) untuk administrasi
+                kepegawaian. Saya menandatanganinya secara elektronik dengan sadar
+                dan tanpa paksaan. Tanda tangan elektronik ini sah sebagai alat bukti
+                menurut UU ITE.
+              </span>
+            </label>
+          </Step>
+
+          <Button
             type="button"
             onClick={submit}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold shadow-hard-sm disabled:opacity-50"
+            loading={pending}
+            className="min-h-12 w-full gap-2"
           >
             <Lock size={15} /> {pending ? "Memproses…" : "Tandatangani kontrak"}
-          </button>
+          </Button>
         </div>
       )}
     </div>
+  );
+}
+
+function StatusBanner({
+  tone,
+  icon,
+  title,
+  action,
+  children,
+}: {
+  tone: "warning" | "success";
+  icon: React.ReactNode;
+  title: string;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-4">
+      <span
+        className={`grid size-9 shrink-0 place-items-center rounded-full ${
+          tone === "success" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
+        }`}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <p className="text-sm font-semibold">{title}</p>
+        {children}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function Step({
+  n,
+  title,
+  required,
+  children,
+}: {
+  n: number;
+  title: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-2.5">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <span className="grid size-5 place-items-center rounded-full bg-foreground text-[11px] font-semibold text-background">
+          {n}
+        </span>
+        {title}
+        {required && <span className="text-destructive">*</span>}
+      </h3>
+      {children}
+    </section>
   );
 }
 

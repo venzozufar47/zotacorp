@@ -2,12 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentProfile } from "@/lib/supabase/cached";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AvatarCard } from "@/components/profile/AvatarCard";
 import { PosPinCard } from "@/components/profile/PosPinCard";
 import type { Profile } from "@/lib/supabase/types";
-import { getDictionary } from "@/lib/i18n/server";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 
 export default async function EmployeeProfilePage() {
@@ -18,22 +16,18 @@ export default async function EmployeeProfilePage() {
   if (!profile) redirect("/dashboard");
   if (profile.role === "admin") redirect("/admin/attendance");
 
-  const [{ t }, businessUnits] = await Promise.all([
-    getDictionary(),
-    listBusinessUnits(),
-  ]);
+  const businessUnits = await listBusinessUnits();
+  const subtitle =
+    [profile.job_role, profile.business_unit].filter(Boolean).join(" · ") || null;
 
   return (
-    <div className="space-y-5 animate-fade-up">
-      <PageHeader
-        title={t.profilePage.title}
-        subtitle={t.profilePage.subtitle}
-      />
+    <div className="space-y-5">
       <AvatarCard
         profileId={profile.id}
         fullName={profile.full_name ?? null}
         avatarUrl={profile.avatar_url ?? null}
         avatarSeed={profile.avatar_seed ?? null}
+        subtitle={subtitle}
       />
       <ProfileForm profile={profile as Profile} businessUnits={businessUnits} />
       <PosPinCard hasPin={!!(profile as Profile).pos_pin_hash} />

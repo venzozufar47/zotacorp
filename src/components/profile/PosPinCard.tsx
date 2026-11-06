@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, ShieldOff } from "lucide-react";
 import { setPosPin, clearPosPin } from "@/lib/actions/pos-pin.actions";
 import { isValidPinFormat } from "@/lib/pos-pin-format";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Disclosure, DisclosureGroup } from "@/components/account/Disclosure";
 
 interface Props {
   hasPin: boolean;
@@ -15,103 +16,66 @@ interface Props {
 type Mode = null | "set" | "change" | "clear";
 
 /**
- * Self-service POS PIN management on the employee profile page. Used
- * by anyone who might be designated as a POS operation authorizer
- * (production / withdrawal / opname). PIN is 4–6 digits.
+ * Kelola PIN POS sendiri di halaman Profil. Dipakai siapa pun yang mungkin
+ * ditunjuk sebagai pemberi otorisasi operasi POS (produksi, penarikan,
+ * opname). PIN 4–6 digit.
  */
 export function PosPinCard({ hasPin }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(null);
 
+  function done() {
+    setMode(null);
+    router.refresh();
+  }
+
   return (
-    <section className="rounded-2xl border border-border/70 bg-card p-5">
-      <div className="flex items-center justify-between gap-3 mb-1">
-        <div className="flex items-center gap-2">
-          {hasPin ? (
-            <ShieldCheck size={16} className="text-success" />
-          ) : (
-            <ShieldOff size={16} className="text-muted-foreground" />
-          )}
-          <h2 className="font-display font-semibold text-foreground">
-            PIN POS
-          </h2>
-        </div>
-        <span
-          className={cn(
-            "text-[10.5px] font-semibold uppercase tracking-[0.1em] px-2 py-0.5 rounded-full",
-            hasPin ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
-          )}
-        >
-          {hasPin ? "Aktif" : "Belum set"}
-        </span>
-      </div>
-      <p className="text-[12.5px] text-muted-foreground mb-4">
-        PIN 4–6 digit untuk otorisasi operasi POS (produksi, penarikan,
-        opname). Admin akan menetapkan kamu sebagai penanggungjawab operasi
-        tertentu di rekening yang relevan.
-      </p>
+    <DisclosureGroup>
+      <Disclosure
+        title="PIN POS"
+        icon={hasPin ? ShieldCheck : ShieldOff}
+        summary={hasPin ? "Aktif" : "Belum diatur"}
+      >
+        <p className="text-xs text-muted-foreground">
+          PIN 4–6 digit untuk mengotorisasi operasi POS (produksi, penarikan,
+          opname). Admin menunjuk penanggung jawab tiap operasi per rekening.
+        </p>
 
-      {mode === null && (
-        <div className="flex flex-wrap items-center gap-2">
-          {hasPin ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setMode("change")}
-                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary text-primary-foreground text-[13px] font-medium hover:brightness-110"
-              >
-                Ganti PIN
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("clear")}
-                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-border/70 bg-card text-[13px] text-muted-foreground hover:text-destructive hover:border-destructive/50"
-              >
-                Hapus PIN
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setMode("set")}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary text-primary-foreground text-[13px] font-medium hover:brightness-110"
-            >
-              Set PIN
-            </button>
-          )}
-        </div>
-      )}
+        {mode === null && (
+          <div className="flex flex-wrap items-center gap-2">
+            {hasPin ? (
+              <>
+                <Button size="sm" className="min-h-11" onClick={() => setMode("change")}>
+                  Ganti PIN
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11 text-muted-foreground hover:text-destructive"
+                  onClick={() => setMode("clear")}
+                >
+                  Hapus PIN
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" className="min-h-11" onClick={() => setMode("set")}>
+                Atur PIN
+              </Button>
+            )}
+          </div>
+        )}
 
-      {mode === "set" && (
-        <SetPinForm
-          requireCurrent={false}
-          onCancel={() => setMode(null)}
-          onSuccess={() => {
-            setMode(null);
-            router.refresh();
-          }}
-        />
-      )}
-      {mode === "change" && (
-        <SetPinForm
-          requireCurrent
-          onCancel={() => setMode(null)}
-          onSuccess={() => {
-            setMode(null);
-            router.refresh();
-          }}
-        />
-      )}
-      {mode === "clear" && (
-        <ClearPinForm
-          onCancel={() => setMode(null)}
-          onSuccess={() => {
-            setMode(null);
-            router.refresh();
-          }}
-        />
-      )}
-    </section>
+        {mode === "set" && (
+          <SetPinForm requireCurrent={false} onCancel={() => setMode(null)} onSuccess={done} />
+        )}
+        {mode === "change" && (
+          <SetPinForm requireCurrent onCancel={() => setMode(null)} onSuccess={done} />
+        )}
+        {mode === "clear" && (
+          <ClearPinForm onCancel={() => setMode(null)} onSuccess={done} />
+        )}
+      </Disclosure>
+    </DisclosureGroup>
   );
 }
 
@@ -156,42 +120,31 @@ function SetPinForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 max-w-sm">
+    <form onSubmit={submit} className="max-w-sm space-y-3">
       {requireCurrent && (
-        <PinField
-          label="PIN saat ini"
-          value={currentPin}
-          onChange={setCurrentPin}
-          autoFocus
-        />
+        <PinField label="PIN saat ini" value={currentPin} onChange={setCurrentPin} autoFocus />
       )}
-      <PinField
-        label="PIN baru"
-        value={pin}
-        onChange={setPin}
-        autoFocus={!requireCurrent}
-      />
+      <PinField label="PIN baru" value={pin} onChange={setPin} autoFocus={!requireCurrent} />
       <PinField label="Konfirmasi PIN baru" value={confirm} onChange={setConfirm} />
       {error && (
-        <p className="text-[12px] text-destructive font-medium">{error}</p>
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {error}
+        </p>
       )}
       <div className="flex items-center gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary text-primary-foreground text-[13px] font-medium hover:brightness-110 disabled:opacity-50"
-        >
-          {pending && <Loader2 size={13} className="animate-spin" />}
+        <Button type="submit" size="sm" className="min-h-11 px-5" loading={pending}>
           Simpan
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
+          className="min-h-11 text-muted-foreground"
           onClick={onCancel}
           disabled={pending}
-          className="inline-flex items-center h-9 px-4 rounded-full text-[13px] text-muted-foreground hover:text-foreground transition disabled:opacity-50"
         >
           Batal
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -223,37 +176,37 @@ function ClearPinForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 max-w-sm">
-      <p className="text-[12.5px] text-muted-foreground">
-        Setelah dihapus, kamu tidak bisa lagi dipakai sebagai authorizer
-        sampai set PIN baru.
+    <form onSubmit={submit} className="max-w-sm space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Setelah dihapus, kamu tidak bisa jadi pemberi otorisasi sampai
+        mengatur PIN baru.
       </p>
-      <PinField
-        label="PIN saat ini"
-        value={currentPin}
-        onChange={setCurrentPin}
-        autoFocus
-      />
+      <PinField label="PIN saat ini" value={currentPin} onChange={setCurrentPin} autoFocus />
       {error && (
-        <p className="text-[12px] text-destructive font-medium">{error}</p>
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {error}
+        </p>
       )}
       <div className="flex items-center gap-2 pt-1">
-        <button
+        <Button
           type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-destructive text-white text-[13px] font-medium hover:brightness-110 disabled:opacity-50"
+          size="sm"
+          variant="destructive"
+          className="min-h-11 px-5"
+          loading={pending}
         >
-          {pending && <Loader2 size={13} className="animate-spin" />}
           Hapus PIN
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
+          className="min-h-11 text-muted-foreground"
           onClick={onCancel}
           disabled={pending}
-          className="inline-flex items-center h-9 px-4 rounded-full text-[13px] text-muted-foreground hover:text-foreground transition disabled:opacity-50"
         >
           Batal
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -273,9 +226,7 @@ function PinField({
   const [show, setShow] = useState(false);
   return (
     <label className="block">
-      <span className="text-[12px] font-medium text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-xs text-muted-foreground">{label}</span>
       <div className="relative mt-1">
         <input
           type={show ? "text" : "password"}
@@ -285,17 +236,15 @@ function PinField({
           maxLength={6}
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
-          className="w-full h-10 rounded-lg border border-border/70 bg-card px-3 pr-10 text-[15px] tracking-[0.5em] tabular-nums"
+          className="h-11 w-full rounded-lg border border-border bg-background px-3 pr-11 text-base tabular-nums tracking-[0.5em] focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         />
         <button
           type="button"
           onClick={() => setShow((v) => !v)}
-          className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground transition-colors"
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground hover:text-foreground"
           aria-label={show ? "Sembunyikan PIN" : "Lihat PIN"}
-          title={show ? "Sembunyikan PIN" : "Lihat PIN"}
-          tabIndex={-1}
         >
-          {show ? <EyeOff size={15} /> : <Eye size={15} />}
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
     </label>

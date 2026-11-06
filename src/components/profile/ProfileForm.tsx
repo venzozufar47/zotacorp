@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Pencil, X, Check, Ruler } from "lucide-react";
+import {
+  Pencil,
+  X,
+  Check,
+  Ruler,
+  UserRound,
+  MapPin,
+  House,
+  Briefcase,
+  Phone,
+  HeartPulse,
+  type LucideIcon,
+} from "lucide-react";
+import { Disclosure, DisclosureGroup } from "@/components/account/Disclosure";
 import {
   Dialog,
   DialogContent,
@@ -114,6 +126,27 @@ function toFormState(p: Profile): FormState {
 
 type CardSection = "personal" | "work" | "contact" | "emergency" | "domisili" | "asal";
 
+const REQUIRED_KEYS: Record<CardSection, (keyof FormState)[]> = {
+  personal: ["full_name", "gender", "date_of_birth", "place_of_birth"],
+  domisili: [
+    "domisili_provinsi",
+    "domisili_kota",
+    "domisili_kecamatan",
+    "domisili_kelurahan",
+    "domisili_alamat",
+  ],
+  asal: [
+    "asal_provinsi",
+    "asal_kota",
+    "asal_kecamatan",
+    "asal_kelurahan",
+    "asal_alamat",
+  ],
+  work: ["business_unit", "job_role"],
+  contact: ["whatsapp_number", "npwp"],
+  emergency: ["emergency_contact_name", "emergency_contact_whatsapp"],
+};
+
 /**
  * True when every asal_* field already equals its domisili_* counterpart.
  * Drives the "Same as current residence" checkbox's checked state so it
@@ -202,11 +235,21 @@ export function ProfileForm({
 
   const isEditing = (section: CardSection) => editing === section;
 
+  /** Ringkasan satu baris saat bagian tertutup; kosong → "Belum diisi". */
+  const summaryOf = (...parts: string[]) =>
+    parts.map((p) => p.trim()).filter(Boolean).join(" · ") || pf.notFilled;
+  /** Kunci wajib per bagian — sama dengan daftar yang dipakai kartu kelengkapan di dashboard. */
+  const missing = (section: CardSection) =>
+    REQUIRED_KEYS[section].some((k) => String(state[k] ?? "").trim() === "");
+
   return (
-    <div className="space-y-5">
+    <DisclosureGroup>
       {/* Personal Information */}
       <SectionCard
         title={pf.sectionPersonal}
+        icon={UserRound}
+        summary={summaryOf(state.nickname || state.full_name, state.place_of_birth)}
+        incomplete={missing("personal")}
         labels={pf}
         editing={isEditing("personal")}
         onEdit={() => startEdit("personal")}
@@ -214,7 +257,7 @@ export function ProfileForm({
         onSave={saveSection}
         saving={saving}
       >
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className={isEditing("personal") ? "grid gap-4 md:grid-cols-2" : "grid grid-cols-2 gap-x-4 gap-y-3"}>
           <Field label={pf.fullName} required value={state.full_name} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Input
               value={state.full_name}
@@ -257,9 +300,9 @@ export function ProfileForm({
               placeholder={pf.placeOfBirthPlaceholder}
             />
           </Field>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">{pf.shirtSize}</Label>
+              <Label className="text-xs text-muted-foreground">{pf.shirtSize}</Label>
               <SizeChartDialog label={pf.viewSizeChart} title={pf.sizeChartTitle} />
             </div>
             {isEditing("personal") ? (
@@ -278,8 +321,8 @@ export function ProfileForm({
               </Select>
             ) : (
               <p
-                className={`text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px] ${
-                  !state.shirt_size ? "text-muted-foreground italic" : "text-foreground"
+                className={`text-sm ${
+                  !state.shirt_size ? "text-muted-foreground" : "font-medium text-foreground"
                 }`}
               >
                 {state.shirt_size || pf.notFilled}
@@ -292,6 +335,9 @@ export function ProfileForm({
       {/* Current Residence */}
       <SectionCard
         title={pf.sectionCurrentResidence}
+        icon={House}
+        summary={summaryOf(state.domisili_kota, state.domisili_provinsi)}
+        incomplete={missing("domisili")}
         labels={pf}
         editing={isEditing("domisili")}
         onEdit={() => startEdit("domisili")}
@@ -329,6 +375,9 @@ export function ProfileForm({
         return (
       <SectionCard
         title={pf.sectionHometown}
+        icon={MapPin}
+        summary={summaryOf(state.asal_kota, state.asal_provinsi)}
+        incomplete={missing("asal")}
         labels={pf}
         editing={isEditing("asal")}
         onEdit={() => startEdit("asal")}
@@ -337,7 +386,7 @@ export function ProfileForm({
         saving={saving}
       >
         {isEditing("asal") && (
-          <label className="flex items-start gap-3 rounded-2xl border-2 border-foreground/30 bg-muted px-3 py-2.5 cursor-pointer hover:border-foreground transition-colors">
+          <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/50 px-3 py-2.5 cursor-pointer hover:bg-muted transition-colors">
             <input
               type="checkbox"
               checked={asalLocked}
@@ -368,10 +417,10 @@ export function ProfileForm({
                   }));
                 }
               }}
-              className="mt-0.5 h-5 w-5 rounded border-2 border-foreground accent-primary"
+              className="mt-0.5 h-5 w-5 rounded accent-primary"
             />
             <div className="flex-1">
-              <div className="text-sm font-bold">{pf.sameAsCurrentResidence}</div>
+              <div className="text-sm font-semibold">{pf.sameAsCurrentResidence}</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                 {pf.sameAsCurrentResidenceHint}
               </div>
@@ -411,6 +460,9 @@ export function ProfileForm({
       {/* Work Information */}
       <SectionCard
         title={pf.sectionWork}
+        icon={Briefcase}
+        summary={summaryOf(state.business_unit, state.job_role)}
+        incomplete={missing("work")}
         labels={pf}
         editing={isEditing("work")}
         onEdit={() => startEdit("work")}
@@ -418,7 +470,7 @@ export function ProfileForm({
         onSave={saveSection}
         saving={saving}
       >
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className={isEditing("work") ? "grid gap-4 md:grid-cols-2" : "grid grid-cols-2 gap-x-4 gap-y-3"}>
           <Field label={pf.businessUnit} value={state.business_unit} editing={isEditing("work")} notFilled={pf.notFilled}>
             <Select
               value={state.business_unit || undefined}
@@ -478,11 +530,11 @@ export function ProfileForm({
                 type="checkbox"
                 checked={state.is_flexible_schedule}
                 onChange={(e) => set("is_flexible_schedule", e.target.checked)}
-                className="h-5 w-5 rounded border-2 border-foreground accent-primary"
+                className="h-5 w-5 rounded accent-primary"
                 disabled={!isEditing("work")}
               />
               <div>
-                <span className="text-sm font-bold">{pf.flexibleSchedule}</span>
+                <span className="text-sm font-semibold">{pf.flexibleSchedule}</span>
                 <p className="text-xs text-muted-foreground">
                   {pf.flexibleScheduleHint}
                 </p>
@@ -522,6 +574,9 @@ export function ProfileForm({
       {/* Contact Information */}
       <SectionCard
         title={pf.sectionContact}
+        icon={Phone}
+        summary={summaryOf(state.whatsapp_number)}
+        incomplete={missing("contact")}
         labels={pf}
         editing={isEditing("contact")}
         onEdit={() => startEdit("contact")}
@@ -529,7 +584,7 @@ export function ProfileForm({
         onSave={saveSection}
         saving={saving}
       >
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className={isEditing("contact") ? "grid gap-4 md:grid-cols-2" : "grid grid-cols-2 gap-x-4 gap-y-3"}>
           <Field label={pf.whatsappNumber} value={state.whatsapp_number} editing={isEditing("contact")} notFilled={pf.notFilled}>
             <Input
               type="tel"
@@ -551,6 +606,9 @@ export function ProfileForm({
       {/* Emergency Contact */}
       <SectionCard
         title={pf.sectionEmergency}
+        icon={HeartPulse}
+        summary={summaryOf(state.emergency_contact_name)}
+        incomplete={missing("emergency")}
         labels={pf}
         editing={isEditing("emergency")}
         onEdit={() => startEdit("emergency")}
@@ -558,7 +616,7 @@ export function ProfileForm({
         onSave={saveSection}
         saving={saving}
       >
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className={isEditing("emergency") ? "grid gap-4 md:grid-cols-2" : "grid grid-cols-2 gap-x-4 gap-y-3"}>
           <Field label={pf.emergencyContactName} value={state.emergency_contact_name} editing={isEditing("emergency")} notFilled={pf.notFilled}>
             <Input
               value={state.emergency_contact_name}
@@ -575,12 +633,20 @@ export function ProfileForm({
           </Field>
         </div>
       </SectionCard>
-    </div>
+    </DisclosureGroup>
   );
 }
 
+/**
+ * Satu bagian profil: baris ringkas yang terbuka jadi detail. Saat diedit
+ * bagian ini dikunci terbuka; Ubah / Batal / Simpan ada di bawah isinya
+ * supaya jempol tidak perlu naik lagi setelah mengisi.
+ */
 function SectionCard({
   title,
+  icon,
+  summary,
+  incomplete,
   labels,
   editing,
   onEdit,
@@ -590,6 +656,9 @@ function SectionCard({
   children,
 }: {
   title: string;
+  icon: LucideIcon;
+  summary: string;
+  incomplete: boolean;
   labels: Dictionary["profileForm"];
   editing: boolean;
   onEdit: () => void;
@@ -598,46 +667,56 @@ function SectionCard({
   saving: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Card>
-      <CardHeader className="pb-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">{title}</CardTitle>
+    <Disclosure
+      title={title}
+      icon={icon}
+      summary={summary}
+      status={incomplete ? "warn" : undefined}
+      statusLabel={labels.notFilled}
+      open={open || editing}
+      onOpenChange={(next) => {
+        if (!editing) setOpen(next);
+      }}
+    >
+      {children}
+      <div className="flex items-center justify-end gap-2 pt-1">
         {editing ? (
-          <div className="flex items-center gap-1.5">
+          <>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2.5 text-xs text-muted-foreground"
+              className="min-h-11 px-4 text-muted-foreground"
               onClick={onCancel}
               disabled={saving}
             >
-              <X size={14} className="mr-1" />
+              <X size={14} />
               {labels.cancel}
             </Button>
             <Button
               size="sm"
-              className="h-8 px-3 text-xs"
+              className="min-h-11 px-5"
               onClick={onSave}
               disabled={saving}
             >
-              <Check size={14} className="mr-1" />
+              <Check size={14} />
               {saving ? labels.saving : labels.save}
             </Button>
-          </div>
+          </>
         ) : (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-8 px-2.5 text-xs text-muted-foreground"
+            className="min-h-11 px-4"
             onClick={onEdit}
           >
-            <Pencil size={14} className="mr-1" />
+            <Pencil size={14} />
             {labels.edit}
           </Button>
         )}
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
+      </div>
+    </Disclosure>
   );
 }
 
@@ -694,15 +773,15 @@ function Field({
   const isEmpty = !value || value.trim() === "";
 
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs">
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">
         {label}
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {editing ? (
         children
       ) : (
-        <p className={`text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px] ${isEmpty ? "text-muted-foreground italic" : "text-foreground"}`}>
+        <p className={`text-sm break-words ${isEmpty ? "text-muted-foreground" : "font-medium text-foreground"}`}>
           {isEmpty ? notFilled : value}
         </p>
       )}

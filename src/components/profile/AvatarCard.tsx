@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Sparkles, Upload, Trash2, Crop } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Sparkles, Upload, Trash2, Crop, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { AvatarCropDialog } from "./AvatarCropDialog";
@@ -19,10 +18,19 @@ interface Props {
   fullName: string | null;
   avatarUrl: string | null;
   avatarSeed: string | null;
+  /** Baris kecil di bawah nama, mis. "Kasir · Yeobo Space". */
+  subtitle?: string | null;
 }
 
-export function AvatarCard({ profileId, fullName, avatarUrl, avatarSeed }: Props) {
+export function AvatarCard({
+  profileId,
+  fullName,
+  avatarUrl,
+  avatarSeed,
+  subtitle,
+}: Props) {
   const router = useRouter();
+  const [showActions, setShowActions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pending, startTransition] = useTransition();
   const [optimisticSeed, setOptimisticSeed] = useState<string | null>(null);
@@ -109,82 +117,101 @@ export function AvatarCard({ profileId, fullName, avatarUrl, avatarSeed }: Props
   }
 
   return (
-    <Card>
-      <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+    <div>
+      <div className="flex items-center gap-4">
         <EmployeeAvatar
           id={profileId}
           full_name={fullName}
           avatar_url={effectiveUrl}
           avatar_seed={effectiveSeed}
           size="lg"
-          className="size-20"
+          className="size-16"
         />
-        <div className="flex-1 min-w-0 space-y-1">
-          <h3 className="font-display text-base font-bold">Foto profil</h3>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-lg font-semibold leading-tight">
+            {fullName || "Karyawan"}
+          </p>
+          {subtitle && (
+            <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-11 shrink-0 gap-1.5"
+          aria-expanded={showActions}
+          onClick={() => setShowActions((v) => !v)}
+        >
+          <Camera size={14} /> Foto
+        </Button>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFilePicked}
+      />
+      {showActions && (
+        <div className="mt-3 space-y-2 rounded-2xl border border-border bg-card p-3">
           <p className="text-xs text-muted-foreground">
             {isUploaded
-              ? "Foto kamu sendiri (uploaded)."
-              : "Avatar generated otomatis dari nama. Klik regenerate untuk dapat tampilan baru, atau upload foto sendiri."}
+              ? "Foto kamu sendiri."
+              : "Avatar dibuat otomatis dari namamu. Acak ulang atau upload foto sendiri."}
           </p>
+          <div className="flex flex-wrap gap-2">
+            {!isUploaded && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={regenerate}
+                disabled={pending}
+                loading={pending}
+                className="min-h-11 gap-1.5"
+              >
+                <Sparkles size={14} /> Acak ulang
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={pending}
+              className="min-h-11 gap-1.5"
+            >
+              <Upload size={14} />
+              {isUploaded ? "Ganti foto" : "Upload foto"}
+            </Button>
+            {isUploaded && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={recropExisting}
+                disabled={pending}
+                className="min-h-11 gap-1.5"
+              >
+                <Crop size={14} /> Atur posisi
+              </Button>
+            )}
+            {isUploaded && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={clearUploaded}
+                disabled={pending}
+                className="min-h-11 gap-1.5 text-destructive"
+              >
+                <Trash2 size={14} /> Hapus foto
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={onFilePicked}
-          />
-          {!isUploaded && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={regenerate}
-              disabled={pending}
-              loading={pending}
-              className="gap-1"
-            >
-              <Sparkles size={12} /> Regenerate
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={pending}
-            className="gap-1"
-          >
-            <Upload size={12} />
-            {isUploaded ? "Ganti foto" : "Upload foto"}
-          </Button>
-          {isUploaded && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={recropExisting}
-              disabled={pending}
-              className="gap-1"
-            >
-              <Crop size={12} /> Atur posisi
-            </Button>
-          )}
-          {isUploaded && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={clearUploaded}
-              disabled={pending}
-              className="gap-1 text-destructive"
-            >
-              <Trash2 size={12} /> Hapus foto
-            </Button>
-          )}
-        </div>
-      </CardContent>
+      )}
       <AvatarCropDialog
         src={cropSrc}
         open={cropOpen}
@@ -198,6 +225,6 @@ export function AvatarCard({ profileId, fullName, avatarUrl, avatarSeed }: Props
         onConfirm={uploadBlob}
         pending={pending}
       />
-    </Card>
+    </div>
   );
 }

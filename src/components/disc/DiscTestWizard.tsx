@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Brain, Check, Loader2, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/account/Disclosure";
 import { DISC_QUESTIONS } from "@/lib/disc/data/questions";
 import { submitDiscTest } from "@/lib/actions/disc.actions";
 import type { DiscAnswer } from "@/lib/disc/scoring";
@@ -102,48 +103,42 @@ export function DiscTestWizard() {
       } catch {
         // abaikan
       }
-      toast.success("Tes selesai! Ini hasil kepribadianmu 🎉");
+      toast.success("Tes selesai. Hasilmu sudah muncul.");
       router.refresh();
     });
   }
 
   if (!started) {
     return (
-      <div className="space-y-5">
-      <div className="rounded-xl border-2 border-warning bg-warning/15 px-4 py-3 text-sm">
-        <p className="font-semibold">Kamu diminta mengambil tes ini oleh admin.</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Slip gaji kamu terkunci sampai tes selesai. Hasilnya langsung muncul
-          setelah submit — cuma butuh ±10 menit.
-        </p>
-      </div>
-      <div className="rounded-2xl border-2 border-foreground bg-card p-6 shadow-hard-sm space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="grid place-items-center size-12 rounded-full border-2 border-foreground bg-warning/40">
-            <Brain size={22} />
-          </span>
-          <div>
-            <h2 className="font-display text-lg font-bold">Tes Kepribadian DISC</h2>
-            <p className="text-xs text-muted-foreground">±10 menit · 24 kelompok kata</p>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-warning/15 text-warning">
+              <Brain size={20} aria-hidden />
+            </span>
+            <div>
+              <h2 className="font-display text-base font-semibold">Tes Kepribadian DISC</h2>
+              <p className="text-xs text-muted-foreground">±10 menit · 24 kelompok kata</p>
+            </div>
           </div>
-        </div>
-        <div className="text-sm space-y-2 leading-relaxed">
-          <p>
-            Kamu akan melihat <strong>24 kelompok kata</strong>. Di tiap kelompok, pilih satu
-            baris yang <strong>paling mirip</strong> dengan dirimu dan satu baris yang{" "}
-            <strong>paling tidak mirip</strong> dengan dirimu.
+          <p className="text-sm leading-relaxed">
+            Di tiap kelompok, pilih satu kata yang <strong>paling mirip</strong>{" "}
+            dengan dirimu dan satu yang <strong>paling tidak mirip</strong>.
+            Admin meminta kamu mengambil tes ini, dan slip gajimu terkunci
+            sampai tes selesai.
           </p>
-          <ul className="list-disc pl-5 space-y-1 text-[13px] text-muted-foreground">
-            <li>Ini bukan ujian — tidak ada jawaban benar atau salah.</li>
-            <li>Fokus pada dirimu di tempat kerja ATAU di rumah, jangan dicampur.</li>
-            <li>Jujur pada diri sendiri dan ikuti insting — jangan terlalu dianalisis.</li>
-            <li>Usahakan selesai dalam satu waktu tanpa terputus.</li>
-          </ul>
+          <Disclosure title="Petunjuk pengisian">
+            <ul className="list-disc space-y-1 pl-5 text-[13px] text-muted-foreground">
+              <li>Tidak ada jawaban benar atau salah.</li>
+              <li>Fokus pada dirimu di tempat kerja atau di rumah, jangan dicampur.</li>
+              <li>Ikuti insting, jangan terlalu dianalisis.</li>
+              <li>Selesaikan dalam satu waktu tanpa terputus.</li>
+            </ul>
+          </Disclosure>
+          <Button size="lg" className="min-h-12 w-full" onClick={() => setStarted(true)}>
+            Mulai tes <ArrowRight size={16} />
+          </Button>
         </div>
-        <Button size="lg" className="w-full sm:w-auto" onClick={() => setStarted(true)}>
-          Mulai Tes →
-        </Button>
-      </div>
       </div>
     );
   }
@@ -162,26 +157,24 @@ export function DiscTestWizard() {
           </span>
           <span className="text-muted-foreground">{completed}/24 terisi</span>
         </div>
-        <div className="h-2 rounded-full bg-muted overflow-hidden border border-border">
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={DISC_QUESTIONS.length}
+          aria-valuenow={completed}
+          className="h-1.5 rounded-full bg-muted overflow-hidden"
+        >
           <div
-            className="h-full bg-primary transition-all"
+            className="h-full bg-primary transition-[width] duration-200 motion-reduce:transition-none"
             style={{ width: `${(completed / DISC_QUESTIONS.length) * 100}%` }}
           />
         </div>
       </div>
 
       {/* Kartu soal */}
-      <div className="rounded-2xl border-2 border-foreground bg-card p-4 sm:p-5 shadow-hard-sm space-y-3">
-        <p className="text-center text-xs text-muted-foreground">
-          Pilih satu kata yang{" "}
-          <span className="font-semibold text-success">paling mirip</span> dan satu
-          yang{" "}
-          <span className="font-semibold text-destructive">paling tidak mirip</span>{" "}
-          dengan dirimu di lingkungan kerja.
-        </p>
-        <div className="flex items-center justify-between px-1 text-[11px] font-bold">
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between px-1 text-[11px] font-semibold">
           <span className="text-success">Paling mirip</span>
-          <span className="text-muted-foreground">Kata</span>
           <span className="text-destructive">Paling tidak mirip</span>
         </div>
         <div className="space-y-2">
@@ -192,7 +185,7 @@ export function DiscTestWizard() {
               <div
                 key={li}
                 className={cn(
-                  "flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition",
+                  "flex items-center gap-3 rounded-xl border px-3 py-2 transition-colors motion-reduce:transition-none",
                   isMost
                     ? "border-success bg-success/10"
                     : isLeast
@@ -206,7 +199,7 @@ export function DiscTestWizard() {
                   aria-label={`Paling mirip: ${line.id}`}
                   aria-pressed={isMost}
                   className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-lg border-2 transition",
+                    "flex size-11 shrink-0 items-center justify-center rounded-lg border transition-colors motion-reduce:transition-none",
                     isMost
                       ? "border-success bg-success text-white"
                       : "border-border bg-card text-muted-foreground hover:border-success hover:text-success"
@@ -223,7 +216,7 @@ export function DiscTestWizard() {
                   aria-label={`Paling tidak mirip: ${line.id}`}
                   aria-pressed={isLeast}
                   className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-lg border-2 transition",
+                    "flex size-11 shrink-0 items-center justify-center rounded-lg border transition-colors motion-reduce:transition-none",
                     isLeast
                       ? "border-destructive bg-destructive text-white"
                       : "border-border bg-card text-muted-foreground hover:border-destructive hover:text-destructive"
@@ -262,15 +255,15 @@ export function DiscTestWizard() {
                 <Loader2 size={16} className="animate-spin" /> Menghitung…
               </>
             ) : (
-              "Selesai & Lihat Hasil ✨"
+              "Selesai dan lihat hasil"
             )}
           </Button>
         )}
       </div>
       {!stepDone && (
-        <p className="text-[11px] text-muted-foreground text-center">
-          Pilih satu <strong>Paling mirip</strong> dan satu <strong>Paling tidak mirip</strong> —
-          baris berbeda — untuk lanjut.
+        <p className="text-xs text-muted-foreground text-center">
+          Pilih satu kata paling mirip dan satu paling tidak mirip, di baris
+          berbeda, untuk lanjut.
         </p>
       )}
     </div>

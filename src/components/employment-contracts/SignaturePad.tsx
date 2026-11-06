@@ -27,7 +27,7 @@ export function SignaturePad({
 
   return (
     <div className="space-y-2">
-      <div className="inline-flex rounded-lg border-2 border-foreground overflow-hidden text-xs font-semibold">
+      <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-semibold">
         <button
           type="button"
           onClick={() => switchMode("draw")}
@@ -143,7 +143,7 @@ function DrawPad({
 
   return (
     <div className="space-y-1.5">
-      <div className="relative rounded-xl border-2 border-foreground bg-white overflow-hidden">
+      <div className="relative rounded-xl border border-border bg-white overflow-hidden">
         <canvas
           ref={canvasRef}
           onPointerDown={start}
@@ -227,7 +227,7 @@ function UploadPad({
         onChange={(e) => pick(e.target.files?.[0] ?? null)}
       />
       {preview ? (
-        <div className="relative rounded-xl border-2 border-foreground bg-white overflow-hidden">
+        <div className="relative rounded-xl border border-border bg-white overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={preview}
@@ -238,7 +238,7 @@ function UploadPad({
             type="button"
             onClick={clear}
             disabled={disabled}
-            className="absolute top-2 right-2 size-7 rounded-full border-2 border-foreground bg-card flex items-center justify-center hover:bg-muted"
+            className="absolute top-2 right-2 size-7 rounded-full border border-border bg-card flex items-center justify-center hover:bg-muted"
             aria-label="Hapus gambar"
           >
             <X size={14} strokeWidth={2.5} />
@@ -249,7 +249,7 @@ function UploadPad({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={disabled}
-          className="w-full h-[180px] rounded-xl border-2 border-dashed border-foreground bg-white flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          className="w-full h-[180px] rounded-xl border border-dashed border-border bg-white flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
         >
           <Upload size={22} strokeWidth={2.2} />
           <span className="text-sm font-medium">Pilih gambar tanda tangan</span>

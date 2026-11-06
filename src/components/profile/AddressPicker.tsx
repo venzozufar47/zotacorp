@@ -262,14 +262,14 @@ function Field({
 }) {
   const isEmpty = !value || value.trim() === "";
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
       {editing ? (
         children
       ) : (
         <p
-          className={`text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px] ${
-            isEmpty ? "text-muted-foreground italic" : "text-foreground"
+          className={`text-sm break-words ${
+            isEmpty ? "text-muted-foreground" : "font-medium text-foreground"
           }`}
         >
           {isEmpty ? notFilled : value}
