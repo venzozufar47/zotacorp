@@ -67,6 +67,8 @@ export interface HuddleView {
   yesterdayBlocker: string | null;
   whoHoldsWhat: string | null;
   postedByName: string | null;
+  /** Briefing ini ditulis pengguna yang sedang login (satu pencatat boleh punya satu briefing per cabang per hari). */
+  mine: boolean;
   createdAt: string;
 }
 
@@ -79,6 +81,7 @@ export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView 
     .select("*")
     .eq("branch", branch)
     .eq("huddle_date", date)
+    .eq("posted_by", user.id)
     .maybeSingle();
   if (!data) return null;
   const names = await namesFor([data.posted_by]);
@@ -90,6 +93,7 @@ export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView 
     yesterdayBlocker: data.yesterday_blocker,
     whoHoldsWhat: data.who_holds_what,
     postedByName: names.get(data.posted_by) ?? null,
+    mine: true,
     createdAt: data.created_at,
   };
 }
@@ -126,6 +130,7 @@ export async function listRecentHuddles(limit = 40, branch?: MinutesBranch): Pro
     yesterdayBlocker: r.yesterday_blocker,
     whoHoldsWhat: r.who_holds_what,
     postedByName: names.get(r.posted_by) ?? null,
+    mine: r.posted_by === user.id,
     createdAt: r.created_at,
   }));
 }
@@ -152,17 +157,25 @@ export async function postHuddle(input: PostHuddleInput): Promise<ActionResult> 
   }
 
   const date = jakartaDateString(new Date());
-  const { error } = await db().from("team_huddles").upsert(
-    {
-      branch: input.branch,
-      huddle_date: date,
-      target_today: input.targetToday.trim(),
-      yesterday_blocker: input.yesterdayBlocker?.trim() || null,
-      who_holds_what: input.whoHoldsWhat?.trim() || null,
-      posted_by: user.id,
-    },
-    { onConflict: "branch,huddle_date" }
-  );
+  const fields = {
+    target_today: input.targetToday.trim(),
+    yesterday_blocker: input.yesterdayBlocker?.trim() || null,
+    who_holds_what: input.whoHoldsWhat?.trim() || null,
+  };
+  // Satu briefing per cabang per hari PER PENCATAT: koordinator toko dan kepala produksi di cabang yang sama
+  // masing-masing punya briefing untuk timnya. Memperbarui hanya mengubah milik sendiri, tidak pernah milik rekan.
+  const { data: existing } = await db()
+    .from("team_huddles")
+    .select("id")
+    .eq("branch", input.branch)
+    .eq("huddle_date", date)
+    .eq("posted_by", user.id)
+    .maybeSingle();
+  const { error } = existing
+    ? await db().from("team_huddles").update(fields).eq("id", existing.id)
+    : await db()
+        .from("team_huddles")
+        .insert({ branch: input.branch, huddle_date: date, posted_by: user.id, ...fields });
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/tim");

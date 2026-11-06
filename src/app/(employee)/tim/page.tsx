@@ -211,7 +211,8 @@ export default async function TeamPage({
   );
   const todayBriefing =
     briefings.find(
-      (b) => b.huddleDate === todayYmd && (myBranches.length === 0 || myBranches.includes(b.branch))
+      // Kartu ini menanyakan "sudah catat briefing timku?", jadi hanya briefing milik sendiri yang dihitung.
+      (b) => b.mine && b.huddleDate === todayYmd && (myBranches.length === 0 || myBranches.includes(b.branch))
     ) ?? null;
 
   return (

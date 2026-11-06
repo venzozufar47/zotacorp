@@ -50,10 +50,12 @@ export default async function AdminBriefingPage({
   const filter = BRANCHES.find((b) => b === cabang) ?? null;
   const [all, ...latestByBranch] = await Promise.all([
     listRecentHuddles(120, filter ?? undefined),
-    ...BRANCHES.map((branch) => listRecentHuddles(1, branch)),
+    ...BRANCHES.map((branch) => listRecentHuddles(10, branch)),
   ]);
   const todayYmd = jakartaDateString(new Date(serverNowMs()));
-  const latestIds = new Set(latestByBranch.flat().map((b) => b.id));
+  // Satu cabang bisa punya beberapa briefing di hari yang sama (satu per kepala tim): tampilkan semuanya.
+  const latestGroups = latestByBranch.map((list) => list.filter((b) => b.huddleDate === list[0]?.huddleDate));
+  const latestIds = new Set(latestGroups.flat().map((b) => b.id));
   const rows = all.filter((b) => !latestIds.has(b.id));
 
   return (
@@ -67,7 +69,8 @@ export default async function AdminBriefingPage({
 
       <section aria-label="Briefing terakhir per cabang" className="grid items-start gap-4 xl:grid-cols-2">
         {BRANCHES.map((b, index) => {
-          const t = latestByBranch[index][0];
+          const group = latestGroups[index];
+          const t = group[0];
           return (
             <article key={b} className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
               <div className="space-y-3 border-b border-border bg-muted/30 p-5">
@@ -82,15 +85,19 @@ export default async function AdminBriefingPage({
                       <time dateTime={t.huddleDate}>{dateLabel(t.huddleDate)}</time>
                       {t.huddleDate === todayYmd && <span className="text-xs font-normal text-muted-foreground">Hari ini</span>}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      Dicatat oleh {t.postedByName ?? "—"} · {dateLabel(jakartaDateString(new Date(t.createdAt)))} · {briefingTimeLabel(t.createdAt)} WIB
-                    </p>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">Belum ada briefing tercatat untuk cabang ini.</p>
                 )}
               </div>
-              {t && <div className="p-5"><BriefingContent briefing={t} /></div>}
+              {group.map((g) => (
+                <div key={g.id} className="space-y-3 border-b border-border p-5 last:border-b-0">
+                  <p className="text-xs text-muted-foreground">
+                    Dicatat oleh <span className="font-semibold text-foreground">{g.postedByName ?? "—"}</span> · {dateLabel(jakartaDateString(new Date(g.createdAt)))} · {briefingTimeLabel(g.createdAt)} WIB
+                  </p>
+                  <BriefingContent briefing={g} />
+                </div>
+              ))}
             </article>
           );
         })}

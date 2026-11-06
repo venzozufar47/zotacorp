@@ -203,8 +203,9 @@ function BriefingForm({ branch, today }: { branch: MinutesBranch; today: HuddleV
 }
 
 /**
- * Notulensi Briefing Kilat harian untuk kepala tim. Satu briefing per cabang per
- * hari: mencatat lagi di hari yang sama memperbarui yang ada. Cabang ditentukan
+ * Notulensi Briefing Kilat harian untuk kepala tim. Satu briefing per kepala tim per cabang per
+ * hari (koordinator dan kepala produksi masing-masing punya sendiri, saling bisa melihat):
+ * mencatat lagi di hari yang sama memperbarui milik sendiri. Cabang ditentukan
  * otomatis dari penugasan kepala (`branches`); pilihan cabang hanya muncul bila ia
  * bertugas di lebih dari satu cabang, atau bila cabangnya tidak terdeteksi
  * (`branches` kosong → semua cabang ditawarkan).
@@ -222,7 +223,9 @@ export function TeamBriefingPanel({
   const available = detected ? branches : BRANCHES;
   const [branch, setBranch] = useState<MinutesBranch>(available[0]);
   const forBranch = briefings.filter((b) => b.branch === branch);
-  const today = forBranch.find((b) => b.huddleDate === todayYmd) ?? null;
+  // Setiap kepala tim punya briefing sendiri per hari; milik rekan (mis. koordinator vs kepala produksi) hanya dibaca.
+  const today = forBranch.find((b) => b.huddleDate === todayYmd && b.mine) ?? null;
+  const colleagues = forBranch.filter((b) => b.huddleDate === todayYmd && !b.mine);
   const history = forBranch.filter((b) => b.huddleDate !== todayYmd).slice(0, 14);
 
   return (
@@ -267,12 +270,22 @@ export function TeamBriefingPanel({
           )}
           <p className="text-sm text-muted-foreground">
             {today
-              ? `Dicatat ${today.postedByName ?? "—"} pukul ${briefingTimeLabel(today.createdAt)}. Bisa diperbarui.`
-              : "Belum dicatat hari ini."}
+              ? `Briefing timmu dicatat pukul ${briefingTimeLabel(today.createdAt)}. Bisa diperbarui.`
+              : "Briefing timmu belum dicatat hari ini."}
           </p>
         </div>
         <BriefingForm key={`${branch}-${today?.id ?? "baru"}`} branch={branch} today={today} />
       </section>
+
+      {colleagues.map((b) => (
+        <article key={b.id} className="space-y-2 rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{b.postedByName ?? "—"}</span> · {briefingTimeLabel(b.createdAt)} · hanya
+            dibaca
+          </p>
+          <BriefingBody b={b} />
+        </article>
+      ))}
 
       <History items={history} />
     </div>
