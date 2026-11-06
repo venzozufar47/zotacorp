@@ -301,10 +301,7 @@ export function ProfileForm({
             />
           </Field>
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">{pf.shirtSize}</Label>
-              <SizeChartDialog label={pf.viewSizeChart} title={pf.sizeChartTitle} />
-            </div>
+            <Label className="text-xs text-muted-foreground">{pf.shirtSize}</Label>
             {isEditing("personal") ? (
               <Select
                 value={state.shirt_size || undefined}
@@ -328,6 +325,7 @@ export function ProfileForm({
                 {state.shirt_size || pf.notFilled}
               </p>
             )}
+            <SizeChartDialog label={pf.viewSizeChart} title={pf.sizeChartTitle} />
           </div>
         </div>
       </SectionCard>
@@ -729,11 +727,11 @@ function SizeChartDialog({ label, title }: { label: string; title: string }) {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-auto min-h-8 justify-start gap-1 px-0 font-sans text-xs font-normal text-primary hover:bg-transparent hover:underline"
           />
         }
       >
-        <Ruler size={12} className="mr-1" />
+        <Ruler size={12} aria-hidden />
         {label}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
