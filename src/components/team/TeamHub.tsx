@@ -6,109 +6,140 @@ export type TeamSection = "izin" | "briefing" | "catatan" | "tugas" | "pengaduan
 
 export const TEAM_SECTIONS: Record<
   TeamSection,
-  { title: string; description: string; icon: typeof CalendarClock }
+  { title: string; hint: string; icon: typeof CalendarClock }
 > = {
-  izin: {
-    title: "Perizinan",
-    description: "Setujui pengajuan izin anggota atau catatkan izin atas nama mereka.",
-    icon: CalendarClock,
-  },
-  briefing: {
-    title: "Briefing kilat",
-    description: "Catat target dan fokus harian, kendala kemarin, serta tanya jawab dan pembagian tugas.",
-    icon: Zap,
-  },
-  catatan: {
-    title: "Catatan pembinaan",
-    description: "Tulis catatan atau teguran serius, dan lihat apakah sudah dibaca.",
-    icon: MessageSquarePlus,
-  },
-  tugas: {
-    title: "Penugasan",
-    description: "Pantau checklist tugas anggota, progres, dan foto buktinya.",
-    icon: ClipboardList,
-  },
-  pengaduan: {
-    title: "Pengaduan",
-    description: "Laporan pengaduan dari anggota timmu yang perlu kamu konfirmasi dan putuskan.",
-    icon: ShieldQuestion,
-  },
+  izin: { title: "Perizinan", hint: "Setujui atau catatkan izin anggota", icon: CalendarClock },
+  briefing: { title: "Briefing kilat", hint: "Target dan fokus harian cabang", icon: Zap },
+  catatan: { title: "Catatan pembinaan", hint: "Catatan dan teguran", icon: MessageSquarePlus },
+  tugas: { title: "Penugasan", hint: "Progres tugas anggota", icon: ClipboardList },
+  pengaduan: { title: "Pengaduan", hint: "Laporan dan penanganannya", icon: ShieldQuestion },
 };
 
-const ORDER: TeamSection[] = ["izin", "briefing", "catatan", "tugas", "pengaduan"];
+export interface TeamRowData {
+  key: TeamSection;
+  /** Angka kecil di kanan baris; 0 = tidak ditampilkan. */
+  value: number;
+  /** Teks di kanan bila angka tidak cocok (mis. "Aman"). */
+  label?: string;
+  /** Angka > 0 berwarna merah. */
+  urgent?: boolean;
+  /** Menimpa keterangan bawaan baris. */
+  hint?: string;
+}
 
-/**
- * Pilihan awal halaman Tim: lima bagian dalam bentuk kartu besar, masing-masing
- * dengan satu angka yang menandakan ada yang perlu perhatian (mis. izin yang
- * menunggu). Memilih satu membuka bagiannya lewat `?bagian=` — alamatnya bisa
- * dibagikan/di-bookmark dan tombol kembali browser berfungsi.
- */
-export function TeamHub({
-  counts,
-}: {
-  counts: Record<TeamSection, { value: number; label: string; urgent?: boolean }>;
-}) {
+function TeamRow({ row }: { row: TeamRowData }) {
+  const meta = TEAM_SECTIONS[row.key];
+  const Icon = meta.icon;
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {ORDER.map((key) => {
-        const meta = TEAM_SECTIONS[key];
-        const Icon = meta.icon;
-        const c = counts[key];
-        return (
-          <Link
-            key={key}
-            href={`/tim?bagian=${key}`}
-            className="group flex flex-col gap-3 rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm transition hover:-translate-y-0.5 hover:shadow-hard"
-          >
-            <div className="flex items-start justify-between">
-              <span className="grid size-11 place-items-center rounded-full border-2 border-foreground bg-tertiary">
-                <Icon size={20} />
-              </span>
-              <ChevronRight
-                size={18}
-                className="mt-1 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground"
-              />
-            </div>
-            <div className="space-y-1">
-              <h2 className="font-display text-base font-bold leading-tight">{meta.title}</h2>
-              <p className="text-xs leading-snug text-muted-foreground">{meta.description}</p>
-            </div>
-            <span
-              className={cn(
-                "mt-auto inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-                c.urgent && c.value > 0 ? "bg-destructive text-white" : "bg-muted text-muted-foreground"
-              )}
-            >
-              <span className="tabular-nums">{c.value}</span> {c.label}
-            </span>
-          </Link>
-        );
-      })}
-    </div>
+    <Link
+      href={`/tim?bagian=${row.key}`}
+      className="flex min-h-14 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+    >
+      <Icon size={18} className="shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold leading-tight">{meta.title}</span>
+        <span className="block truncate text-xs text-muted-foreground">{row.hint ?? meta.hint}</span>
+      </span>
+      {row.value > 0 ? (
+        <span
+          className={cn(
+            "min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-bold tabular-nums",
+            row.urgent ? "bg-destructive text-white" : "bg-muted text-foreground"
+          )}
+        >
+          {row.value}
+        </span>
+      ) : (
+        row.label && <span className="text-xs text-muted-foreground">{row.label}</span>
+      )}
+      <ChevronRight size={16} className="shrink-0 text-muted-foreground" aria-hidden />
+    </Link>
   );
 }
 
-/** Kepala bagian + tautan kembali ke pilihan awal. */
+/** Daftar baris ringkas bergaris pemisah: satu kartu, bukan kartu per bagian. */
+export function TeamRowList({ rows }: { rows: TeamRowData[] }) {
+  return (
+    <nav aria-label="Bagian tim" className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+      {rows.map((r) => (
+        <TeamRow key={r.key} row={r} />
+      ))}
+    </nav>
+  );
+}
+
+/**
+ * Kartu aksi utama kepala toko: briefing kilat. Bila hari ini belum dicatat,
+ * tombol Catat langsung terlihat; bila sudah, tampil siapa dan jam berapa.
+ */
+export function TeamBriefingCard({
+  branches,
+  postedBy,
+  time,
+}: {
+  branches: string;
+  postedBy: string | null;
+  time: string | null;
+}) {
+  const done = time !== null;
+  return (
+    <section className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+      <span
+        className={cn(
+          "grid size-10 shrink-0 place-items-center rounded-full",
+          done ? "bg-success/20 text-success" : "bg-warning/30 text-foreground"
+        )}
+        aria-hidden
+      >
+        <Zap size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-sm font-semibold leading-tight">Briefing kilat hari ini</h2>
+        <p className="truncate text-xs text-muted-foreground">
+          {done ? `${branches} · ${time} · ${postedBy ?? "—"}` : `${branches} · belum dicatat`}
+        </p>
+      </div>
+      <Link
+        href="/tim?bagian=briefing"
+        className={cn(
+          "inline-flex h-11 shrink-0 items-center rounded-lg px-4 text-sm font-semibold transition-colors",
+          done
+            ? "border border-border bg-card hover:bg-muted"
+            : "bg-primary text-primary-foreground hover:bg-primary-dark"
+        )}
+      >
+        {done ? "Buka" : "Catat"}
+      </Link>
+    </section>
+  );
+}
+
+/** Peringatan satu baris, mis. catatan pembinaan yang belum dibaca. */
+export function TeamAlertLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="flex min-h-12 items-center gap-2 rounded-xl border border-warning/60 bg-warning/15 px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-warning/25"
+    >
+      <span className="min-w-0 flex-1">{children}</span>
+      <ChevronRight size={16} className="shrink-0" aria-hidden />
+    </Link>
+  );
+}
+
+/** Kembali ke /tim + judul bagian. Satu baris, tanpa deskripsi. */
 export function TeamSectionHeader({ section }: { section: TeamSection }) {
   const meta = TEAM_SECTIONS[section];
-  const Icon = meta.icon;
   return (
-    <div className="space-y-3">
+    <div className="flex items-center gap-1">
       <Link
         href="/tim"
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+        aria-label="Kembali ke Tim"
+        className="-ml-2 grid size-11 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <ArrowLeft size={16} /> Semua bagian
+        <ArrowLeft size={20} />
       </Link>
-      <div className="flex items-center gap-3">
-        <span className="grid size-10 place-items-center rounded-full border-2 border-foreground bg-tertiary">
-          <Icon size={18} />
-        </span>
-        <div>
-          <h2 className="font-display text-lg font-bold leading-tight">{meta.title}</h2>
-          <p className="text-xs text-muted-foreground">{meta.description}</p>
-        </div>
-      </div>
+      <h2 className="font-display text-lg font-bold leading-tight">{meta.title}</h2>
     </div>
   );
 }

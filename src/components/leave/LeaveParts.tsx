@@ -3,17 +3,11 @@
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
-import { CalendarClock, Check, Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
+import { PersonCombobox } from "@/components/ui/person-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   submitLeaveForMember,
   decideLeaveRequest,
@@ -173,20 +167,13 @@ function ApprovalCard({
           />
           <div>
             <Label className="text-xs">Pengganti selama izin (opsional)</Label>
-            <Select value={backup} onValueChange={(v) => v && setBackup(v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Pilih rekan" />
-              </SelectTrigger>
-              <SelectContent>
-                {colleagues
-                  .filter((c) => c.id !== r.userId)
-                  .map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <PersonCombobox
+              value={backup}
+              onValueChange={setBackup}
+              options={colleagues.filter((c) => c.id !== r.userId)}
+              placeholder="Ketik nama rekan"
+              aria-label="Pengganti selama izin"
+            />
           </div>
         </div>
       )}
@@ -252,18 +239,13 @@ function MemberInputForm({
       slot={
         <div className="space-y-1.5">
           <Label>Anggota</Label>
-          <Select value={memberId} onValueChange={(v) => v && setMemberId(v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Pilih anggota" />
-            </SelectTrigger>
-            <SelectContent>
-              {members.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PersonCombobox
+            value={memberId}
+            onValueChange={setMemberId}
+            options={members}
+            placeholder="Ketik nama anggota"
+            aria-label="Anggota"
+          />
         </div>
       }
       onSubmit={async (v) => {
@@ -360,18 +342,12 @@ export function LeaveApproverPanel({
 
   return (
     <NowContext.Provider value={nowMs}>
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
-            <CalendarClock size={15} />
-          </span>
-          <h2 className="font-display text-sm font-bold">Izin anggota</h2>
-        </div>
+      <section className="space-y-3">
         <SegTabs tabs={tabs} value={tab} onChange={setTab} />
 
         {tab === "persetujuan" &&
           (queue.length === 0 ? (
-            <Empty>Tidak ada pengajuan yang menunggu. 🎉</Empty>
+            <Empty>Tidak ada pengajuan yang menunggu.</Empty>
           ) : (
             <div className="space-y-3">
               {queue.map((r) => (

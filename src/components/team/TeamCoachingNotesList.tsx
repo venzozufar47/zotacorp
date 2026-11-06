@@ -1,4 +1,4 @@
-import { Check, Clock, ListChecks } from "lucide-react";
+import { Check, Clock } from "lucide-react";
 import { formatDateID } from "@/lib/utils/date-formats";
 import { SP_LEVEL_LABEL } from "@/lib/coaching/constants";
 import type { TeamCoachingNote } from "@/lib/actions/team.actions";
@@ -10,23 +10,18 @@ import type { TeamCoachingNote } from "@/lib/actions/team.actions";
  */
 export function TeamCoachingNotesList({ notes }: { notes: TeamCoachingNote[] }) {
   return (
-    <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
-          <ListChecks size={15} />
-        </span>
-        <h2 className="font-display text-sm font-bold">Catatan terkirim</h2>
-      </div>
+    <section className="space-y-2">
+      <h2 className="px-1 text-sm font-semibold">Catatan terkirim</h2>
       {notes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
           Belum ada catatan untuk anggota timmu.
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
           {notes.map((n) => {
             const seen = n.acknowledgedAt !== null;
             return (
-              <li key={n.id} className="space-y-1.5 rounded-xl border border-border bg-muted/20 px-3 py-2.5">
+              <li key={n.id} className="space-y-1.5 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-sm font-semibold">{n.memberName}</span>
                   {n.spLevel && (

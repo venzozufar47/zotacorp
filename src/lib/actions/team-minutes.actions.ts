@@ -96,16 +96,24 @@ export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView 
 
 /**
  * Briefing kilat terbaru semua cabang, terbaru dulu — untuk halaman Tim
- * (kepala tim) dan tab Briefing Kilat superadmin. Hanya kepala tim / admin.
+ * (kepala tim), tab Briefing Kilat superadmin, dan tab Tim anggota. Kepala tim / admin
+ * melihat semua cabang; anggota biasa hanya cabangnya sendiri (kosong bila tak terdeteksi).
  */
 export async function listRecentHuddles(limit = 40, branch?: MinutesBranch): Promise<HuddleView[]> {
-  if (!(await canPost())) return [];
+  const user = await getCurrentUser();
+  if (!user) return [];
+  let scope: MinutesBranch[] | null = null;
+  if (!(await canPost())) {
+    scope = await resolveUserBranches(user.id);
+    if (scope.length === 0) return [];
+  }
   let query = db()
     .from("team_huddles")
     .select("*")
     .order("huddle_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (scope) query = query.in("branch", scope);
   if (branch) query = query.eq("branch", branch);
   const { data } = await query;
   const rows = data ?? [];

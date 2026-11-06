@@ -32,11 +32,16 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
   const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
 
   return (
-    <div className="space-y-4 w-full min-w-0">
-      <p className="flex items-start gap-2 rounded-xl bg-muted px-3 py-2.5 text-xs text-muted-foreground">
-        <Eye size={14} className="mt-0.5 shrink-0" />
-        Khusus memantau. Tugas hanya bisa dikerjakan dan dikirim oleh anggota masing-masing.
+    <div className="space-y-3 w-full min-w-0">
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Eye size={14} className="shrink-0" aria-hidden />
+        Hanya untuk memantau. Anggota yang mengerjakan dan mengirim tugasnya.
       </p>
+      {members.length === 0 && (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          Belum ada anggota tim.
+        </p>
+      )}
 
       {members.map((m) => {
         const scheduledN = m.tasks.filter((t) => t.scheduled).length;
@@ -45,12 +50,12 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
         return (
           <details
             key={m.memberId}
-            className="group rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden"
+            className="group rounded-xl border border-border bg-card overflow-hidden"
           >
-            <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-14 items-center gap-3 px-4 py-2.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <span
                 aria-hidden
-                className="grid place-items-center size-10 shrink-0 rounded-full bg-primary/15 text-primary text-xs font-bold"
+                className="grid place-items-center size-9 shrink-0 rounded-full bg-primary/15 text-primary text-xs font-bold"
               >
                 {initials(m.name)}
               </span>
@@ -141,7 +146,7 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
                                 className={
                                   "grid place-items-center size-6 shrink-0 rounded-full text-[11px] font-bold border-2 " +
                                   (i.done
-                                    ? "bg-success border-foreground"
+                                    ? "bg-success border-success"
                                     : "bg-card border-border text-muted-foreground")
                                 }
                               >
@@ -153,7 +158,7 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
                                   type="button"
                                   onClick={() => setLightbox({ photos, index: Math.max(pIdx, 0) })}
                                   aria-label={`Lihat foto ${i.title}`}
-                                  className="shrink-0 size-11 rounded-lg overflow-hidden border-2 border-foreground"
+                                  className="shrink-0 size-11 rounded-lg overflow-hidden border border-border"
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={i.photoUrl} alt="" className="size-full object-cover" />

@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
  * `isCoachingNoteArchived`) — tidak dihapus dari database, dan tidak ada riwayat
  * di sini; leader (/tim) dan Owner tetap bisa membacanya.
  */
-export function CoachingNotesCard({ notes }: { notes: MyCoachingNote[] }) {
+export function CoachingNotesCard({ notes, flat = false }: { notes: MyCoachingNote[]; flat?: boolean }) {
   const [acked, setAcked] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
   const active = notes.filter((n) => !n.archived);
@@ -46,13 +46,21 @@ export function CoachingNotesCard({ notes }: { notes: MyCoachingNote[] }) {
   }
 
   return (
-    <section className="rounded-2xl border-2 border-foreground bg-card p-4 space-y-3 shadow-hard-sm">
-      <div className="flex items-center gap-2">
-        <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
-          <MessageSquareText size={15} />
-        </span>
-        <h2 className="font-display text-sm font-bold">Catatan pembinaan</h2>
-      </div>
+    <section
+      className={
+        flat
+          ? "rounded-xl border border-border bg-card p-4 space-y-3"
+          : "rounded-2xl border-2 border-foreground bg-card p-4 space-y-3 shadow-hard-sm"
+      }
+    >
+      {!flat && (
+        <div className="flex items-center gap-2">
+          <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
+            <MessageSquareText size={15} />
+          </span>
+          <h2 className="font-display text-sm font-bold">Catatan pembinaan</h2>
+        </div>
+      )}
       <ul className="space-y-2">
         {active.map((n) => (
           <NoteItem key={n.id} n={n} seen={n.acknowledgedAt !== null || !!acked[n.id]} onAck={ack} pending={pending} />

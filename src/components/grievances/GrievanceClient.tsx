@@ -3,13 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Info, ShieldQuestion } from "lucide-react";
+import { ChevronDown, Info, ShieldQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PersonCombobox } from "@/components/ui/person-combobox";
 import {
   submitGrievance,
   type GrievanceRecipient,
@@ -216,18 +216,14 @@ function TrustedContactsAdmin({
           ))
         )}
         <div className="flex gap-2">
-          <Select value={pick} onValueChange={(v) => v && setPick(v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Tambah orang" />
-            </SelectTrigger>
-            <SelectContent>
-              {employees.map((e) => (
-                <SelectItem key={e.id} value={e.id}>
-                  {e.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PersonCombobox
+            className="min-w-0 flex-1"
+            value={pick}
+            onValueChange={setPick}
+            options={employees}
+            placeholder="Ketik nama untuk menambah"
+            aria-label="Tambah pihak tepercaya"
+          />
           <Button size="sm" loading={busy} onClick={add}>
             Tambah
           </Button>
@@ -308,40 +304,36 @@ export function GrievanceClient({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {inbox.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldQuestion size={16} /> Masuk untukmu ({inbox.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <section className="space-y-2 rounded-xl border border-border bg-card p-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldQuestion size={16} aria-hidden /> Masuk untukmu ({inbox.length})
+          </h2>
+          <div className="space-y-2">
             {inbox.map((r) => (
               <InboxRow key={r.id} r={r} onChanged={() => router.refresh()} />
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
       {isAdmin && <TrustedContactsAdmin contacts={trustedContacts} employees={employees} />}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Buat laporan</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <details className="group rounded-xl border border-border bg-card" open={myReports.length === 0 && inbox.length === 0}>
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-4 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          Buat laporan
+          <ChevronDown
+            size={16}
+            className="text-muted-foreground transition-transform group-open:rotate-180"
+            aria-hidden
+          />
+        </summary>
+        <div className="space-y-3 border-t border-border p-4">
           <div className="space-y-1.5">
             <Label>Kirim ke</Label>
-            <div role="radiogroup" aria-label="Kirim ke" className="grid gap-2">
-              {recipientOptions.map((o) => {
-                const hint =
-                  o.value === "pihak_tepercaya"
-                    ? trustedNames.length > 0
-                      ? `Ditangani ${trustedNames.join(", ")}. Bila kamu tidak nyaman ke kepala tim atau Owner.`
-                      : o.hint
-                    : o.hint;
-                return (
+            <div role="radiogroup" aria-label="Kirim ke" className="flex flex-wrap gap-2">
+              {recipientOptions.map((o) => (
                 <button
                   key={o.value}
                   type="button"
@@ -349,89 +341,86 @@ export function GrievanceClient({
                   aria-checked={effectiveRecipient === o.value}
                   onClick={() => setRecipient(o.value)}
                   className={
-                    "rounded-xl border-2 px-3 py-2 text-left text-sm transition " +
+                    "h-11 rounded-full border px-4 text-sm font-semibold transition-colors " +
                     (effectiveRecipient === o.value
-                      ? "border-foreground bg-primary/10"
-                      : "border-border bg-card hover:border-foreground/50")
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground")
                   }
                 >
-                  <span className="block font-semibold">{o.label}</span>
-                  <span className="block text-xs text-muted-foreground">{hint}</span>
+                  {o.label}
                 </button>
-                );
-              })}
+              ))}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {effectiveRecipient === "pihak_tepercaya" && trustedNames.length > 0
+                ? `Ditangani ${trustedNames.join(", ")}. Bila kamu tidak nyaman ke kepala tim atau Owner.`
+                : recipientOptions.find((o) => o.value === effectiveRecipient)?.hint}
+            </p>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} />
-            Kirim tanpa nama
-          </label>
-          <div className="space-y-1.5">
-            <Label>Pihak yang dilaporkan (opsional)</Label>
-            <Select value={reportedAbout} onValueChange={(v) => setReportedAbout(v ?? "")}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Tidak menyebut nama" />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((e) => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {reportedAbout && (
-              <button
-                type="button"
-                onClick={() => setReportedAbout("")}
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Hapus nama (kirim tanpa menyebut nama)
-              </button>
-            )}
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isSerious} onChange={(e) => setIsSerious(e.target.checked)} />
-            Pelanggaran berat
-          </label>
-          <button
-            type="button"
-            onClick={() => setShowViolations((v) => !v)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-          >
-            <Info size={13} /> {showViolations ? "Sembunyikan" : "Apa saja yang termasuk pelanggaran berat?"}
-          </button>
-          {showViolations && <SeriousViolationsList />}
           <div className="space-y-1.5">
             <Label htmlFor="desc">Apa yang terjadi</Label>
             <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="witnesses">Saksi (opsional)</Label>
-            <Input id="witnesses" value={witnesses} onChange={(e) => setWitnesses(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="outcome">Yang kamu harapkan (opsional)</Label>
-            <Input id="outcome" value={desiredOutcome} onChange={(e) => setDesiredOutcome(e.target.value)} />
-          </div>
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} />
+            Kirim tanpa nama
+          </label>
+
+          <details className="group/more">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronDown size={16} className="transition-transform group-open/more:rotate-180" aria-hidden />
+              Detail tambahan <span className="font-normal">(opsional)</span>
+            </summary>
+            <div className="space-y-3 pt-1">
+              <div className="space-y-1.5">
+                <Label>Pihak yang dilaporkan</Label>
+                <PersonCombobox
+                  value={reportedAbout}
+                  onValueChange={setReportedAbout}
+                  options={employees}
+                  placeholder="Ketik nama, atau kosongkan"
+                  aria-label="Pihak yang dilaporkan"
+                />
+              </div>
+              <label className="flex min-h-11 items-center gap-2 text-sm">
+                <input type="checkbox" checked={isSerious} onChange={(e) => setIsSerious(e.target.checked)} />
+                Pelanggaran berat
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowViolations((v) => !v)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                <Info size={13} /> {showViolations ? "Sembunyikan" : "Apa saja yang termasuk pelanggaran berat?"}
+              </button>
+              {showViolations && <SeriousViolationsList />}
+              <div className="space-y-1.5">
+                <Label htmlFor="witnesses">Saksi</Label>
+                <Input id="witnesses" value={witnesses} onChange={(e) => setWitnesses(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="outcome">Yang kamu harapkan</Label>
+                <Input id="outcome" value={desiredOutcome} onChange={(e) => setDesiredOutcome(e.target.value)} />
+              </div>
+            </div>
+          </details>
+
           <Button onClick={submit} loading={saving} className="w-full">
             Kirim
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Laporanku</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {myReports.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Belum ada laporan.</p>
-          ) : (
-            myReports.map((r) => <MyReportRow key={r.id} r={r} />)
-          )}
-        </CardContent>
-      </Card>
+      <section className="space-y-2">
+        <h2 className="px-1 text-sm font-semibold">Laporanku</h2>
+        {myReports.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+            Belum ada laporan.
+          </p>
+        ) : (
+          myReports.map((r) => <MyReportRow key={r.id} r={r} />)
+        )}
+      </section>
     </div>
   );
 }

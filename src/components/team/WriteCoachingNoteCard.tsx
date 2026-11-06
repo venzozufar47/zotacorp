@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { MessageSquarePlus } from "lucide-react";
+import { ChevronDown, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PersonCombobox } from "@/components/ui/person-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createCoachingNote } from "@/lib/actions/cleaning-review.actions";
 
@@ -62,27 +62,25 @@ export function WriteCoachingNoteCard({ members }: { members: { memberId: string
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MessageSquarePlus size={16} /> Tulis catatan pembinaan
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <details className="group rounded-xl border border-border bg-card">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+        <MessageSquarePlus size={16} aria-hidden /> Tulis catatan baru
+        <ChevronDown
+          size={16}
+          className="ml-auto text-muted-foreground transition-transform group-open:rotate-180"
+          aria-hidden
+        />
+      </summary>
+      <div className="space-y-3 border-t border-border p-4">
         <div>
           <Label>Anggota</Label>
-          <Select value={memberId} onValueChange={(v) => v && setMemberId(v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Pilih anggota" />
-            </SelectTrigger>
-            <SelectContent>
-              {members.map((m) => (
-                <SelectItem key={m.memberId} value={m.memberId}>
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PersonCombobox
+            value={memberId}
+            onValueChange={setMemberId}
+            options={members.map((m) => ({ id: m.memberId, name: m.name }))}
+            placeholder="Ketik nama anggota"
+            aria-label="Anggota"
+          />
         </div>
         <div>
           <Label>Kategori</Label>
@@ -111,7 +109,7 @@ export function WriteCoachingNoteCard({ members }: { members: { memberId: string
         <Button onClick={submit} loading={saving} className="w-full">
           Kirim
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </details>
   );
 }
