@@ -147,7 +147,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
       </Button>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{mode === "report" ? "Buat Tiket Baru" : "Tugaskan Tiket ke Bawah"}</DialogTitle>
+          <DialogTitle className="pr-8">{mode === "report" ? "Buat Tiket Baru" : "Tugaskan Tiket ke Bawah"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">

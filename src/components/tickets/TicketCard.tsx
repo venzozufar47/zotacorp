@@ -82,6 +82,8 @@ interface NotePrompt {
   required: boolean;
   /** true = wajib lampirkan foto (bukti penyelesaian). */
   requirePhotos?: boolean;
+  /** true = hanya meminta konfirmasi, tanpa kolom catatan. */
+  confirmOnly?: boolean;
   /** Pilih satu tujuan (mis. atasan mana yang menerima eskalasi). */
   choose?: { label: string; options: { id: string; name: string }[] };
   run: (
@@ -363,7 +365,13 @@ export function TicketCard({
           })
         }
         onCancel={() =>
-          runDirect(() => cancelTicket(ticket.id), "Tiket dibatalkan")
+          setPrompt({
+            title: "Batalkan tiket ini?",
+            required: false,
+            confirmOnly: true,
+            run: () => cancelTicket(ticket.id),
+            successMsg: "Tiket dibatalkan",
+          })
         }
         onAccept={() =>
           setPrompt({
@@ -401,28 +409,30 @@ export function TicketCard({
       <Dialog open={prompt !== null} onOpenChange={(v) => !v && !uploading && !pending && closePrompt()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{prompt?.title}</DialogTitle>
+            <DialogTitle className="pr-8">{prompt?.title}</DialogTitle>
           </DialogHeader>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            placeholder={
-              prompt?.requirePhotos && prompt.required
-                ? "Keterangan baru (wajib)…"
-                : prompt?.required
-                  ? "Catatan (wajib)…"
-                  : "Catatan (opsional)…"
-            }
-            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-y"
-          />
+          {!prompt?.confirmOnly && (
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder={
+                prompt?.requirePhotos && prompt.required
+                  ? "Keterangan baru (wajib)…"
+                  : prompt?.required
+                    ? "Catatan (wajib)…"
+                    : "Catatan (opsional)…"
+              }
+              className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-y"
+            />
+          )}
           {prompt?.choose && (
             <label className="block space-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Kirim ke</span>
+              <span className="text-xs font-semibold text-muted-foreground">Kirim ke</span>
               <select
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
-                className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
               >
                 <option value="">{prompt.choose.label}</option>
                 {prompt.choose.options.map((o) => (
@@ -435,7 +445,7 @@ export function TicketCard({
           )}
           {prompt?.requirePhotos && (
             <div className="space-y-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span className="text-xs font-semibold text-muted-foreground">
                 Foto bukti (wajib, bisa lebih dari 1)
               </span>
               <div className="flex flex-wrap gap-2">

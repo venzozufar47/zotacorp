@@ -78,7 +78,12 @@ export function TicketingSystem({
   const toDecide = open.filter((t) => heldByMe(t) && (t.status === "escalated" || t.status === "owner_handling"));
   const toAct = open.filter((t) => heldByMe(t) && (t.status === "open" || t.status === "in_progress"));
   // Pantau saja: dipegang tingkat lain / penerima tiket 'turun'; tiket yang saya buat sudah ada di "Tiket saya".
-  const monitor = open.filter((t) => !heldByMe(t) && t.createdBy !== uid);
+  // Tiket 'turun' untukku sudah tampil di "Perlu saya", jadi tidak diulang di Pantau.
+  const assignedIds = new Set(assignedToMe.map((t) => t.id));
+  const monitor = open.filter((t) => !heldByMe(t) && t.createdBy !== uid && !assignedIds.has(t.id));
+  const urgentFirst = (a: Ticket, b: Ticket) => Number(b.priority === "urgent") - Number(a.priority === "urgent");
+  // Cabang hanya ditampilkan di baris bila tiket yang terlihat berasal dari lebih dari satu cabang.
+  const multiBranch = new Set([...myTickets, ...assignedToMe, ...studioQueue].map((t) => t.branchId)).size > 1;
   const assignedActive = assignedToMe.filter((t) => isTicketOpen(t.status) || (t.status === "resolved" && !t.confirmedAt));
 
   // "Tiket saya": yang sudah selesai (dan dikonfirmasi pembuat) atau dibatalkan masuk arsip. Tiket selesai yang MASIH
@@ -88,12 +93,13 @@ export function TicketingSystem({
   const myArchived = myTickets.filter(isArchived);
 
   const perlu: Entry[] = [
-    ...toDecide.map((t) => ({ t, ctx: "escalation" as const, sup: formOptions.mySuperiors[t.branchId], group: "Keputusan eskalasi" })),
+    ...[...toDecide].sort(urgentFirst).map((t) => ({ t, ctx: "escalation" as const, sup: formOptions.mySuperiors[t.branchId], group: "Keputusan eskalasi" })),
     ...myActive.filter(needsFilerConfirmation).map((t) => ({ t, ctx: "mine" as const, group: "Perlu kamu konfirmasi" })),
-    ...assignedActive
+    ...[...assignedActive]
       .filter((t) => t.status !== "resolved")
+      .sort(urgentFirst)
       .map((t) => ({ t, ctx: "assigned" as const, team: formOptions.myTeam[t.branchId], group: "Dari owner" })),
-    ...toAct.map((t) => ({
+    ...[...toAct].sort(urgentFirst).map((t) => ({
       t,
       ctx: "queue" as const,
       sup: formOptions.mySuperiors[t.branchId],
@@ -114,7 +120,7 @@ export function TicketingSystem({
   const showPantau = isManager ? true : branchQueue.length > 0;
   const [tab, setTab] = useState<Tab>(perluCount > 0 ? "perlu" : "saya");
   const [openId, setOpenId] = useState<string | null>(null);
-  const activeTab: Tab = tab === "perlu" && !showPerlu ? "saya" : tab;
+  const activeTab: Tab = (tab === "perlu" && !showPerlu) || (tab === "pantau" && !showPantau) ? "saya" : tab;
 
   const entries = activeTab === "perlu" ? perlu : activeTab === "saya" ? [...saya, ...arsip] : pantau;
   const found = entries.find((e) => e.t.id === openId) ?? null;
@@ -201,6 +207,7 @@ export function TicketingSystem({
             openId={isDesktop ? null : openId}
             onPick={pick}
             viewerRole={viewerRole}
+            showBranch={multiBranch}
             groups={activeTab === "perlu"}
           />
           {activeTab === "saya" && arsip.length > 0 && (
@@ -215,6 +222,7 @@ export function TicketingSystem({
                 openId={isDesktop ? null : openId}
                 onPick={pick}
                 viewerRole={viewerRole}
+                showBranch={multiBranch}
               />
             </details>
           )}
@@ -248,7 +256,9 @@ export function TicketingSystem({
               </div>
             ) : (
               <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                Pilih tiket di sebelah kiri untuk melihat detailnya.
+                {activeTab === "pantau" && !isManager
+                  ? "Antrean rekan hanya untuk dilihat; detailnya tidak dibuka."
+                  : "Pilih tiket di sebelah kiri untuk melihat detailnya."}
               </p>
             )}
           </div>
@@ -267,6 +277,7 @@ function Rows({
   openId,
   onPick,
   viewerRole,
+  showBranch,
   groups = false,
 }: {
   entries: Entry[];
@@ -274,6 +285,7 @@ function Rows({
   openId: string | null;
   onPick: (id: string) => void;
   viewerRole: TicketViewerRole;
+  showBranch: boolean;
   groups?: boolean;
 }) {
   let lastGroup: string | undefined;
@@ -297,7 +309,7 @@ function Rows({
     const expanded = openId === e.t.id;
     current.push(
       <li key={e.t.id} className={cn(selectedId === e.t.id && "bg-accent/40")}>
-        <TicketRow ticket={e.t} ctx={e.ctx} expanded={expanded} onClick={() => onPick(e.t.id)} />
+        <TicketRow ticket={e.t} ctx={e.ctx} expanded={expanded} showBranch={showBranch} onClick={() => onPick(e.t.id)} />
         {expanded && (
           <div className="border-t border-border bg-muted/20">
             <TicketCard
@@ -322,11 +334,13 @@ function TicketRow({
   ticket,
   ctx,
   expanded,
+  showBranch,
   onClick,
 }: {
   ticket: Ticket;
   ctx: TicketContext;
   expanded: boolean;
+  showBranch: boolean;
   onClick: () => void;
 }) {
   const who =
@@ -347,11 +361,11 @@ function TicketRow({
           {ticket.priority === "urgent" && (
             <span className="mt-1.5 size-2 shrink-0 rounded-full bg-destructive" title="Mendesak" aria-label="Mendesak" />
           )}
-          <span className="line-clamp-2 break-words text-sm font-semibold leading-snug">{ticket.title}</span>
+          <span className={cn("break-words text-sm font-semibold leading-snug", !expanded && "line-clamp-2")}>{ticket.title}</span>
         </span>
         <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
           <StatusChip ticket={ticket} />
-          <span className="truncate">{ticket.branch}</span>
+          {showBranch && <span className="truncate">{ticket.branch}</span>}
           <span>{TICKET_CATEGORY_LABELS[ticket.category]}</span>
           {who && (
             <>

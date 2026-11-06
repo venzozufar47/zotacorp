@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Network, X } from "lucide-react";
+import { ChevronDown, Network, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { setSuperiors, type HierarchyAdminData, type HierarchyBranch } from "@/lib/actions/tickets.actions";
@@ -30,10 +30,17 @@ export function HierarchyManager({ data }: { data: HierarchyAdminData }) {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Hierarki tiket per cabang</DialogTitle>
-            <DialogDescription>
-              Tiap orang punya atasan langsung. Tiketnya masuk ke SATU atasan itu; yang punya dua atasan memilih sendiri saat membuat tiket.
-              Bila atasan tidak sanggup, tiket naik ke atasan langsungnya, dan seterusnya sampai owner. Tanpa atasan, tiket langsung ke owner.
-            </DialogDescription>
+            <DialogDescription>Tiap orang punya atasan langsung. Tanpa atasan, tiket langsung ke owner.</DialogDescription>
+            <details className="group text-sm text-muted-foreground">
+              <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1 font-semibold [&::-webkit-details-marker]:hidden">
+                Cara kerjanya
+                <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <p className="pb-1">
+                Tiket masuk ke SATU atasan; yang punya dua atasan memilih sendiri saat membuat tiket. Bila atasan tidak sanggup, tiket naik ke
+                atasan langsungnya, dan seterusnya sampai owner.
+              </p>
+            </details>
           </DialogHeader>
           <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             {data.branches
