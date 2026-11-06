@@ -101,7 +101,7 @@ export default async function EmployeeLayout({
         me={me}
       />
       <main className="flex-1 min-w-0">
-        <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
+        <div className="max-w-[1700px] mx-auto px-4 py-6 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:px-6 md:pb-8">
           {children}
         </div>
       </main>

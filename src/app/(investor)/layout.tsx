@@ -95,7 +95,7 @@ export default async function InvestorLayout({
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col">
-          <div className="flex-1 max-w-[1400px] w-full mx-auto px-4 pt-6 pb-24 md:px-6 md:pb-6">
+          <div className="flex-1 max-w-[1400px] w-full mx-auto px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:px-6 md:pb-6">
             {children}
           </div>
         </main>
