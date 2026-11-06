@@ -101,15 +101,25 @@ export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView 
 /**
  * Briefing kilat terbaru semua cabang, terbaru dulu — untuk halaman Tim
  * (kepala tim), tab Briefing Kilat superadmin, dan tab Tim anggota. Kepala tim / admin
- * melihat semua cabang; anggota biasa hanya cabangnya sendiri (kosong bila tak terdeteksi).
+ * melihat semua cabang; anggota biasa melihat briefing atasan langsungnya, atau cabangnya
+ * sendiri bila belum punya atasan (kosong bila cabang tak terdeteksi).
  */
 export async function listRecentHuddles(limit = 40, branch?: MinutesBranch): Promise<HuddleView[]> {
   const user = await getCurrentUser();
   if (!user) return [];
   let scope: MinutesBranch[] | null = null;
+  let leaderScope: string[] | null = null;
   if (!(await canPost())) {
-    scope = await resolveUserBranches(user.id);
-    if (scope.length === 0) return [];
+    // Anggota melihat briefing atasan langsungnya (satu briefing per kepala tim). Tanpa atasan,
+    // jatuh ke briefing cabangnya yang terdeteksi.
+    const { data: links } = await db().from("team_members").select("leader_id").eq("member_id", user.id);
+    const leaders: string[] = [...new Set<string>((links ?? []).map((r: { leader_id: string }) => r.leader_id))];
+    if (leaders.length > 0) {
+      leaderScope = leaders;
+    } else {
+      scope = await resolveUserBranches(user.id);
+      if (scope.length === 0) return [];
+    }
   }
   let query = db()
     .from("team_huddles")
@@ -118,6 +128,7 @@ export async function listRecentHuddles(limit = 40, branch?: MinutesBranch): Pro
     .order("created_at", { ascending: false })
     .limit(limit);
   if (scope) query = query.in("branch", scope);
+  if (leaderScope) query = query.in("posted_by", leaderScope);
   if (branch) query = query.eq("branch", branch);
   const { data } = await query;
   const rows = data ?? [];
@@ -164,18 +175,19 @@ export async function postHuddle(input: PostHuddleInput): Promise<ActionResult> 
   };
   // Satu briefing per cabang per hari PER PENCATAT: koordinator toko dan kepala produksi di cabang yang sama
   // masing-masing punya briefing untuk timnya. Memperbarui hanya mengubah milik sendiri, tidak pernah milik rekan.
-  const { data: existing } = await db()
-    .from("team_huddles")
-    .select("id")
-    .eq("branch", input.branch)
-    .eq("huddle_date", date)
-    .eq("posted_by", user.id)
-    .maybeSingle();
-  const { error } = existing
+  const mineQuery = () =>
+    db().from("team_huddles").select("id").eq("branch", input.branch).eq("huddle_date", date).eq("posted_by", user.id).maybeSingle();
+  const { data: existing } = await mineQuery();
+  let { error } = existing
     ? await db().from("team_huddles").update(fields).eq("id", existing.id)
     : await db()
         .from("team_huddles")
         .insert({ branch: input.branch, huddle_date: date, posted_by: user.id, ...fields });
+  // Dua kirim hampir bersamaan (klik ganda): yang kedua menabrak batasan unik, jadi ulangi sebagai pembaruan.
+  if (error && (error as { code?: string }).code === "23505") {
+    const { data: again } = await mineQuery();
+    if (again) ({ error } = await db().from("team_huddles").update(fields).eq("id", again.id));
+  }
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/tim");
@@ -248,20 +260,28 @@ export async function postWeeklyMinutes(input: PostWeeklyMinutesInput): Promise<
   if (!(await canPost())) return { ok: false, error: "Hanya kepala tim atau admin" };
   if (!input.weekStart) return { ok: false, error: "Tanggal minggu wajib diisi" };
 
-  const { error } = await db().from("team_weekly_minutes").upsert(
-    {
-      branch: input.branch,
-      week_start: input.weekStart,
-      scorecard_note: input.scorecardNote?.trim() || null,
-      problem_analyzed: input.problemAnalyzed?.trim() || null,
-      fix_description: input.fixDescription?.trim() || null,
-      fix_owner_id: input.fixOwnerId || null,
-      fix_deadline: input.fixDeadline || null,
-      requests_to_owner: input.requestsToOwner?.trim() || null,
-      posted_by: user.id,
-    },
-    { onConflict: "branch,week_start" }
-  );
+  const fields = {
+    scorecard_note: input.scorecardNote?.trim() || null,
+    problem_analyzed: input.problemAnalyzed?.trim() || null,
+    fix_description: input.fixDescription?.trim() || null,
+    fix_owner_id: input.fixOwnerId || null,
+    fix_deadline: input.fixDeadline || null,
+    requests_to_owner: input.requestsToOwner?.trim() || null,
+  };
+  // Satu notulen per cabang per minggu. Memperbarui tidak boleh mengganti pencatat aslinya
+  // (upsert sebelumnya menimpa `posted_by`, kesalahan yang sama dengan briefing kilat).
+  const weekQuery = () =>
+    db().from("team_weekly_minutes").select("id").eq("branch", input.branch).eq("week_start", input.weekStart).maybeSingle();
+  const { data: existing } = await weekQuery();
+  let { error } = existing
+    ? await db().from("team_weekly_minutes").update(fields).eq("id", existing.id)
+    : await db()
+        .from("team_weekly_minutes")
+        .insert({ branch: input.branch, week_start: input.weekStart, posted_by: user.id, ...fields });
+  if (error && (error as { code?: string }).code === "23505") {
+    const { data: again } = await weekQuery();
+    if (again) ({ error } = await db().from("team_weekly_minutes").update(fields).eq("id", again.id));
+  }
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/notulen");

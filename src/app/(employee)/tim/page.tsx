@@ -125,8 +125,8 @@ export default async function TeamPage({
             {unread} catatan pembinaan belum kamu baca
           </TeamAlertLink>
         )}
-        {/* Briefing hanya milik cabang; karyawan tanpa cabang terdeteksi (mis. unit lain) tidak melihat bagian ini. */}
-        {myBranches.length > 0 && <MemberBriefingView briefings={briefings} todayYmd={todayYmd} />}
+        {/* Briefing milik atasan langsung, atau cabang bila belum punya atasan; tanpa keduanya (mis. unit lain) bagian ini tidak tampil. */}
+        {(myBranches.length > 0 || myLeaderIds.length > 0) && <MemberBriefingView briefings={briefings} todayYmd={todayYmd} />}
         <TeamRowList
           rows={[
             {
