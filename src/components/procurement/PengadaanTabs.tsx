@@ -1,90 +1,86 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type PengadaanTab = "catat" | "pesanan" | "riwayat" | "stok" | "bahan";
+/** `pesanan` dan `riwayat` adalah nama lama: keduanya kini bagian dari tab `belanja`. */
+export type PengadaanTab = "catat" | "belanja" | "stok" | "bahan";
+export type BelanjaSection = "pesanan" | "riwayat";
 
-const TABS: { key: PengadaanTab; label: string; short: string }[] = [
-  { key: "catat", label: "Catat belanja", short: "Catat" },
-  { key: "pesanan", label: "Pesanan", short: "Pesanan" },
-  { key: "riwayat", label: "Riwayat", short: "Riwayat" },
-  { key: "stok", label: "Stok bahan", short: "Stok" },
-  { key: "bahan", label: "Daftar bahan", short: "Bahan" },
+const TABS: { key: PengadaanTab; label: string }[] = [
+  { key: "catat", label: "Catat" },
+  { key: "belanja", label: "Belanja" },
+  { key: "stok", label: "Stok" },
+  { key: "bahan", label: "Bahan" },
 ];
 
-/** Tab halaman Pengadaan & Pengeluaran + pemilih cabang (bila petugas memegang lebih dari satu). */
+/**
+ * Tab halaman Pengadaan (4 tab, muat di layar 360px tanpa menyempit). Lencana angka
+ * menunjukkan pesanan yang belum tiba dan ikut mengisi lebar tab, bukan menimpa tetangga.
+ */
 export function PengadaanTabs({
   active,
-  brands,
   activeBrand,
-  limited = false,
   inTransitCount = 0,
 }: {
   active: PengadaanTab;
-  brands: string[];
   activeBrand: string | null;
-  /** Akun kasir (bukan petugas pengadaan): hanya form catat, tanpa tab lain. */
-  limited?: boolean;
-  /** Jumlah pesanan yang belum tiba (badge di tab Pesanan). */
+  /** Jumlah pesanan yang belum tiba (lencana di tab Belanja). */
   inTransitCount?: number;
 }) {
-  const href = (tab: PengadaanTab, bu: string | null) =>
-    `/pengadaan?tab=${tab}${bu ? `&bu=${encodeURIComponent(bu)}` : ""}`;
+  const href = (tab: PengadaanTab) =>
+    `/pengadaan?tab=${tab}${activeBrand ? `&bu=${encodeURIComponent(activeBrand)}` : ""}`;
   return (
-    <div className="space-y-2.5">
-      {!limited && (
-      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-6 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
-        {TABS.map((t) => (
-          <Link
-            key={t.key}
-            href={href(t.key, activeBrand)}
-            aria-current={active === t.key ? "page" : undefined}
-            prefetch={false}
-            className={cn(
-              "relative min-w-0 whitespace-nowrap rounded-lg px-0.5 py-2 text-center text-[12.5px] font-semibold transition md:px-3.5 md:py-1.5 md:text-sm",
-              active === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <span className="md:hidden">{t.short}</span>
-            <span className="hidden md:inline">{t.label}</span>
-            {t.key === "pesanan" && inTransitCount > 0 && (
-              // Mobile: lencana menempel di pojok kanan atas label (tidak melebarkan sel tab dan menimpa tab sebelah); desktop: sejajar label.
-              <span className="absolute -top-1.5 right-0 inline-grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground tabular-nums md:static md:ml-1">
-                {inTransitCount}
-                <span className="sr-only"> pesanan belum tiba</span>
-              </span>
-            )}
-          </Link>
-        ))}
-        {/* Opname bahan punya halaman sendiri — tautan di sini supaya mudah ditemukan. */}
+    <nav aria-label="Bagian Pengadaan" className="grid grid-cols-4 gap-0.5 rounded-xl bg-muted p-1">
+      {TABS.map((t) => (
         <Link
-          href={`/pengadaan/opname${activeBrand ? `?bu=${encodeURIComponent(activeBrand)}` : ""}`}
+          key={t.key}
+          href={href(t.key)}
           prefetch={false}
-          className="whitespace-nowrap rounded-lg px-0.5 py-2 text-center text-[12.5px] font-semibold text-muted-foreground transition hover:text-foreground md:px-3.5 md:py-1.5 md:text-sm"
+          aria-current={active === t.key ? "page" : undefined}
+          className={cn(
+            "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 text-[13px] font-semibold transition-colors",
+            active === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+          )}
         >
-          Opname
+          <span className="truncate">{t.label}</span>
+          {t.key === "belanja" && inTransitCount > 0 && (
+            <span className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground tabular-nums">
+              {inTransitCount}
+              <span className="sr-only"> pesanan belum tiba</span>
+            </span>
+          )}
         </Link>
-      </nav>
-      )}
-      {brands.length > 1 && (
-        <div className="flex flex-wrap gap-1.5">
-          {brands.map((b) => (
-            <Link
-              key={b}
-              href={href(active, b)}
-              prefetch={false}
-              aria-current={b === activeBrand ? "true" : undefined}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                b === activeBrand
-                  ? "border-foreground bg-primary text-primary-foreground"
-                  : "border-border bg-card text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {b.replace("Haengbocake ", "")}
-            </Link>
-          ))}
-        </div>
-      )}
+      ))}
+    </nav>
+  );
+}
+
+/** Pemilih cabang untuk petugas yang memegang lebih dari satu cabang. */
+export function BrandPills({
+  brands,
+  activeBrand,
+  href,
+}: {
+  brands: string[];
+  activeBrand: string | null;
+  href: (bu: string) => string;
+}) {
+  if (brands.length < 2) return null;
+  return (
+    <div role="group" aria-label="Cabang" className="inline-flex rounded-lg bg-muted p-0.5">
+      {brands.map((b) => (
+        <Link
+          key={b}
+          href={href(b)}
+          prefetch={false}
+          aria-current={b === activeBrand ? "true" : undefined}
+          className={cn(
+            "inline-flex h-9 items-center rounded-md px-3 text-[13px] font-semibold transition-colors",
+            b === activeBrand ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+          )}
+        >
+          {b.replace("Haengbocake ", "")}
+        </Link>
+      ))}
     </div>
   );
 }

@@ -30,10 +30,10 @@ export function OrdersPanel({ businessUnit, data }: { businessUnit: string; data
 
   return (
     <div className="space-y-3" data-bu={businessUnit}>
-      <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/40 p-1" role="tablist" aria-label="Status pesanan">
+      <div className="flex gap-1.5" role="tablist" aria-label="Status pesanan">
         {(
           [
-            { key: "jalan", label: "Dalam perjalanan", n: data.inTransit.length },
+            { key: "jalan", label: "Di jalan", n: data.inTransit.length },
             { key: "tiba", label: "Sudah tiba", n: data.arrived.length },
           ] as const
         ).map((t) => (
@@ -44,19 +44,19 @@ export function OrdersPanel({ businessUnit, data }: { businessUnit: string; data
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              "min-h-11 rounded-lg px-2 text-[13px] font-semibold transition",
-              tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+              "h-9 rounded-full border px-3.5 text-[13px] font-semibold transition-colors",
+              tab === t.key ? "border-foreground/30 bg-muted text-foreground" : "border-transparent text-muted-foreground"
             )}
           >
-            {t.label} <span className="tabular-nums">({t.n})</span>
+            {t.label} <span className="tabular-nums">{t.n}</span>
           </button>
         ))}
       </div>
 
       {tab === "jalan" && late > 0 && (
-        <p className="flex items-center gap-2 rounded-xl border border-warning/60 bg-warning/15 px-3 py-2 text-[13px] font-semibold" role="status">
+        <p className="flex items-center gap-2 rounded-xl bg-warning/15 px-3 py-2 text-[13px] font-semibold" role="status">
           <AlertTriangle size={16} className="shrink-0" aria-hidden />
-          {late} pesanan telat dari perkiraan. Cek ke penjual atau perbarui saat barang tiba.
+          {late} pesanan telat. Cek ke penjual.
         </p>
       )}
 
@@ -64,44 +64,41 @@ export function OrdersPanel({ businessUnit, data }: { businessUnit: string; data
         data.inTransit.length === 0 ? (
           <Empty icon={<Truck size={28} aria-hidden />} title="Tidak ada pesanan di jalan" hint='Catat belanja dengan pilihan "Dipesan, belum tiba" untuk melacak kedatangannya di sini.' />
         ) : (
-          <ul className="space-y-2">
-            {data.inTransit.map((o) => (
-              <li key={o.id} className="rounded-2xl border border-border bg-card p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold leading-tight">{o.materialName}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+          <>
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+              {data.inTransit.map((o) => (
+                <li key={o.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold leading-tight">{o.materialName}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground tabular-nums">
                       {fmtQty(o.qtyPurchaseUnits)} {o.purchaseUnit}
                       {o.totalPaid != null ? ` · ${formatRp(o.totalPaid)}` : ""}
                       {o.supplier ? ` · ${o.supplier}` : ""}
                     </p>
+                    <p
+                      className={cn(
+                        "mt-0.5 flex items-center gap-1 text-xs",
+                        o.lateDays > 0 ? "font-semibold text-destructive" : "text-muted-foreground"
+                      )}
+                    >
+                      {o.lateDays > 0 ? <AlertTriangle size={12} aria-hidden /> : <CalendarClock size={12} aria-hidden />}
+                      {o.lateDays > 0 ? `Telat ${o.lateDays} hari kerja · ` : "Tiba "}
+                      {fmtDate(o.expectedAt)}
+                    </p>
                   </div>
-                  {o.lateDays > 0 ? (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5 text-[11px] font-bold text-destructive">
-                      <AlertTriangle size={11} aria-hidden /> Telat {o.lateDays} hari kerja
-                    </span>
-                  ) : (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                      <Truck size={11} aria-hidden /> Di jalan
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
-                  <CalendarClock size={12} aria-hidden />
-                  Dipesan {fmtDate(o.orderedDate)} · Perkiraan tiba {fmtDate(o.expectedAt)}
-                  <span className="opacity-70"> (Minggu libur)</span>
-                </p>
-                <Button type="button" size="lg" className="mt-2.5 h-12 w-full" onClick={() => setSel(o)}>
-                  <PackageCheck aria-hidden /> Barang tiba
-                </Button>
-              </li>
-            ))}
-          </ul>
+                  <Button type="button" className="h-11 shrink-0 px-3.5" onClick={() => setSel(o)} aria-label={`Barang tiba: ${o.materialName}`}>
+                    <PackageCheck size={16} aria-hidden /> Tiba
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <p className="text-center text-xs text-muted-foreground">Perkiraan tiba dihitung tanpa hari Minggu.</p>
+          </>
         )
       ) : data.arrived.length === 0 ? (
         <Empty icon={<CheckCircle2 size={28} aria-hidden />} title="Belum ada pesanan tiba" hint="Pesanan yang sudah dikonfirmasi tiba dalam 14 hari terakhir muncul di sini." />
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
           {data.arrived.map((o) => (
             <ArrivedCard key={o.id} o={o} onUndone={() => router.refresh()} />
           ))}
@@ -137,9 +134,9 @@ function Empty({ icon, title, hint }: { icon: React.ReactNode; title: string; hi
 function ArrivedCard({ o, onUndone }: { o: OrderRow; onUndone: () => void }) {
   const [pending, start] = useTransition();
   return (
-    <li className="flex items-start justify-between gap-2 rounded-2xl border border-border bg-card p-3">
+    <li className="flex items-center justify-between gap-2 px-3 py-2.5">
       <div className="min-w-0">
-        <p className="text-sm font-bold leading-tight">{o.materialName}</p>
+        <p className="text-sm font-semibold leading-tight">{o.materialName}</p>
         <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
           {fmtQty(o.qtyPurchaseUnits)} {o.purchaseUnit} · tiba {o.arrivedAt ? fmtDate(o.arrivedAt.slice(0, 10)) : "—"}
         </p>

@@ -217,7 +217,7 @@ export function ProcurementBoard({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Cari bahan atau kategori…"
-          className="h-10 w-full rounded-xl border-2 border-foreground bg-card pl-8 pr-8 text-sm"
+          className="h-11 w-full rounded-xl border border-border bg-card pl-8 pr-8 text-sm"
         />
         {query && (
           <button
@@ -564,11 +564,11 @@ function Tile({
         ? "bg-warning/30"
         : "bg-card";
   return (
-    <div className={flat ? `rounded-xl border border-border p-3 ${cls}` : `rounded-2xl border-2 border-foreground p-3 shadow-hard-sm ${cls}`}>
+    <div className={flat ? `rounded-xl border border-border px-3 py-2 ${cls}` : `rounded-2xl border-2 border-foreground p-3 shadow-hard-sm ${cls}`}>
       <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="text-lg font-extrabold tabular-nums leading-tight">
+      <div className="text-base font-bold tabular-nums leading-tight">
         {value}
       </div>
       {hint && (
@@ -591,10 +591,10 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`h-7 rounded-full border-2 px-2.5 text-[11px] font-semibold transition ${
+      className={`h-8 rounded-full border px-3 text-xs font-semibold transition-colors ${
         active
-          ? "border-foreground bg-primary text-foreground"
-          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-muted-foreground"
       }`}
     >
       {label}

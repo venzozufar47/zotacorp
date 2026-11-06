@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ClipboardList } from "lucide-react";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import {
   canOpenProcurement,
@@ -20,34 +20,33 @@ import {
 import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions";
 import { getBrandSummaries, listBrandsNeedingInfo } from "@/lib/actions/procurement-brands.actions";
 import { getCashPosition } from "@/lib/actions/procurement-wallet.actions";
-import { CashPositionCard } from "@/components/procurement/CashPositionCard";
+import { CashStrip } from "@/components/procurement/CashStrip";
 import { getShopeeWallet } from "@/lib/actions/procurement-shopee.actions";
-import { ShopeeWalletCard } from "@/components/procurement/ShopeeWalletCard";
 import { MaterialsManager } from "@/components/procurement/MaterialsManager";
 import { OpnameBanner } from "@/components/procurement/OpnameBanner";
 import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
 import { pickActiveBrand, COSTING_BRAND_COOKIE } from "@/lib/costing/brands";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
-import { PengadaanTabs, type PengadaanTab } from "@/components/procurement/PengadaanTabs";
+import { PengadaanTabs, BrandPills, type PengadaanTab, type BelanjaSection } from "@/components/procurement/PengadaanTabs";
 import { PengadaanCatat } from "@/components/procurement/PengadaanCatat";
 import { PurchaseHistory, PurchaseSummaryCard } from "@/components/procurement/PurchaseHistory";
 import { listOrders } from "@/lib/actions/procurement-orders.actions";
 import { OrdersPanel } from "@/components/procurement/OrdersPanel";
 
-const TAB_KEYS: readonly PengadaanTab[] = ["catat", "pesanan", "riwayat", "stok", "bahan"];
+const TAB_KEYS: readonly PengadaanTab[] = ["catat", "belanja", "stok", "bahan"];
 
 /**
  * Pengadaan & Pengeluaran untuk petugas cabang: catat nota belanja (bahan baku + pengeluaran lain), lihat
  * riwayat & total bulan ini, dan papan pantau stok bahan.
  *
- * Daftar brand HANYA dari penugasan (`myProcurementBusinessUnits`) — `?bu=` yang tak ada di situ diabaikan,
+ * Daftar brand HANYA dari penugasan (`myProcurementBusinessUnits`) â€” `?bu=` yang tak ada di situ diabaikan,
  * bukan dihormati, supaya petugas tidak bisa mengintip cabang lain lewat URL.
  */
 export default async function PengadaanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string; tab?: string; bahan?: string }>;
+  searchParams: Promise<{ bu?: string; tab?: string; bahan?: string; bagian?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -63,38 +62,46 @@ export default async function PengadaanPage({
   const brands = [...new Set([...staffBrands, ...drawerBrands])].sort();
   if (brands.length === 0) redirect("/dashboard");
 
-  const { bu, tab: tabParam, bahan } = await searchParams;
+  const { bu, tab: tabParam, bahan, bagian } = await searchParams;
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
   // Tanpa ?bu= eksplisit, cabang awal diutamakan di tempat akun ini PETUGAS pengadaan (bukan sekadar kasir),
   // supaya "Uang pengadaan" tidak terkunci hanya karena Pare urut pertama abjad.
   const defaultPool = bu && brands.includes(bu) ? brands : staffBrands.length > 0 ? staffBrands : brands;
   const activeBrand = pickActiveBrand(defaultPool, bu, lastOpened) ?? null;
   const limited = !!activeBrand && !staffBrands.includes(activeBrand);
-  const tab: PengadaanTab = limited ? "catat" : (TAB_KEYS.find((k) => k === tabParam) ?? "catat");
+  // Nama tab lama (?tab=pesanan / ?tab=riwayat) tetap dikenali: keduanya kini bagian dari tab Belanja.
+  const legacySection: BelanjaSection | null = tabParam === "pesanan" || tabParam === "riwayat" ? tabParam : null;
+  const tab: PengadaanTab = limited
+    ? "catat"
+    : legacySection
+      ? "belanja"
+      : (TAB_KEYS.find((k) => k === tabParam) ?? "catat");
 
   const today = jakartaDateString(new Date());
   // Jumlah pesanan belum tiba untuk badge tab (hanya petugas pengadaan).
   const ordersRes = !limited && activeBrand ? await listOrders(activeBrand) : null;
   const inTransitCount = ordersRes && ordersRes.ok ? (ordersRes.data?.inTransit.length ?? 0) : 0;
   const monthStart = `${today.slice(0, 7)}-01`;
+  const section: BelanjaSection =
+    legacySection ?? (bagian === "pesanan" || bagian === "riwayat" ? bagian : inTransitCount > 0 ? "pesanan" : "riwayat");
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
+    <div className="space-y-3">
+      <div className="flex items-center gap-1">
         <Link
           href="/dashboard"
-          className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground active:bg-muted"
           aria-label="Kembali"
         >
-          <ArrowLeft size={18} strokeWidth={2.5} />
+          <ArrowLeft size={20} />
         </Link>
-        <div>
-          <h1 className="font-display text-xl font-extrabold leading-none tracking-tight">
-            Pengadaan &amp; Pengeluaran<span className="text-primary">.</span>
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Catat belanja dengan foto nota, pantau pengeluaran, dan jaga stok bahan baku.
-          </p>
+        <h1 className="font-display text-xl font-bold tracking-tight">Pengadaan</h1>
+        <div className="ml-auto">
+          <BrandPills
+            brands={brands}
+            activeBrand={activeBrand}
+            href={(b) => `/pengadaan?tab=${tab}&bu=${encodeURIComponent(b)}`}
+          />
         </div>
       </div>
 
@@ -105,19 +112,19 @@ export default async function PengadaanPage({
       ) : (
         <>
           {!limited && <OpnameReminder brand={activeBrand} />}
-          <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} inTransitCount={inTransitCount} />
+          {!limited && <PengadaanTabs active={tab} activeBrand={activeBrand} inTransitCount={inTransitCount} />}
           {!limited && tab === "catat" && <PositionBar brand={activeBrand} />}
           {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
-          {tab === "pesanan" && ordersRes && (
-            <div className="mx-auto max-w-xl">
-              {ordersRes.ok && ordersRes.data ? (
-                <OrdersPanel businessUnit={activeBrand} data={ordersRes.data} />
-              ) : (
-                <p className="text-sm text-destructive">{ordersRes.ok ? "Gagal memuat pesanan" : ordersRes.error}</p>
-              )}
-            </div>
+          {tab === "belanja" && ordersRes && (
+            <BelanjaTab
+              brand={activeBrand}
+              section={section}
+              inTransitCount={inTransitCount}
+              ordersRes={ordersRes}
+              today={today}
+              monthStart={monthStart}
+            />
           )}
-          {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
           {tab === "bahan" && <BahanTab brand={activeBrand} />}
         </>
@@ -133,6 +140,60 @@ async function CatatTab({ brand, initialMaterialId }: { brand: string; initialMa
   return <PengadaanCatat data={res.data} initialMaterialId={initialMaterialId} />;
 }
 
+type OrdersResult = NonNullable<Awaited<ReturnType<typeof listOrders>>>;
+
+/** Tab Belanja: pesanan yang masih di jalan dan riwayat nota, dipilih lewat dua tombol kecil. */
+async function BelanjaTab({
+  brand,
+  section,
+  inTransitCount,
+  ordersRes,
+  today,
+  monthStart,
+}: {
+  brand: string;
+  section: BelanjaSection;
+  inTransitCount: number;
+  ordersRes: OrdersResult;
+  today: string;
+  monthStart: string;
+}) {
+  const href = (s: BelanjaSection) => `/pengadaan?tab=belanja&bagian=${s}&bu=${encodeURIComponent(brand)}`;
+  const opts: { key: BelanjaSection; label: string; count?: number }[] = [
+    { key: "pesanan", label: "Pesanan", count: inTransitCount },
+    { key: "riwayat", label: "Riwayat nota" },
+  ];
+  return (
+    <div className="mx-auto max-w-xl space-y-3">
+      <div role="group" aria-label="Bagian Belanja" className="inline-flex rounded-lg border border-border p-0.5">
+        {opts.map((o) => (
+          <Link
+            key={o.key}
+            href={href(o.key)}
+            prefetch={false}
+            aria-current={section === o.key ? "true" : undefined}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3.5 text-[13px] font-semibold transition-colors ${
+              section === o.key ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+            }`}
+          >
+            {o.label}
+            {o.count ? <span className="tabular-nums opacity-80">{o.count}</span> : null}
+          </Link>
+        ))}
+      </div>
+      {section === "pesanan" ? (
+        ordersRes.ok && ordersRes.data ? (
+          <OrdersPanel businessUnit={brand} data={ordersRes.data} />
+        ) : (
+          <p className="text-sm text-destructive">{ordersRes.ok ? "Gagal memuat pesanan" : ordersRes.error}</p>
+        )
+      ) : (
+        <RiwayatTab brand={brand} today={today} monthStart={monthStart} />
+      )}
+    </div>
+  );
+}
+
 async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: string; monthStart: string }) {
   const [listRes, sumRes] = await Promise.all([
     listPurchases(brand, { limit: 60 }),
@@ -145,8 +206,8 @@ async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: 
     timeZone: "UTC",
   });
   return (
-    <div className="mx-auto max-w-xl space-y-4">
-      {sumRes.ok && sumRes.data && <PurchaseSummaryCard summary={sumRes.data} title={`Pengeluaran ${monthLabel}`} />}
+    <div className="space-y-3">
+      {sumRes.ok && sumRes.data && <PurchaseSummaryCard compact summary={sumRes.data} title={`Pengeluaran ${monthLabel}`} />}
       <PurchaseHistory purchases={purchases} today={today} />
     </div>
   );
@@ -159,14 +220,13 @@ async function OpnameReminder({ brand }: { brand: string }) {
   return <OpnameBanner plan={res.data} brand={brand} />;
 }
 
-/** Saldo uang pengadaan & saldo laci cabang aktif — dilihat petugas sebelum mencatat belanja. */
+/** Saldo uang pengadaan & saldo laci cabang aktif â€” dilihat petugas sebelum mencatat belanja. */
 async function PositionBar({ brand }: { brand: string }) {
   const [res, shopee] = await Promise.all([getCashPosition(brand), getShopeeWallet(brand)]);
   if (!res.ok || !res.data) return null;
   return (
-    <div className="mx-auto max-w-xl space-y-3">
-      <CashPositionCard positions={[res.data]} />
-      {shopee.ok && shopee.data && <ShopeeWalletCard wallet={shopee.data} />}
+    <div className="mx-auto max-w-xl">
+      <CashStrip position={res.data} wallet={shopee.ok && shopee.data ? shopee.data : null} />
     </div>
   );
 }
@@ -187,13 +247,23 @@ async function BahanTab({ brand }: { brand: string }) {
 async function StokTab({ brand, brands }: { brand: string; brands: string[] }) {
   const [boardRes, goodsRes, brandRes] = await Promise.all([listProcurementBoard(brand), listGoodsIn(brand, 20), getBrandSummaries(brand)]);
   return (
+    <div className="space-y-3">
+      <Link
+        href={`/pengadaan/opname?bu=${encodeURIComponent(brand)}`}
+        className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm font-semibold active:bg-muted"
+      >
+        <ClipboardList size={16} aria-hidden /> Opname bahan
+        <span className="ml-auto text-xs font-normal text-muted-foreground">hitung stok</span>
+      </Link>
     <ProcurementBoard
       brands={brands}
       activeBrand={brand}
       basePath="/pengadaan?tab=stok"
+      embedded
       rows={boardRes.ok ? (boardRes.data ?? []) : []}
       goodsIn={goodsRes.ok ? (goodsRes.data ?? []) : []}
       brandInfo={brandRes.ok ? brandRes.data : undefined}
     />
+    </div>
   );
 }

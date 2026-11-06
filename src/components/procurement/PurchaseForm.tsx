@@ -342,10 +342,10 @@ export function PurchaseForm({
 
   if (done) {
     return (
-      <div className="mx-auto max-w-xl space-y-4 rounded-2xl border-2 border-foreground bg-card p-6 text-center shadow-hard-sm">
+      <div className="mx-auto max-w-xl space-y-4 rounded-xl border border-border bg-card p-6 text-center">
         <CheckCircle2 size={44} className="mx-auto text-success" />
         <div>
-          <h2 className="font-display text-lg font-bold">Nota tersimpan</h2>
+          <h2 className="font-display text-lg font-semibold">Nota tersimpan</h2>
           <p className="text-sm text-muted-foreground">
             {formatRp(done.total)} · {done.lines} baris —{" "}
             {done.source === "shopee"
@@ -377,26 +377,25 @@ export function PurchaseForm({
   if (!source) {
     return (
       <div className="mx-auto max-w-xl space-y-3">
-        <h2 className="font-display text-sm font-bold">Uang belanjanya dari mana?</h2>
+        <h2 className="font-display text-sm font-semibold">Uang belanjanya dari mana?</h2>
         <SourceCard
-          icon={<Wallet size={20} />}
+          icon={<Wallet size={18} />}
           title="Uang pengadaan"
-          desc={`Uang yang kamu bawa untuk belanja. Tidak mengubah kas laci kasir.${
-            access.walletBalance != null ? ` Saldo ${formatRp(access.walletBalance)}.` : ""
-          }`}
+          desc="Uang yang kamu bawa untuk belanja"
+          balance={access.walletBalance != null ? formatRp(access.walletBalance) : undefined}
           disabled={!access.pengadaan}
           disabledReason="Hanya untuk petugas pengadaan"
           onClick={() => chooseSource("pengadaan")}
         />
         <SourceCard
-          icon={<Landmark size={20} />}
+          icon={<Landmark size={18} />}
           title="Uang laci kasir"
           desc={
             access.shiftCashier
-              ? `Dibayar dari laci shift ${access.shiftCashier}. Mengurangi kas laci — ikut dihitung saat tutup shift.`
+              ? `Shift ${access.shiftCashier}, dihitung saat tutup shift`
               : access.drawerState === "closed"
-                ? "Dibayar dari laci kasir. Tidak ada shift berjalan sekarang, tapi tetap mengurangi isi laci sejak tutup shift terakhir."
-                : "Dibayar dari laci kasir. Mengurangi kas laci."
+                ? "Tidak ada shift berjalan, tetap mengurangi laci"
+                : "Mengurangi kas laci"
           }
           disabled={!access.laci}
           disabledReason={access.laciReason ?? undefined}
@@ -410,17 +409,16 @@ export function PurchaseForm({
           }}
         />
         <SourceCard
-          icon={<ShoppingBag size={20} />}
+          icon={<ShoppingBag size={18} />}
           title={walletLabel(businessUnit)}
-          desc={`${walletName(businessUnit) === "Seabank" ? "Belanja memakai saldo Seabank dari transferan owner." : "Belanja lewat Shopee memakai saldo ShopeePay dari transferan owner."}${
-            access.shopeeBalance != null ? ` Saldo ${formatRp(access.shopeeBalance)}.` : ""
-          }`}
+          desc="Dari transferan owner"
+          balance={access.shopeeBalance != null ? formatRp(access.shopeeBalance) : undefined}
           disabled={!access.shopee}
           disabledReason="Hanya untuk petugas pengadaan"
           onClick={() => chooseSource("shopee")}
         />
-        <p className="text-[11px] text-muted-foreground">
-          Salah memilih membuat kas laci tidak cocok. Ragu? Tanyakan: apakah uangnya diambil dari laci kasir?
+        <p className="text-xs text-muted-foreground">
+          Salah memilih membuat kas laci tidak cocok. Ragu? Tanya: uangnya diambil dari laci kasir?
         </p>
       </div>
     );
@@ -450,8 +448,6 @@ export function PurchaseForm({
         <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
           <span>
             Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : source === "shopee" ? walletLabel(businessUnit) : "Uang pengadaan"}</b>
-            {source === "pengadaan" && walletAvail != null && <> (saldo {formatRp(walletAvail)})</>}
-            {source === "shopee" && shopeeAvail != null && <> (saldo {formatRp(shopeeAvail)})</>}
           </span>
           <button
             type="button"
@@ -484,12 +480,12 @@ export function PurchaseForm({
           onChange={(e) => void onPickFile(e.target.files?.[0] ?? null, true)}
         />
         {receiptPreview ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-2.5">
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={receiptPreview} alt="Nota" className="size-16 rounded-xl object-cover" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">Foto nota siap</p>
-              <p className="text-xs text-muted-foreground">Pastikan total dan tanggal di nota terbaca jelas.</p>
+              <p className="text-xs text-muted-foreground">Pastikan total dan tanggal terbaca.</p>
             </div>
             <div className="flex shrink-0 flex-col gap-1.5">
               <button
@@ -513,15 +509,15 @@ export function PurchaseForm({
             </div>
           </div>
         ) : (
-          <div className="space-y-2 rounded-2xl border-2 border-dashed border-foreground/40 bg-card p-3">
+          <div className="space-y-2 rounded-xl border border-dashed border-border bg-card p-3">
             <div className={cn("grid gap-2", source === "shopee" ? "grid-cols-2" : "grid-cols-1")}>
               <button
                 type="button"
                 onClick={() => cameraRef.current?.click()}
                 disabled={uploading || saving}
-                className="flex flex-col items-center gap-1.5 rounded-xl border border-border px-3 py-4 text-foreground transition hover:bg-muted/50 disabled:opacity-60"
+                className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-3 text-primary-foreground transition active:opacity-90 disabled:opacity-60"
               >
-                {uploading ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
+                {uploading ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
                 <span className="text-sm font-semibold">{uploading ? "Mengunggah…" : "Ambil foto"}</span>
               </button>
               {source === "shopee" && (
@@ -529,19 +525,24 @@ export function PurchaseForm({
                   type="button"
                   onClick={() => galleryRef.current?.click()}
                   disabled={uploading || saving}
-                  className="flex flex-col items-center gap-1.5 rounded-xl border border-border px-3 py-4 text-foreground transition hover:bg-muted/50 disabled:opacity-60"
+                  className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-border px-3 py-3 text-foreground transition active:bg-muted disabled:opacity-60"
                 >
-                  <ImageIcon size={24} />
+                  <ImageIcon size={20} />
                   <span className="text-sm font-semibold">Pilih dari galeri</span>
                 </button>
               )}
             </div>
-            <p className="text-center text-xs text-muted-foreground">
-              {source === "shopee"
-                ? `Wajib untuk setiap pengeluaran. Nota ${walletName(businessUnit)}/online: pilih screenshot dari galeri.`
-                : `Wajib untuk setiap pengeluaran, difoto langsung dengan kamera. Galeri hanya untuk belanja lewat ${walletLabel(businessUnit)}.`}{" "}
-              Tanpa struk? Foto layar aplikasi/ojek.
-            </p>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer list-none py-1 text-center [&::-webkit-details-marker]:hidden">
+                Foto nota wajib. <span className="font-semibold text-primary">Aturan foto</span>
+              </summary>
+              <p className="pt-1 text-center">
+                {source === "shopee"
+                  ? `Nota ${walletName(businessUnit)}/online: pilih screenshot dari galeri.`
+                  : `Difoto langsung dengan kamera. Galeri hanya untuk belanja lewat ${walletLabel(businessUnit)}.`}{" "}
+                Tanpa struk? Foto layar aplikasi atau ojek.
+              </p>
+            </details>
           </div>
         )}
 
@@ -592,10 +593,10 @@ export function PurchaseForm({
                   role="radio"
                   aria-checked={delivery === o.key}
                   onClick={() => setDelivery(o.key)}
-                  className={`min-h-12 rounded-xl border-2 px-2.5 py-2 text-left transition ${
+                  className={`min-h-12 rounded-xl border px-2.5 py-2 text-left transition ${
                     delivery === o.key
-                      ? "border-foreground bg-primary text-primary-foreground"
-                      : "border-border bg-card hover:bg-muted"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card active:bg-muted"
                   }`}
                 >
                   <span className="block text-[13px] font-bold leading-tight">{o.title}</span>
@@ -625,7 +626,7 @@ export function PurchaseForm({
       <section className="space-y-2">
         <StepTitle n={2} title="Isi nota" done={lines.length > 0} />
         {lines.length > 0 && (
-          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
             {lines.map((l) => (
               <li key={l.key} className="flex items-start gap-3 px-3 py-2.5">
                 <span
@@ -706,19 +707,19 @@ export function PurchaseForm({
             <button
               type="button"
               onClick={() => setComposer("bahan")}
-              className="flex flex-col items-center gap-1 rounded-2xl border-2 border-foreground bg-quaternary/40 px-3 py-3.5 text-sm font-semibold shadow-hard-sm transition hover:-translate-y-0.5"
+              className="flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold transition-colors active:bg-muted"
             >
-              <PackagePlus size={20} /> Bahan baku
-              <span className="text-[11px] font-normal text-muted-foreground">tepung, telur, kemasan…</span>
+              <span className="flex items-center gap-1.5"><PackagePlus size={16} /> Bahan baku</span>
+              <span className="text-[11px] font-normal text-muted-foreground">tepung, telur, kemasan</span>
             </button>
             )}
             <button
               type="button"
               onClick={() => setComposer("lain")}
-              className="flex flex-col items-center gap-1 rounded-2xl border-2 border-foreground bg-tertiary/40 px-3 py-3.5 text-sm font-semibold shadow-hard-sm transition hover:-translate-y-0.5"
+              className="flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold transition-colors active:bg-muted"
             >
-              <Wallet size={20} /> Pengeluaran lain
-              <span className="text-[11px] font-normal text-muted-foreground">ongkir, galon, servis…</span>
+              <span className="flex items-center gap-1.5"><Wallet size={16} /> Pengeluaran lain</span>
+              <span className="text-[11px] font-normal text-muted-foreground">ongkir, galon, servis</span>
             </button>
           </div>
         )}
@@ -791,6 +792,7 @@ function SourceCard({
   icon,
   title,
   desc,
+  balance,
   disabled,
   disabledReason,
   onClick,
@@ -798,6 +800,7 @@ function SourceCard({
   icon: React.ReactNode;
   title: string;
   desc: string;
+  balance?: string;
   disabled: boolean;
   disabledReason?: string;
   onClick: () => void;
@@ -807,14 +810,15 @@ function SourceCard({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-start gap-3 rounded-2xl border-2 border-foreground bg-card p-4 text-left shadow-hard-sm transition enabled:hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-border disabled:opacity-55 disabled:shadow-none"
+      className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-left transition-colors enabled:active:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
     >
-      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-muted">{icon}</span>
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block font-display text-sm font-bold">{title}</span>
-        <span className="block text-xs text-muted-foreground">{disabled && disabledReason ? disabledReason : desc}</span>
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className="block text-xs leading-snug text-muted-foreground">{disabled && disabledReason ? disabledReason : desc}</span>
       </span>
-      <ChevronRight size={16} className="mt-2 shrink-0 text-muted-foreground" />
+      {balance && <span className="shrink-0 text-sm font-semibold tabular-nums">{balance}</span>}
+      <ChevronRight size={16} aria-hidden className="shrink-0 text-muted-foreground" />
     </button>
   );
 }
@@ -866,11 +870,11 @@ function MaterialRefCard({ m, onChange }: { m: PurchaseMaterialOption; onChange?
 
 function StepTitle({ n, title, done }: { n: number; title: string; done: boolean }) {
   return (
-    <h2 className="flex items-center gap-2 font-display text-sm font-bold">
+    <h2 className="flex items-center gap-2 font-display text-sm font-semibold">
       <span
         className={cn(
-          "grid size-6 place-items-center rounded-full border-2 border-foreground text-[11px]",
-          done ? "bg-success text-white" : "bg-card"
+          "grid size-6 place-items-center rounded-full text-[11px]",
+          done ? "bg-success text-white" : "bg-muted text-muted-foreground"
         )}
       >
         {done ? "✓" : n}
@@ -1549,7 +1553,7 @@ function CategoryWizard({ onPick, onClose }: { onPick: (category: string) => voi
                 key={o.text}
                 type="button"
                 onClick={() => setTrail((t) => [...t, i])}
-                className="rounded-xl border-2 border-foreground bg-card px-3 py-2 text-left hover:bg-muted"
+                className="rounded-xl border border-border bg-card px-3 py-2 text-left hover:bg-muted"
               >
                 <span className="block text-sm font-semibold">{o.text}</span>
                 {o.hint && <span className="block text-[11px] text-muted-foreground">{o.hint}</span>}

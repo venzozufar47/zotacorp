@@ -21,7 +21,7 @@ import {
   type HalalStatus,
 } from "@/lib/actions/procurement-brands.actions";
 
-const inputCls = "w-full rounded-xl border-2 border-border bg-card px-3 py-2.5 text-base outline-none focus:border-foreground md:text-sm";
+const inputCls = "w-full rounded-xl border border-border bg-card px-3 py-2.5 text-base outline-none focus:border-primary md:text-sm";
 
 const STATUS_LABEL: Record<HalalStatus, string> = {
   bersertifikat: "Bersertifikat halal",
@@ -188,7 +188,7 @@ export function BrandPanel({ material, onClose, startAdding = false }: { materia
                   type="button"
                   disabled={pending || !newName.trim()}
                   onClick={addBrand}
-                  className="shrink-0 rounded-xl border-2 border-foreground bg-primary px-4 text-sm font-bold text-primary-foreground disabled:opacity-50"
+                  className="shrink-0 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground disabled:opacity-50"
                 >
                   Simpan
                 </button>
@@ -374,7 +374,7 @@ function BrandEditor({
             </Field>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-xl border-2 border-border px-3 py-2 text-xs font-semibold hover:bg-muted", uploading && "pointer-events-none opacity-50")}>
+            <label className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold hover:bg-muted", uploading && "pointer-events-none opacity-50")}>
               <FileUp size={14} /> {brand.hasDoc ? "Ganti foto/PDF sertifikat" : "Unggah foto/PDF sertifikat"}
               <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => upload(e.target.files?.[0])} />
             </label>
@@ -407,17 +407,17 @@ function BrandEditor({
             ...(status === "tidak_wajib" ? { halalNote: note.trim() || null } : {}),
           })
         }
-        className="w-full rounded-xl border-2 border-foreground bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"
+        className="w-full rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"
       >
         {pending ? "Menyimpan…" : "Simpan data merek"}
       </button>
       <div className="flex gap-2">
         {!brand.isCurrent && brand.isActive && (
-          <button type="button" disabled={pending} onClick={onMakeCurrent} className="flex-1 rounded-xl border-2 border-border py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+          <button type="button" disabled={pending} onClick={onMakeCurrent} className="flex-1 rounded-xl border border-border py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50">
             Jadikan merek yang dipakai
           </button>
         )}
-        <button type="button" disabled={pending || brand.isCurrent} onClick={onToggleActive} className="flex-1 rounded-xl border-2 border-border py-2 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
+        <button type="button" disabled={pending || brand.isCurrent} onClick={onToggleActive} className="flex-1 rounded-xl border border-border py-2 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
           {brand.isActive ? "Nonaktifkan" : "Aktifkan lagi"}
         </button>
       </div>

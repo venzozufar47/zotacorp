@@ -88,7 +88,7 @@ export function GoodsInDialog({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-card border-2 border-foreground shadow-hard p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-lg p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
@@ -206,7 +206,7 @@ export function GoodsInDialog({
             type="button"
             onClick={submit}
             disabled={busy}
-            className="flex-1 h-10 rounded-lg bg-primary border-2 border-foreground text-sm font-bold disabled:opacity-60"
+            className="flex-1 h-10 rounded-lg bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
             {busy ? "Menyimpan…" : "Catat masuk"}
           </button>

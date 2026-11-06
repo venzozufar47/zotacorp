@@ -13,7 +13,7 @@ export function PengadaanCatat({ data, initialMaterialId }: { data: PurchaseForm
       key={data.businessUnit}
       data={data}
       initialMaterialId={initialMaterialId}
-      onSaved={() => router.push(`/pengadaan?tab=riwayat&bu=${encodeURIComponent(data.businessUnit)}`)}
+      onSaved={() => router.push(`/pengadaan?tab=belanja&bagian=riwayat&bu=${encodeURIComponent(data.businessUnit)}`)}
     />
   );
 }

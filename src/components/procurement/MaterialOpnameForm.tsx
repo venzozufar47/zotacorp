@@ -301,7 +301,7 @@ export function MaterialOpnameForm({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border-2 border-foreground bg-card px-3.5 py-3 text-xs text-muted-foreground shadow-hard-sm">
+      <div className="rounded-2xl border border-border bg-card px-3.5 py-3 text-xs text-muted-foreground">
         {todayMode && (
           <p className="text-sm font-bold text-foreground tabular-nums">
             {doneCount}/{rows.length} bahan dihitung hari ini
@@ -332,7 +332,7 @@ export function MaterialOpnameForm({
         ))
       )}
 
-      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-20 space-y-1.5 rounded-xl border-2 border-foreground bg-card px-2.5 py-2 shadow-hard-sm md:bottom-0">
+      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-20 space-y-1.5 rounded-xl border border-border bg-card px-2.5 py-2 md:bottom-0">
         {(noteOpen || notes) && (
           <input
             value={notes}
@@ -377,7 +377,7 @@ export function MaterialOpnameForm({
             type="button"
             onClick={onSubmit}
             disabled={pending || filled.length === 0 || invalidCount > 0}
-            className="h-10 shrink-0 rounded-xl border-2 border-foreground bg-primary px-4 text-sm font-bold disabled:opacity-60"
+            className="h-10 shrink-0 rounded-xl bg-primary px-4 text-sm font-bold disabled:opacity-60"
           >
             {pending ? "Menyimpan…" : "Simpan"}
           </button>
@@ -386,7 +386,7 @@ export function MaterialOpnameForm({
 
       {confirmOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm" onClick={() => setConfirmOpen(false)}>
-          <div className="w-full max-w-sm space-y-3 rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm space-y-3 rounded-2xl border border-border bg-card p-4 shadow-hard" onClick={(e) => e.stopPropagation()}>
             <h2 className="flex items-center gap-2 font-semibold">
               <AlertTriangle size={16} className="text-warning" />
               Selisih di atas toleransi
@@ -409,7 +409,7 @@ export function MaterialOpnameForm({
                 type="button"
                 onClick={commit}
                 disabled={pending}
-                className="h-10 flex-1 rounded-lg border-2 border-foreground bg-primary text-sm font-bold disabled:opacity-60"
+                className="h-10 flex-1 rounded-lg bg-primary text-sm font-bold disabled:opacity-60"
               >
                 Ya, simpan
               </button>

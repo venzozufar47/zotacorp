@@ -37,7 +37,7 @@ const NEW_CATEGORY = "__new__";
 const EMPTY: Draft = { name: "", category: "", purchaseUnit: "", content: "", usageUnit: "gram", shopeeUrl: "", price: "" };
 
 const inputCls =
-  "w-full rounded-xl border-2 border-border bg-card px-3 py-2.5 text-base outline-none focus:border-foreground md:text-sm";
+  "w-full rounded-xl border border-border bg-card px-3 py-2.5 text-base outline-none focus:border-primary md:text-sm";
 
 /** Tab "Bahan": petugas menambah bahan baru dan merapikan detailnya sendiri (owner diberi tahu, bisa mengurungkan). */
 export function MaterialsManager({
@@ -145,11 +145,6 @@ export function MaterialsManager({
 
   return (
     <div className="mx-auto max-w-xl space-y-3">
-      <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-        Tambah bahan baru atau rapikan detailnya di sini. Owner otomatis mendapat catatan setiap perubahan. Harga acuan
-        berubah sendiri dari nota belanja.
-      </p>
-
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -163,21 +158,21 @@ export function MaterialsManager({
         <button
           type="button"
           onClick={() => open()}
-          className="inline-flex shrink-0 items-center gap-1 rounded-xl border-2 border-foreground bg-primary px-3.5 text-sm font-semibold text-primary-foreground"
+          className="inline-flex h-11 shrink-0 items-center gap-1 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground"
         >
           <Plus size={16} /> Baru
         </button>
       </div>
 
-      <HalalExport businessUnit={businessUnit} />
-
       {queueTotal > 0 && (
-        <section className="space-y-1.5 rounded-2xl border border-warning/50 bg-warning/10 p-3">
-          <h3 className="flex items-center gap-1.5 text-sm font-bold">
-            <AlertTriangle size={14} className="text-warning" /> Merek perlu dilengkapi ({queueTotal})
-          </h3>
-          <p className="text-[11.5px] text-muted-foreground">Untuk Daftar Bahan Halal. Boleh dicicil; yang paling banyak dibeli di atas.</p>
-          <ul className="divide-y divide-border/60">
+        <details className="group rounded-xl border border-warning/50 bg-warning/10">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <AlertTriangle size={14} aria-hidden className="shrink-0 text-warning" />
+            <span className="flex-1">Merek perlu dilengkapi ({queueTotal})</span>
+            <span className="text-xs font-normal text-muted-foreground group-open:hidden">Lihat</span>
+          </summary>
+          <p className="px-3 text-[11.5px] text-muted-foreground">Untuk Daftar Bahan Halal. Boleh dicicil; yang paling banyak dibeli di atas.</p>
+          <ul className="divide-y divide-border/60 px-3 pb-1">
             {queue.slice(0, 6).map((it) => {
               const m = materials.find((x) => x.id === it.materialId);
               if (!m) return null;
@@ -199,7 +194,7 @@ export function MaterialsManager({
               );
             })}
           </ul>
-        </section>
+        </details>
       )}
 
       {inactiveCount > 0 && (
@@ -209,7 +204,7 @@ export function MaterialsManager({
         </label>
       )}
 
-      <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border bg-card">
+      <ul className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-card">
         {rows.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">Tidak ada bahan.</li>}
         {rows.map((m) => (
           <li key={m.id} className="flex items-center">
@@ -243,6 +238,8 @@ export function MaterialsManager({
           </li>
         ))}
       </ul>
+
+      <HalalExport businessUnit={businessUnit} />
 
       {brandFor && <BrandPanel material={brandFor.material} startAdding={brandFor.startAdding} onClose={() => setBrandFor(null)} />}
 
@@ -372,7 +369,7 @@ export function MaterialsManager({
                   type="button"
                   disabled={pending}
                   onClick={() => toggleActive(current)}
-                  className="w-full rounded-xl border-2 border-border py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+                  className="w-full rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
                 >
                   {current.isActive ? "Nonaktifkan bahan" : "Aktifkan lagi"}
                 </button>
@@ -383,7 +380,7 @@ export function MaterialsManager({
                 type="button"
                 disabled={pending}
                 onClick={submit}
-                className="w-full rounded-xl border-2 border-foreground bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
+                className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
               >
                 {pending ? "Menyimpan…" : editing ? "Simpan perubahan" : "Tambah bahan"}
               </button>

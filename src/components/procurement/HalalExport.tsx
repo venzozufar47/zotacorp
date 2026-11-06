@@ -11,10 +11,10 @@ export function HalalExport({ businessUnit }: { businessUnit: string }) {
   const [to, setTo] = useState(today);
   const base = `/api/pengadaan/daftar-halal?bu=${encodeURIComponent(businessUnit)}`;
   const rangeOk = !!from && !!to && from <= to;
-  const btn = "inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground";
+  const btn = "inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground";
 
   return (
-    <details className="group rounded-2xl border border-border bg-card">
+    <details className="group rounded-xl border border-border bg-card">
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
         <Download size={15} /> Unduh Daftar Bahan Halal
         <span className="ml-auto text-[11px] font-normal text-muted-foreground group-open:hidden">Lampiran 5 · xlsx</span>

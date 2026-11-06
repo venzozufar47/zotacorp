@@ -33,8 +33,62 @@ function dayLabel(ymd: string, today: string): string {
 }
 
 /** Ringkasan bulan berjalan: total, jumlah nota, dan sebaran per kategori. */
-export function PurchaseSummaryCard({ summary, title }: { summary: PurchaseSummary; title: string }) {
+export function PurchaseSummaryCard({
+  summary,
+  title,
+  compact = false,
+}: {
+  summary: PurchaseSummary;
+  title: string;
+  /** Mobile petugas: total dan jumlah nota saja; sebaran per kategori terlipat. */
+  compact?: boolean;
+}) {
   const max = summary.byCategory[0]?.total ?? 0;
+  const categories = (
+    <ul className="space-y-1.5">
+      {summary.byCategory.slice(0, 5).map((c) => (
+        <li key={c.category} className="text-xs">
+          <div className="flex justify-between gap-2">
+            <span className="truncate">{categoryLabelFull(c.category)}</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">{formatRp(c.total)}</span>
+          </div>
+          <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${max > 0 ? (c.total / max) * 100 : 0}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+  if (compact) {
+    return (
+      <section className="rounded-xl border border-border bg-card px-3.5 py-3">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-xs text-muted-foreground">{title}</p>
+            <p className="font-display text-xl font-bold tabular-nums leading-tight">{formatRp(summary.total)}</p>
+          </div>
+          <div className="shrink-0 text-right text-xs text-muted-foreground">
+            <p>
+              <b className="text-foreground tabular-nums">{summary.noteCount}</b> nota
+            </p>
+            {summary.flaggedLines > 0 && (
+              <p className="mt-0.5 inline-flex items-center gap-1 font-semibold text-destructive">
+                <AlertTriangle size={12} aria-hidden /> {summary.flaggedLines} perlu ditinjau
+              </p>
+            )}
+          </div>
+        </div>
+        {summary.byCategory.length > 0 && (
+          <details className="group mt-2 border-t border-border pt-1">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1 text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight size={14} aria-hidden className="transition-transform group-open:rotate-90" /> Per kategori
+            </summary>
+            <div className="pt-1">{categories}</div>
+          </details>
+        )}
+      </section>
+    );
+  }
   return (
     <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-end justify-between gap-3">
@@ -53,21 +107,7 @@ export function PurchaseSummaryCard({ summary, title }: { summary: PurchaseSumma
           )}
         </div>
       </div>
-      {summary.byCategory.length > 0 && (
-        <ul className="space-y-1.5">
-          {summary.byCategory.slice(0, 5).map((c) => (
-            <li key={c.category} className="text-xs">
-              <div className="flex justify-between gap-2">
-                <span className="truncate">{categoryLabelFull(c.category)}</span>
-                <span className="tabular-nums text-muted-foreground">{formatRp(c.total)}</span>
-              </div>
-              <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary" style={{ width: `${max > 0 ? (c.total / max) * 100 : 0}%` }} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {summary.byCategory.length > 0 && categories}
     </section>
   );
 }
@@ -85,20 +125,20 @@ export function PurchaseHistory({
   const days = [...new Set(purchases.map((p) => p.purchaseDate))];
   if (purchases.length === 0) {
     return (
-      <p className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-        {admin ? "Belum ada nota pada rentang ini." : <>Belum ada nota. Catat belanja pertamamu di tab &ldquo;Catat belanja&rdquo;.</>}
+      <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+        {admin ? "Belum ada nota pada rentang ini." : <>Belum ada nota. Catat belanja pertamamu di tab &ldquo;Catat&rdquo;.</>}
       </p>
     );
   }
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {days.map((d) => {
         const list = purchases.filter((p) => p.purchaseDate === d);
         const sum = list.reduce((s, p) => s + p.total, 0);
         return (
-          <section key={d} className="space-y-2">
+          <section key={d} className="space-y-1.5">
             <div className="flex items-baseline justify-between px-1">
-              <h3 className="font-display text-sm font-bold">{dayLabel(d, today)}</h3>
+              <h3 className="font-display text-sm font-semibold">{dayLabel(d, today)}</h3>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {list.length} nota · {formatRp(sum)}
               </span>
@@ -133,30 +173,22 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
   }
 
   return (
-    <article className={cn("overflow-hidden rounded-2xl border bg-card", flagged > 0 ? "border-destructive/50" : "border-border")}>
+    <article className={cn("overflow-hidden rounded-xl border bg-card", flagged > 0 ? "border-destructive/50" : "border-border")}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-3.5 py-3 text-left"
+        className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2 text-left"
       >
         {open ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
             {p.vendor || "Tanpa nama toko"}
-            {p.moneySource === "pengadaan" && (
-              <span className="ml-2 rounded-full bg-success/15 px-2 py-0.5 align-middle text-[10px] font-semibold">Uang pengadaan</span>
-            )}
-            {p.moneySource === "laci" && (
-              <span className="ml-2 rounded-full bg-warning/20 px-2 py-0.5 align-middle text-[10px] font-semibold">Uang laci</span>
-            )}
-            {p.moneySource === "shopee" && (
-              <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 align-middle text-[10px] font-semibold">{walletLabel(p.businessUnit)}</span>
-            )}
             {flagged > 0 && <AlertTriangle size={13} className="ml-1.5 inline text-destructive" />}
           </p>
           <p className="truncate text-[11.5px] text-muted-foreground">
             {admin ? `${p.businessUnit.replace("Haengbocake ", "")} · ` : ""}
+            {p.moneySource === "pengadaan" ? "Uang pengadaan · " : p.moneySource === "laci" ? "Uang laci · " : p.moneySource === "shopee" ? `${walletLabel(p.businessUnit)} · ` : ""}
             {p.purchaseTime ? `${p.purchaseTime} · ` : ""}
             {p.createdByName ?? "—"} · {p.lines.length} baris
           </p>
