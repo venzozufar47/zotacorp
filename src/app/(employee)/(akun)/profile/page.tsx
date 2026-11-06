@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentProfile } from "@/lib/supabase/cached";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AvatarCard } from "@/components/profile/AvatarCard";
-import { PosPinCard } from "@/components/profile/PosPinCard";
 import type { Profile } from "@/lib/supabase/types";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 
@@ -30,7 +29,6 @@ export default async function EmployeeProfilePage() {
         subtitle={subtitle}
       />
       <ProfileForm profile={profile as Profile} businessUnits={businessUnits} />
-      <PosPinCard hasPin={!!(profile as Profile).pos_pin_hash} />
     </div>
   );
 }

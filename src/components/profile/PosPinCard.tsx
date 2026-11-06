@@ -21,6 +21,15 @@ type Mode = null | "set" | "change" | "clear";
  * opname). PIN 4–6 digit.
  */
 export function PosPinCard({ hasPin }: Props) {
+  return (
+    <DisclosureGroup>
+      <PosPinRow hasPin={hasPin} />
+    </DisclosureGroup>
+  );
+}
+
+/** Baris tanpa pembungkus kartu, untuk disisipkan di daftar pengaturan. */
+export function PosPinRow({ hasPin }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(null);
 
@@ -30,7 +39,7 @@ export function PosPinCard({ hasPin }: Props) {
   }
 
   return (
-    <DisclosureGroup>
+    <>
       <Disclosure
         title="PIN POS"
         icon={hasPin ? ShieldCheck : ShieldOff}
@@ -75,7 +84,7 @@ export function PosPinCard({ hasPin }: Props) {
           <ClearPinForm onCancel={() => setMode(null)} onSuccess={done} />
         )}
       </Disclosure>
-    </DisclosureGroup>
+    </>
   );
 }
 
