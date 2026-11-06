@@ -94,12 +94,15 @@ function BranchPeople({
   }
 
   return (
-    <section className="rounded-xl border border-border bg-card p-3.5">
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <h3 className="font-display text-[14px] font-bold">{item.branch.label}</h3>
-        <span className="text-[11px] text-muted-foreground">{people.length} orang</span>
-      </div>
-      <ul className="space-y-1.5">
+    <details className="group rounded-xl border border-border bg-card">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2 [&::-webkit-details-marker]:hidden">
+        <h3 className="font-display text-sm font-bold">{item.branch.label}</h3>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {people.length} orang
+          <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />
+        </span>
+      </summary>
+      <ul className="space-y-1.5 p-3.5 pt-0">
         {people.map((p) => {
           const candidates = eligible.filter((e) => e.id !== p.userId && !p.superiorIds.includes(e.id));
           return (
@@ -152,6 +155,6 @@ function BranchPeople({
           <li className="rounded-lg bg-warning/10 px-3 py-2 text-[12px] text-warning">Belum ada karyawan yang ditugaskan ke cabang ini.</li>
         )}
       </ul>
-    </section>
+    </details>
   );
 }

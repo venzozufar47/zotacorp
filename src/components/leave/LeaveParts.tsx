@@ -73,7 +73,7 @@ export function HistoryRow({ r, leaderLabel, showName }: { r: LeaveRequestView; 
   const ago = useTimeAgo();
   const status = STATUS_META[r.status];
   return (
-    <div className="flex overflow-hidden rounded-xl border-2 border-border">
+    <div className="flex overflow-hidden rounded-xl border border-border">
       <span className={cn("w-1.5 shrink-0", status.bar)} aria-hidden />
       <div className="min-w-0 flex-1 space-y-1 p-3">
         <div className="flex items-center justify-between gap-2">
@@ -139,11 +139,11 @@ function ApprovalCard({
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm">
+    <div className="space-y-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-start gap-3">
         <span
           aria-hidden
-          className="grid size-9 shrink-0 place-items-center rounded-full border-2 border-foreground bg-tertiary font-display text-sm font-bold"
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-tertiary font-display text-sm font-bold"
         >
           {r.userName.trim().charAt(0).toUpperCase() || "?"}
         </span>
@@ -180,7 +180,7 @@ function ApprovalCard({
 
       <div className="flex items-center gap-2">
         <Button
-          className="flex-1"
+          className="h-11 flex-1"
           loading={busy === "approved"}
           disabled={busy !== null}
           onClick={() => decide("approved")}
@@ -189,7 +189,7 @@ function ApprovalCard({
         </Button>
         <Button
           variant="outline"
-          className="flex-1"
+          className="h-11 flex-1"
           loading={busy === "rejected"}
           disabled={busy !== null}
           onClick={() => decide("rejected")}
@@ -199,6 +199,7 @@ function ApprovalCard({
         <Button
           variant="ghost"
           size="icon"
+          className="size-11"
           aria-label={more ? "Sembunyikan catatan" : "Tambah catatan atau pengganti"}
           aria-expanded={more}
           onClick={() => setMore((v) => !v)}
@@ -212,7 +213,7 @@ function ApprovalCard({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-xl border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+    <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
       {children}
     </p>
   );
@@ -280,7 +281,7 @@ export function SegTabs<T extends string>({
   return (
     <div
       role="tablist"
-      className="grid auto-cols-fr grid-flow-col gap-1 rounded-full border-2 border-foreground bg-muted p-1"
+      className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-muted p-1"
     >
       {tabs.map((t) => (
         <button
@@ -290,8 +291,8 @@ export function SegTabs<T extends string>({
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            "inline-flex h-9 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition",
-            value === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition-colors",
+            value === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           )}
         >
           {t.label}
@@ -299,7 +300,7 @@ export function SegTabs<T extends string>({
             <span
               className={cn(
                 "grid min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold leading-5",
-                value === t.id ? "bg-primary-foreground text-primary" : "bg-destructive text-white"
+                "bg-destructive text-white"
               )}
             >
               {t.count}

@@ -245,7 +245,7 @@ export function TicketCard({
                 <span>·</span>
                 <span className="inline-flex items-center gap-1">
                   <EmployeeAvatar
-                    size="sm"
+                    size="sm" className="h-11"
                     full_name={ticket.createdByName}
                     avatar_url={ticket.createdByAvatarUrl ?? null}
                     avatar_seed={ticket.createdByAvatarSeed ?? null}
@@ -272,7 +272,11 @@ export function TicketCard({
         <p className="whitespace-pre-wrap break-words text-sm leading-snug text-foreground/90">{ticket.description}</p>
       )}
 
-      {reportPhotos.length > 0 && <TicketPhotos attachments={reportPhotos} />}
+      {reportPhotos.length > 0 && (
+        <Fold title={`Foto laporan (${reportPhotos.length})`}>
+          <TicketPhotos attachments={reportPhotos} />
+        </Fold>
+      )}
 
       {/* Catatan alur */}
       {ticket.escalationNote && (ticket.status === "escalated" || ticket.status === "owner_handling") && (
@@ -297,17 +301,23 @@ export function TicketCard({
               {ticket.resolutionNote ? `. ${ticket.resolutionNote}` : ""}
             </span>
           </p>
-          {resolutionPhotos.length > 0 && <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />}
-          {ticket.verification && ticket.verification.length > 0 && (
-            <p className="flex items-start gap-1.5 text-foreground/80">
-              <ShieldCheck size={14} className="mt-px shrink-0" aria-hidden />
-              <span>
-                Verifikasi:{" "}
-                {ticket.verification
-                  .map((v) => `${v.name} ${v.status === "verified" ? "(sudah)" : v.status === "rejected" ? "(menolak)" : "(menunggu)"}`)
-                  .join(", ")}
-              </span>
-            </p>
+          {(resolutionPhotos.length > 0 || (ticket.verification && ticket.verification.length > 0)) && (
+            <Fold title="Bukti dan verifikasi">
+              <div className="space-y-2">
+              {resolutionPhotos.length > 0 && <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />}
+              {ticket.verification && ticket.verification.length > 0 && (
+                <p className="flex items-start gap-1.5 text-foreground/80">
+                  <ShieldCheck size={14} className="mt-px shrink-0" aria-hidden />
+                  <span>
+                    Verifikasi:{" "}
+                    {ticket.verification
+                      .map((v) => `${v.name} ${v.status === "verified" ? "(sudah)" : v.status === "rejected" ? "(menolak)" : "(menunggu)"}`)
+                      .join(", ")}
+                  </span>
+                </p>
+              )}
+              </div>
+            </Fold>
           )}
           {ticket.confirmedAt ? (
             <p className="flex items-center gap-1.5 text-success/80">
@@ -514,6 +524,19 @@ export function TicketCard({
   );
 }
 
+/** Bagian detail yang jarang dibaca: dilipat, terbuka saat diketuk. */
+function Fold({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+        <ChevronDown size={14} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+        {title}
+      </summary>
+      <div className="pt-1">{children}</div>
+    </details>
+  );
+}
+
 function NoteLine({
   tone,
   label,
@@ -579,18 +602,18 @@ function ActionBar({
   if (context === "mine") {
     if (s === "open" || s === "in_progress")
       more.push(
-        <Button key="cancel" variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
+        <Button key="cancel" variant="ghost" size="sm" className="h-11" disabled={pending} onClick={onCancel}>
           <XIcon size={13} /> Batalkan
         </Button>
       );
     if (needsFilerConfirmation(ticket)) {
       btns.push(
-        <Button key="confirm" variant="emerald" size="sm" disabled={pending} onClick={onConfirm}>
+        <Button key="confirm" variant="emerald" size="sm" className="h-11" disabled={pending} onClick={onConfirm}>
           <CheckCircle2 size={13} /> Konfirmasi selesai
         </Button>
       );
       btns.push(
-        <Button key="dispute" variant="outline" size="sm" disabled={pending} onClick={onDispute}>
+        <Button key="dispute" variant="outline" size="sm" className="h-11" disabled={pending} onClick={onDispute}>
           <ThumbsDown size={13} /> Belum beres
         </Button>
       );
@@ -614,25 +637,25 @@ function ActionBar({
   if (context === "queue" || context === "assigned") {
     if (s === "open")
       btns.push(
-        <Button key="start" size="sm" disabled={pending} onClick={onStart}>
+        <Button key="start" size="sm" className="h-11" disabled={pending} onClick={onStart}>
           <Play size={13} /> {context === "assigned" && !ticket.assigneeId ? "Ambil" : "Mulai"}
         </Button>
       );
     if (s === "open" || s === "in_progress") {
       btns.push(
-        <Button key="resolve" variant="emerald" size="sm" disabled={pending} onClick={onResolveDirect}>
+        <Button key="resolve" variant="emerald" size="sm" className="h-11" disabled={pending} onClick={onResolveDirect}>
           <CheckCircle2 size={13} /> Selesai
         </Button>
       );
       if (!atOwner)
         more.push(
-          <Button key="esc" variant="outline" size="sm" disabled={pending} onClick={onEscalate}>
+          <Button key="esc" variant="outline" size="sm" className="h-11" disabled={pending} onClick={onEscalate}>
             <ArrowUpCircle size={13} /> {ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi"}
           </Button>
         );
       if (canDelegate)
         more.push(
-          <Button key="delegate" variant="outline" size="sm" disabled={pending} onClick={onDelegate}>
+          <Button key="delegate" variant="outline" size="sm" className="h-11" disabled={pending} onClick={onDelegate}>
             <Users size={13} /> Teruskan
           </Button>
         );
@@ -689,19 +712,19 @@ function ActionBar({
   if (context === "escalation") {
     if (s === "escalated") {
       btns.push(
-        <Button key="acc" variant="emerald" size="sm" disabled={pending} onClick={onAccept}>
+        <Button key="acc" variant="emerald" size="sm" className="h-11" disabled={pending} onClick={onAccept}>
           <ThumbsUp size={13} /> ACC (ambil alih)
         </Button>
       );
       btns.push(
-        <Button key="rej" variant="outline" size="sm" disabled={pending} onClick={onReject}>
+        <Button key="rej" variant="outline" size="sm" className="h-11" disabled={pending} onClick={onReject}>
           <ThumbsDown size={13} /> Tolak
         </Button>
       );
     }
     if (s === "owner_handling")
       btns.push(
-        <Button key="ownres" variant="emerald" size="sm" disabled={pending} onClick={onResolveDirect}>
+        <Button key="ownres" variant="emerald" size="sm" className="h-11" disabled={pending} onClick={onResolveDirect}>
           <CheckCircle2 size={13} /> Tandai selesai
         </Button>
       );
@@ -713,7 +736,7 @@ function ActionBar({
       {btns.length > 0 && <div className="flex flex-wrap items-center gap-2">{btns}</div>}
       {more.length > 0 && (
         <details className="group">
-          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1 text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
             Opsi lain
             <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />
           </summary>

@@ -270,6 +270,22 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
             </div>
           </div>
 
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={priority === "urgent"}
+              onChange={(e) => setPriority(e.target.checked ? "urgent" : "normal")}
+              className="size-4"
+            />
+            Tandai mendesak
+          </label>
+
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronDown size={16} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+              Deskripsi, foto, dan verifikasi <span className="font-normal">(opsional)</span>
+            </summary>
+            <div className="space-y-4 pt-2">
           <Field label="Deskripsi (opsional)">
             <textarea
               value={description}
@@ -280,16 +296,6 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
               className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm"
             />
           </Field>
-
-          <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              checked={priority === "urgent"}
-              onChange={(e) => setPriority(e.target.checked ? "urgent" : "normal")}
-              className="size-4"
-            />
-            Tandai mendesak
-          </label>
 
           <div className="space-y-2">
             <span className="text-xs font-semibold text-muted-foreground">Foto (opsional, bisa lebih dari 1)</span>
@@ -332,18 +338,15 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
             />
           </div>
 
-          <details className="group">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
-              <ChevronDown size={16} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
-              Verifikasi penyelesaian <span className="font-normal">(opsional)</span>
-            </summary>
-            <div className="pt-1">
-              <VerifierPicker
-                people={options.verifierPeople}
-                value={verifier}
-                onChange={setVerifier}
-                excludeIds={mode === "assign" && assignee !== WHOLE_BRANCH ? [assignee] : []}
-              />
+          <div className="space-y-1.5">
+            <span className="text-xs font-semibold text-muted-foreground">Verifikasi penyelesaian</span>
+            <VerifierPicker
+              people={options.verifierPeople}
+              value={verifier}
+              onChange={setVerifier}
+              excludeIds={mode === "assign" && assignee !== WHOLE_BRANCH ? [assignee] : []}
+            />
+          </div>
             </div>
           </details>
         </div>

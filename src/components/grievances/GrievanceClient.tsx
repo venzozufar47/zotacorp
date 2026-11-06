@@ -125,14 +125,22 @@ function InboxRow({ r, onChanged }: { r: GrievanceView; onChanged: () => void })
       ) : (
         <div className="space-y-2">
           {r.status === "submitted" && (
-            <Button size="sm" variant="outline" className="w-full" loading={busy} onClick={confirm}>
+            <Button variant="outline" className="h-11 w-full" loading={busy} onClick={confirm}>
               Konfirmasi diterima
             </Button>
           )}
-          <Textarea placeholder="Tulis keputusan" value={decision} onChange={(e) => setDecision(e.target.value)} />
-          <Button size="sm" className="w-full" loading={busy} onClick={decide}>
-            Simpan keputusan
-          </Button>
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronDown size={16} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+              Tulis keputusan
+            </summary>
+            <div className="space-y-2 pt-1">
+              <Textarea placeholder="Tulis keputusan" value={decision} onChange={(e) => setDecision(e.target.value)} />
+              <Button className="h-11 w-full" loading={busy} onClick={decide}>
+                Simpan keputusan
+              </Button>
+            </div>
+          </details>
         </div>
       )}
     </div>
