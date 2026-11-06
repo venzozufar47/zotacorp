@@ -281,13 +281,24 @@ export function SegTabs<T extends string>({
   return (
     <div
       role="tablist"
-      className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-muted p-1"
+      onKeyDown={(e) => {
+        if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+        const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const cur = tabs.findIndex((t) => t === document.activeElement);
+        if (cur < 0) return;
+        e.preventDefault();
+        const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (cur + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next].focus();
+        tabs[next].click();
+      }}
+      className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-muted p-1 md:max-w-md"
     >
       {tabs.map((t) => (
         <button
           key={t.id}
           type="button"
           role="tab"
+          tabIndex={value === t.id ? 0 : -1}
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(

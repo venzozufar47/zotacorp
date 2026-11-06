@@ -46,7 +46,7 @@ export function TicketPhotos({
         type="button"
         onClick={openGallery}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-primary hover:underline disabled:opacity-60"
+        className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-60"
       >
         {loading ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} {attachments.length} {label}
       </button>

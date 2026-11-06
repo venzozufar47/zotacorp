@@ -119,10 +119,10 @@ export function LeaveForm({
               type="button"
               onClick={() => setPlannedReturn(plannedReturn === c ? "" : c)}
               className={cn(
-                "rounded-full border-2 px-3 py-1 text-xs font-semibold transition",
+                "min-h-11 rounded-full border px-4 text-xs font-semibold transition-colors",
                 plannedReturn === c
-                  ? "border-foreground bg-tertiary"
-                  : "border-border text-muted-foreground hover:border-foreground/60"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground"
               )}
             >
               {c}

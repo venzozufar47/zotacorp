@@ -154,12 +154,22 @@ export function TicketingSystem({
 
   const list = (
     <div className="space-y-3">
-      <div role="tablist" aria-label="Daftar tiket" className={cn("grid gap-1 rounded-xl bg-muted p-1", tabs.length === 3 ? "grid-cols-[1.25fr_1.25fr_1fr]" : "grid-cols-2")}>
+      <div role="tablist" aria-label="Daftar tiket" onKeyDown={(e) => {
+        if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+        const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const cur = tabs.findIndex((t) => t === document.activeElement);
+        if (cur < 0) return;
+        e.preventDefault();
+        const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (cur + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next].focus();
+        tabs[next].click();
+      }} className={cn("grid gap-1 rounded-xl bg-muted p-1", tabs.length === 3 ? "grid-cols-[1.25fr_1.25fr_1fr]" : "grid-cols-2")}>
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             role="tab"
+            tabIndex={activeTab === t.id ? 0 : -1}
             aria-selected={activeTab === t.id}
             onClick={() => {
               setTab(t.id);
