@@ -26,11 +26,11 @@ export function PendingMaterials({ rows }: { rows: PendingMaterialRow[] }) {
   }
 
   return (
-    <section className="space-y-2 rounded-2xl border-2 border-warning/60 bg-warning/10 p-4">
+    <section className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-sm font-bold">Bahan baru menunggu tinjauan ({rows.length})</h2>
-        <Link href="/admin/costing/bahan" className="text-xs font-semibold text-primary hover:underline">
-          Rapikan di Master Bahan →
+        <h2 className="text-sm font-semibold">Bahan baru menunggu tinjauan ({rows.length})</h2>
+        <Link href="/admin/costing?tab=bahan" className="text-xs font-semibold text-primary hover:underline">
+          Rapikan di tab Bahan →
         </Link>
       </div>
       <ul className="divide-y divide-border/60">
@@ -49,7 +49,7 @@ export function PendingMaterials({ rows }: { rows: PendingMaterialRow[] }) {
               type="button"
               disabled={pending}
               onClick={() => approve(r.id)}
-              className="shrink-0 rounded-full border-2 border-foreground bg-card px-3 py-1 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              className="h-8 shrink-0 cursor-pointer rounded-lg border border-border bg-card px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50"
             >
               Setujui
             </button>

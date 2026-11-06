@@ -338,7 +338,7 @@ export function RecipeBuilder({
           href={`/admin/costing?bu=${encodeURIComponent(product.business_unit)}`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
-          <ArrowLeft size={13} /> Semua produk
+          <ArrowLeft size={13} /> HPP &amp; Margin · {product.business_unit}
         </Link>
         {/* TextField menangani draft + commit-on-blur + auto-revert
             kalau tak berubah. Nama kosong ditolak di sini (bukan commit),
@@ -354,16 +354,11 @@ export function RecipeBuilder({
           }}
           className="font-display text-2xl md:text-3xl font-extrabold tracking-tight bg-transparent border-b-2 border-transparent focus:border-foreground outline-none w-full"
         />
-        <p className="text-xs text-muted-foreground mt-1">
-          {product.business_unit}
-        </p>
       </div>
 
       {/* Tren HPP (snapshot) */}
-      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap rounded-xl border border-border bg-card/60 px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Tren HPP
-        </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-card px-3 py-2">
+        <span className="text-xs font-semibold text-muted-foreground">Tren HPP</span>
         {snapshots.length >= 2 ? (
           <>
             <Sparkline values={snapshots.map((s) => s.hpp_unit)} />
@@ -517,7 +512,7 @@ export function RecipeBuilder({
                 type="button"
                 onClick={addItem}
                 disabled={pending}
-                className="inline-flex items-center gap-1 h-9 rounded-lg bg-primary border-2 border-foreground px-3 text-sm font-bold disabled:opacity-60"
+                className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
               >
                 <Plus size={14} /> Tambah
               </button>
@@ -526,10 +521,10 @@ export function RecipeBuilder({
               <p className="mt-2 text-[11px] text-muted-foreground">
                 Belum ada bahan aktif untuk brand ini —{" "}
                 <Link
-                  href={`/admin/costing/bahan?bu=${encodeURIComponent(product.business_unit)}`}
+                  href={`/admin/costing?tab=bahan&bu=${encodeURIComponent(product.business_unit)}`}
                   className="underline"
                 >
-                  tambah di Master Bahan
+                  tambah di tab Bahan
                 </Link>
                 .
               </p>
@@ -537,7 +532,11 @@ export function RecipeBuilder({
           </Card>
 
           {/* Biaya lain */}
-          <Card title="Tenaga kerja, kemasan & overhead">
+          <Card
+            title="Tenaga kerja, kemasan & overhead"
+            collapsible
+            summary={`TKL ${formatRp(breakdown.labor)} · kemasan ${formatRp(breakdown.packaging)} · overhead ${formatRp(breakdown.overhead)}`}
+          >
             <div className="mb-2">
               <Segmented
                 options={[
@@ -711,7 +710,11 @@ export function RecipeBuilder({
           </Card>
 
           {/* Tautan POS + banding rekomendasi vs aktual (C2) */}
-          <Card title="Tautan POS">
+          <Card
+            title="Tautan POS"
+            collapsible
+            summary={linkedOption ? `Tertaut · ${formatRp(linkedOption.price)}` : "Belum tertaut"}
+          >
             {opts.length === 0 ? (
               <p className="text-[12px] text-muted-foreground">
                 Belum ada produk POS untuk brand ini. (Integrasi cake belum
@@ -768,7 +771,7 @@ export function RecipeBuilder({
                       type="button"
                       onClick={applyPosPrice}
                       disabled={pending || breakdown.finalPrice == null}
-                      className="mt-1 w-full h-9 rounded-lg bg-primary border-2 border-foreground text-sm font-bold disabled:opacity-60"
+                      className="mt-1 h-9 w-full cursor-pointer rounded-lg bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
                     >
                       Terapkan harga rekomendasi ke POS
                     </button>
@@ -927,14 +930,35 @@ function SortableRecipeRow({
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+/** Bagian formulir. `collapsible` = terlipat dengan ringkasan satu baris; isi terbuka saat diketuk. */
+function Card({
+  title,
+  summary,
+  collapsible = false,
+  children,
+}: {
+  title: string;
+  summary?: React.ReactNode;
+  collapsible?: boolean;
+  children: React.ReactNode;
+}) {
+  if (collapsible) {
+    return (
+      <details className="group rounded-xl border border-border bg-card">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="text-muted-foreground transition-transform group-open:rotate-90">›</span>
+          <h2 className="font-display text-sm font-semibold">{title}</h2>
+          {summary && <span className="ml-auto text-xs tabular-nums text-muted-foreground">{summary}</span>}
+        </summary>
+        <div className="border-t border-border/70 p-4">{children}</div>
+      </details>
+    );
+  }
   return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm">
-      <h2 className="font-display font-bold text-sm uppercase tracking-wide text-muted-foreground mb-3">
-        {title}
-      </h2>
+    <section className="rounded-xl border border-border bg-card p-4">
+      <h2 className="mb-3 font-display text-sm font-semibold">{title}</h2>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -958,8 +982,8 @@ function BreakdownPanel({
         ? "text-warning"
         : "text-success";
   return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard text-sm">
-      <h2 className="font-display font-extrabold text-lg mb-2">Breakdown HPP</h2>
+    <div className="rounded-xl border border-border bg-card p-4 text-sm">
+      <h2 className="mb-2 font-display text-base font-semibold">Breakdown HPP</h2>
       <Row label="Total bahan" value={formatRp(b.totalMaterial)} />
       <Row label="Kemasan" value={formatRp(b.packaging)} />
       <Row label="TKL" value={formatRp(b.labor)} />
@@ -1025,17 +1049,18 @@ function Segmented({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border-2 border-foreground overflow-hidden text-[12px] font-semibold">
+    <div className="inline-flex rounded-lg bg-muted p-0.5 text-[12.5px] font-semibold">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={
-            "px-3 py-1.5 transition " +
+            "cursor-pointer rounded-md px-3 py-1.5 transition-colors " +
             (value === o.value
-              ? "bg-primary text-foreground"
-              : "bg-card text-muted-foreground hover:bg-muted")
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground")
           }
         >
           {o.label}

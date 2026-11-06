@@ -139,7 +139,7 @@ function deriveCrumbs(pathname: string): string[] {
     statements: "Statements",
     aturan: "Aturan",
     dividen: "Dividen",
-    costing: "HPP / Costing",
+    costing: "HPP & Margin",
     bahan: "Master Bahan",
     dashboard: "Dashboard Margin",
     investors: "Investor",

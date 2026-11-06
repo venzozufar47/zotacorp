@@ -5,15 +5,15 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useRunAction } from "@/components/admin/cleaning/useRunAction";
 import {
-  ArrowLeft,
   Plus,
   Trash2,
   AlertTriangle,
-  History,
+  ChevronDown,
   ExternalLink,
   Search,
   X,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   updateMaterial,
@@ -25,7 +25,6 @@ import {
   type CostingUnit,
   type MaterialPriceHistoryRow,
 } from "@/lib/actions/costing.actions";
-import { rememberBrand } from "@/lib/costing/brands";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { NumField, TextField, UnitSelect } from "./fields";
 import { PURCHASE_UNITS, USAGE_UNITS, unitOptions } from "@/lib/costing/unit-options";
@@ -40,13 +39,11 @@ const NEW_CATEGORY = "__new__";
 const NO_CATEGORY = "__none__";
 
 export function MaterialsManager({
-  brands,
   activeBrand,
   rows,
   products,
   units,
 }: {
-  brands: string[];
   activeBrand: string | null;
   rows: CostingMaterial[];
   products: CostingProductWithHpp[];
@@ -119,58 +116,69 @@ export function MaterialsManager({
     [groups]
   );
 
-  function selectBrand(bu: string) {
-    rememberBrand(bu);
-    router.push(`/admin/costing/bahan?bu=${encodeURIComponent(bu)}`);
-  }
-
-  if (brands.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Belum ada brand. Tambahkan di{" "}
-        <Link href="/admin/settings" className="underline">
-          Settings
-        </Link>
-        .
-      </p>
-    );
-  }
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Satu baris: cari, kategori, tampilan, tambah */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={`/admin/costing?bu=${encodeURIComponent(activeBrand ?? "")}`}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft size={13} /> Produk
-        </Link>
-        <select
-          value={activeBrand ?? ""}
-          onChange={(e) => selectBrand(e.target.value)}
-          className="h-9 rounded-xl border-2 border-foreground bg-card px-3 text-sm font-semibold"
-        >
-          {brands.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Tampilan + tambah bahan */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-xl border-2 border-foreground bg-card p-0.5">
+        {view === "daftar" && rows.length > 0 && (
+          <>
+            <label className="relative block w-64">
+              <Search size={14} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Cari bahan atau kategori…"
+                aria-label="Cari bahan"
+                className="h-9 w-full rounded-lg border border-border bg-card pl-8 pr-7 text-sm [&::-webkit-search-cancel-button]:hidden"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Hapus pencarian"
+                  onClick={() => setQuery("")}
+                  className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-muted"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </label>
+            {(categories.length > 0 || hasUncategorized) && (
+              <select
+                value={catFilter}
+                onChange={(e) => setCatFilter(e.target.value)}
+                aria-label="Filter kategori"
+                disabled={!!query}
+                className="h-9 rounded-lg border border-border bg-card px-2.5 text-sm disabled:opacity-50"
+              >
+                <option value="">Semua kategori ({rows.length})</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c} ({rows.filter((m) => m.category?.trim() === c).length})
+                  </option>
+                ))}
+                {hasUncategorized && (
+                  <option value={NO_CATEGORY}>
+                    Tanpa kategori ({rows.filter((m) => !m.category?.trim()).length})
+                  </option>
+                )}
+              </select>
+            )}
+          </>
+        )}
+        <div className="ml-auto inline-flex rounded-lg bg-muted p-0.5" role="group" aria-label="Tampilan">
           {(["daftar", "peta"] as const).map((v) => (
             <button
               key={v}
               type="button"
+              aria-pressed={view === v}
               onClick={() => setView(v)}
-              className={`h-8 rounded-lg px-3 text-sm font-semibold transition ${
-                view === v ? "bg-primary text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={cn(
+                "h-8 cursor-pointer rounded-md px-3 text-[13px] font-semibold transition-colors",
+                view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              {v === "daftar" ? "Daftar" : "Peta bahan × produk"}
+              {v === "daftar" ? "Daftar" : "Bahan × produk"}
             </button>
           ))}
         </div>
@@ -178,9 +186,9 @@ export function MaterialsManager({
           type="button"
           onClick={() => setWizard({ material: null })}
           disabled={!activeBrand}
-          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-foreground bg-primary px-3 text-sm font-bold disabled:opacity-60"
+          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
         >
-          <Plus size={15} /> Bahan baru
+          <Plus size={15} /> Bahan
         </button>
       </div>
 
@@ -207,140 +215,60 @@ export function MaterialsManager({
         />
       )}
 
-      {/* Cari + filter kategori */}
-      {view === "daftar" && rows.length > 0 && (
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari bahan atau kategori…"
-            className="h-9 w-full rounded-xl border-2 border-foreground bg-card pl-8 pr-8 text-sm"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              title="Bersihkan pencarian"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      )}
-      {view === "daftar" && rows.length > 0 && !query && (categories.length > 0 || hasUncategorized) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <FilterChip
-            label={`Semua (${rows.length})`}
-            active={catFilter === ""}
-            onClick={() => setCatFilter("")}
-          />
-          {categories.map((c) => (
-            <FilterChip
-              key={c}
-              label={`${c} (${
-                rows.filter((m) => m.category?.trim() === c).length
-              })`}
-              active={catFilter === c}
-              onClick={() => setCatFilter(c)}
-            />
-          ))}
-          {hasUncategorized && (
-            <FilterChip
-              label={`Tanpa kategori (${
-                rows.filter((m) => !m.category?.trim()).length
-              })`}
-              active={catFilter === NO_CATEGORY}
-              onClick={() => setCatFilter(NO_CATEGORY)}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Daftar bahan — dikelompokkan per kategori */}
       {view !== "daftar" ? null : rows.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           Belum ada bahan untuk {activeBrand}.
         </div>
       ) : shownCount === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
           Tidak ada bahan cocok “{query}”.
         </div>
       ) : (
         <div className="space-y-4">
           {groups.map(([cat, list]) => (
-            <div key={cat} className="space-y-2">
-              <h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            <section key={cat}>
+              <h3 className="mb-1.5 flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
                 {cat === NO_CATEGORY ? "Tanpa kategori" : cat}
-                <span className="font-normal normal-case">({list.length})</span>
-                <span className="flex-1 h-px bg-border" />
+                <span className="font-normal tabular-nums">{list.length}</span>
               </h3>
-              {list.map((m) => (
-                <MaterialRow
-                  key={m.id}
-                  m={m}
-                  pending={pending}
-                  categories={categories}
-                  expanded={expanded === m.id}
-                  onToggle={() => setExpanded((e) => (e === m.id ? null : m.id))}
-                  onWizard={() => setWizard({ material: m })}
-                  usage={usageByMaterial.get(m.id) ?? { n: 0, unlinked: 0 }}
-                  onField={(patch) =>
-                    run(() => updateMaterial({ id: m.id, ...patch }))
-                  }
-                  onDelete={() => {
-                    if (!confirm(`Hapus bahan "${m.name}"?`)) return;
-                    startTransition(async () => {
-                      const res = await deleteMaterial(m.id);
-                      if (!res.ok) {
-                        toast.error(res.error);
-                        return;
-                      }
-                      // Bahan yang masih dipakai resep hanya dinonaktifkan
-                      // (jaga integritas HPP historis), bukan dihapus permanen.
-                      toast.success(
-                        res.data?.softDeleted
-                          ? "Bahan dinonaktifkan (masih dipakai resep)"
-                          : "Bahan dihapus"
-                      );
-                      router.refresh();
-                    });
-                  }}
-                />
-              ))}
-            </div>
+              <div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border bg-card">
+                {list.map((m) => (
+                  <MaterialRow
+                    key={m.id}
+                    m={m}
+                    pending={pending}
+                    categories={categories}
+                    expanded={expanded === m.id}
+                    onToggle={() => setExpanded((e) => (e === m.id ? null : m.id))}
+                    onWizard={() => setWizard({ material: m })}
+                    usage={usageByMaterial.get(m.id) ?? { n: 0, unlinked: 0 }}
+                    onField={(patch) => run(() => updateMaterial({ id: m.id, ...patch }))}
+                    onDelete={() => {
+                      if (!confirm(`Hapus bahan "${m.name}"?`)) return;
+                      startTransition(async () => {
+                        const res = await deleteMaterial(m.id);
+                        if (!res.ok) {
+                          toast.error(res.error);
+                          return;
+                        }
+                        // Bahan yang masih dipakai resep hanya dinonaktifkan
+                        // (jaga integritas HPP historis), bukan dihapus permanen.
+                        toast.success(
+                          res.data?.softDeleted
+                            ? "Bahan dinonaktifkan (masih dipakai resep)"
+                            : "Bahan dihapus"
+                        );
+                        router.refresh();
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-7 rounded-full border-2 px-2.5 text-[11px] font-semibold transition ${
-        active
-          ? "border-foreground bg-primary text-foreground"
-          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -370,11 +298,48 @@ function MaterialRow({
   const stale = Date.now() - new Date(m.price_updated_at).getTime() > STALE_MS;
 
   return (
-    <div
-      className={`rounded-2xl border-2 bg-card shadow-hard-sm ${
-        m.is_active ? "border-foreground" : "border-border opacity-70"
-      }`}
-    >
+    <div className={cn(!m.is_active && "opacity-70")}>
+      {/* Ringkasan satu baris; semua kolom edit terbuka saat diketuk. */}
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="flex min-h-12 w-full cursor-pointer items-center gap-3 px-3.5 py-2 text-left transition-colors hover:bg-muted/40"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="truncate text-sm font-semibold">{m.name}</span>
+          {!m.is_active && <span className="ml-2 text-xs text-muted-foreground">nonaktif</span>}
+          {m.source_product_id && <span className="ml-2 text-xs font-medium text-primary">setengah jadi</span>}
+        </span>
+        <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums md:block">
+          {formatRp(m.purchase_price)} / {m.purchase_unit}
+        </span>
+        <span className="flex w-36 shrink-0 items-center justify-end gap-1.5 text-sm font-semibold tabular-nums">
+          {stale && (
+            <span title={`Harga belum diperbarui > ${STALE_DAYS} hari`} className="text-warning">
+              <AlertTriangle size={13} aria-label="Harga basi" />
+            </span>
+          )}
+          {fmtRpPrecise(unitPrice)}
+          <span className="text-xs font-normal text-muted-foreground">/{m.usage_unit}</span>
+        </span>
+        <span
+          className={cn(
+            "w-28 shrink-0 text-right text-xs tabular-nums",
+            usage.n === 0 ? "font-semibold text-destructive" : "text-muted-foreground"
+          )}
+        >
+          {usage.n === 0 ? "tak terpakai" : `${usage.n} produk`}
+          {usage.unlinked > 0 && <span className="text-destructive"> · {usage.unlinked} tanpa POS</span>}
+        </span>
+        <ChevronDown
+          size={16}
+          aria-hidden
+          className={cn("shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
+        />
+      </button>
+      {expanded && (
+      <div className="border-t border-border/60 bg-muted/30">
       <div className="p-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 items-end">
         <TextField label="Nama" value={m.name} onCommit={(v) => v && onField({ name: v })} />
         <UnitSelect
@@ -475,50 +440,34 @@ function MaterialRow({
           </a>
         )}
       </div>
-      <div className="flex items-center gap-3 px-3 pb-2 -mt-1">
-        {!m.is_active && (
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase">
-            nonaktif
-          </span>
-        )}
+      <div className="flex items-center gap-3 px-3 pb-3">
         {m.source_product_id && (
           <span
-            className="text-[11px] font-semibold text-primary"
+            className="text-xs font-medium text-primary"
             title="Harga dan isi mengikuti HPP resep produk sumbernya. Ubah resep sumbernya, bukan harganya."
           >
-            setengah jadi · harga mengikuti resep
+            Setengah jadi · harga mengikuti resep
           </span>
         )}
-        <span className={`text-[11px] ${usage.n === 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
-          {usage.n === 0 ? "belum dipakai produk mana pun" : `dipakai ${usage.n} produk`}
-          {usage.unlinked > 0 && (
-            <span className="font-semibold text-destructive"> · {usage.unlinked} belum tertaut POS</span>
-          )}
-        </span>
-        <button
-          type="button"
-          onClick={onToggle}
-          className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground"
-        >
-          <History size={13} /> {expanded ? "Tutup" : "Dampak & riwayat"}
-        </button>
         <button
           type="button"
           onClick={onWizard}
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
+          className="cursor-pointer text-xs font-semibold text-primary hover:underline"
         >
-          Simulasi & tautan produk
+          Simulasi &amp; tautan produk
         </button>
         <button
           type="button"
           onClick={onDelete}
           disabled={pending}
-          className="ml-auto inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-destructive disabled:opacity-50"
+          className="ml-auto inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
         >
-          <Trash2 size={13} /> Hapus
+          <Trash2 size={13} aria-hidden /> Hapus
         </button>
       </div>
-      {expanded && <ImpactPanel material={m} />}
+      <ImpactPanel material={m} />
+      </div>
+      )}
     </div>
   );
 }
@@ -549,7 +498,7 @@ function ImpactPanel({ material }: { material: CostingMaterial }) {
   }, [material.id, material.purchase_price, material.content_per_purchase]);
 
   return (
-    <div className="border-t-2 border-foreground/20 p-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+    <div className="grid grid-cols-1 gap-6 border-t border-border/60 bg-card p-3.5 text-sm md:grid-cols-2">
       <div>
         <h3 className="font-bold text-[12px] uppercase tracking-wide text-muted-foreground mb-1.5">
           Produk terdampak

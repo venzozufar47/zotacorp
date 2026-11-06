@@ -857,9 +857,7 @@ export async function captureHppSnapshots(
 /** Ambang "HPP naik signifikan" bulan ini (vs snapshot terakhir). */
 const HPP_RISE_THRESHOLD = 0.05;
 
-export interface CostingDashboardRow {
-  product: CostingProduct;
-  breakdown: HppBreakdown;
+export interface CostingDashboardRow extends CostingProductWithHpp {
   /** Kenaikan HPP vs snapshot terakhir (fraksi). null bila belum ada. */
   hppRosePct: number | null;
   /** Tanggal snapshot HPP MANUAL terakhir produk ("YYYY-MM-DD"); null bila belum pernah di-snapshot manual. */
@@ -911,7 +909,7 @@ export async function getCostingDashboard(
     const cur = r.breakdown.hppUnit;
     const hppRosePct =
       last != null && last > 0 ? (cur - last) / last : null;
-    return { product: r.product, breakdown: r.breakdown, hppRosePct, lastSnapshotDate: latestDateByProduct.get(r.product.id) ?? null };
+    return { ...r, hppRosePct, lastSnapshotDate: latestDateByProduct.get(r.product.id) ?? null };
   });
   // Urut margin terendah dulu (null/invalid dianggap paling bawah).
   rows.sort((a, b) => {

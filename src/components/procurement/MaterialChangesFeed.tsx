@@ -47,9 +47,9 @@ export function MaterialChangesFeed({ rows }: { rows: MaterialChangeView[] }) {
   }
 
   return (
-    <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
+    <section className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-sm font-bold">
+        <h2 className="text-sm font-semibold">
           Perubahan daftar bahan{unseen > 0 && <span className="ml-1.5 rounded-full bg-warning/25 px-2 py-0.5 text-[11px]">{unseen} baru</span>}
         </h2>
         {unseen > 0 && (

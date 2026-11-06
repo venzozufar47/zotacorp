@@ -59,6 +59,7 @@ export function ProcurementBoard({
   goodsIn,
   basePath = "/pengadaan",
   brandInfo,
+  embedded = false,
 }: {
   brands: string[];
   activeBrand: string | null;
@@ -70,6 +71,8 @@ export function ProcurementBoard({
    *  (/admin/costing/pengadaan) supaya ganti brand tidak melempar admin
    *  keluar dari shell-nya. */
   basePath?: string;
+  /** Dipasang di dalam hub admin: pemilih brand sudah ada di kepala hub, gaya datar. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -155,7 +158,7 @@ export function ProcurementBoard({
   return (
     <div className="space-y-4">
       {/* Toolbar — disembunyikan di halaman petugas: pemilih cabang & tab Opname sudah ada di bilah tab. */}
-      <div className={`flex flex-wrap items-center gap-2 ${basePath.startsWith("/pengadaan") ? "hidden" : ""}`}>
+      <div className={`flex flex-wrap items-center gap-2 ${embedded || basePath.startsWith("/pengadaan") ? "hidden" : ""}`}>
         <select
           value={activeBrand ?? ""}
           onChange={(e) => selectBrand(e.target.value)}
@@ -178,18 +181,21 @@ export function ProcurementBoard({
       {/* Ringkasan */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Tile
+          flat={embedded}
           label="Perlu dibeli"
           value={String(summary.needBuy)}
           hint={summary.estCost > 0 ? `≈ ${formatRp(summary.estCost)}` : undefined}
           tone={summary.needBuy > 0 ? "warning" : "ok"}
         />
         <Tile
+          flat={embedded}
           label="Habis / kritis"
           value={String((counts.habis ?? 0) + (counts.kritis ?? 0))}
           tone={(counts.habis ?? 0) + (counts.kritis ?? 0) > 0 ? "bad" : "ok"}
         />
-        <Tile label="Nilai stok (est.)" value={formatRp(summary.value)} />
+        <Tile flat={embedded} label="Nilai stok (est.)" value={formatRp(summary.value)} />
         <Tile
+          flat={embedded}
           label="Opname terakhir"
           value={
             summary.oldest == null
@@ -247,7 +253,7 @@ export function ProcurementBoard({
       ) : visible.length === 0 ? (
         <Empty>Tidak ada bahan cocok.</Empty>
       ) : (
-        <div className="divide-y divide-border overflow-hidden rounded-2xl border-2 border-foreground bg-card">
+        <div className={embedded ? "divide-y divide-border overflow-hidden rounded-xl border border-border bg-card" : "divide-y divide-border overflow-hidden rounded-2xl border-2 border-foreground bg-card"}>
           {visible.map((r) => {
             const m = r.metrics;
             const open = expanded === r.material.id;
@@ -500,7 +506,7 @@ export function ProcurementBoard({
 
       {/* Barang masuk terakhir */}
       {goodsIn.length > 0 && (
-        <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm p-3">
+        <div className={embedded ? "rounded-xl border border-border bg-card p-3" : "rounded-2xl border-2 border-foreground bg-card shadow-hard-sm p-3"}>
           <h2 className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
             Barang masuk terakhir
           </h2>
@@ -543,7 +549,9 @@ function Tile({
   value,
   hint,
   tone = "ok",
+  flat = false,
 }: {
+  flat?: boolean;
   label: string;
   value: string;
   hint?: string;
@@ -556,7 +564,7 @@ function Tile({
         ? "bg-warning/30"
         : "bg-card";
   return (
-    <div className={`rounded-2xl border-2 border-foreground p-3 shadow-hard-sm ${cls}`}>
+    <div className={flat ? `rounded-xl border border-border p-3 ${cls}` : `rounded-2xl border-2 border-foreground p-3 shadow-hard-sm ${cls}`}>
       <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>

@@ -261,13 +261,9 @@ export function buildAdminNav({
           icon: Calculator,
           label: "HPP / Costing",
           color: "bg-pop-emerald",
-          homeLabel: "Kalkulator HPP",
-          children: [
-            { href: "/admin/costing/bahan", label: "Master Bahan" },
-            { href: "/admin/costing/dashboard", label: "Dashboard Margin" },
-            { href: "/admin/costing/pengadaan", label: "Pengadaan" },
-            { href: "/admin/costing/pengadaan/nota", label: "Nota Belanja" },
-          ],
+          homeLabel: "HPP & Margin",
+          // Dua hub bertab: HPP & Margin (Produk, Bahan) dan Pengadaan (Stok, Nota, Akses).
+          children: [{ href: "/admin/costing/pengadaan", label: "Pengadaan" }],
         },
         // "Dividen" DIHAPUS dari sini: konsolnya melebur jadi tab
         // "Distribusi Bulanan" di halaman Investor, karena orang, kontrak,

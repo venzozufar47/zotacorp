@@ -17,7 +17,7 @@ const dateLabel = (ymd: string) =>
   new Date(`${ymd}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
 
 /** Saldo Shopee cabang + tambah saldo saat menerima transferan dari owner (tanpa bukti transfer). */
-export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
+export function ShopeeWalletCard({ wallet, compact = false }: { wallet: ShopeeWallet; compact?: boolean }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [amount, setAmount] = useState("");
@@ -55,16 +55,16 @@ export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
   }
 
   return (
-    <section className="space-y-2 rounded-2xl border border-border bg-card p-3.5">
+    <section className={cn("space-y-2 border border-border bg-card", compact ? "rounded-xl p-3" : "rounded-2xl p-3.5", compact && negative && "border-destructive/60 bg-destructive/5")}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             <ShoppingBag size={12} /> {walletLabel(wallet.businessUnit)}
           </p>
-          <p className={cn("mt-0.5 font-display text-2xl font-extrabold tabular-nums", negative && "text-destructive")}>
+          <p className={cn("mt-0.5 font-display font-extrabold tabular-nums", compact ? "text-xl font-bold" : "text-2xl", negative && "text-destructive")}>
             {formatRp(wallet.balance)}
           </p>
-          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+          <p className={cn("mt-1 text-[11.5px] leading-snug text-muted-foreground", compact && "hidden")}>
             {walletName(wallet.businessUnit) === "Seabank" ? "Untuk belanja memakai saldo Seabank." : "Untuk belanja lewat Shopee."} Tambah saldo setiap menerima
             transferan dari owner.
           </p>
@@ -117,6 +117,10 @@ export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
       )}
 
       {wallet.topups.length > 0 && (
+        <details open={!compact} className="group">
+          <summary className={cn("cursor-pointer list-none text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden", !compact && "hidden")}>
+            <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span> Riwayat tambah saldo ({wallet.topups.length})
+          </summary>
         <ul className="divide-y divide-border text-xs">
           {wallet.topups.map((t) => (
             <li key={t.id} className="flex items-center gap-2 py-1.5">
@@ -140,6 +144,7 @@ export function ShopeeWalletCard({ wallet }: { wallet: ShopeeWallet }) {
             </li>
           ))}
         </ul>
+        </details>
       )}
     </section>
   );
