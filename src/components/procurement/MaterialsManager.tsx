@@ -9,6 +9,7 @@ import { parseDecimalId, parseMoneyId } from "@/lib/utils/parse-number";
 import { NumberHint } from "@/components/shared/NumberHint";
 import { PURCHASE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { formatRp } from "@/lib/cashflow/format";
+import { MATERIAL_CATEGORIES } from "@/lib/procurement/material-category";
 import {
   saveMaterial,
   setMaterialActive,
@@ -30,9 +31,6 @@ interface Draft {
   shopeeUrl: string;
   price: string;
 }
-
-/** Nilai semu pilihan "kategori baru" di dropdown kategori. */
-const NEW_CATEGORY = "__new__";
 
 const EMPTY: Draft = { name: "", category: "", purchaseUnit: "", content: "", usageUnit: "gram", shopeeUrl: "", price: "" };
 
@@ -59,14 +57,8 @@ export function MaterialsManager({
   const [brandFor, setBrandFor] = useState<{ material: BrandPanelMaterial; startAdding: boolean } | null>(null);
   const openBrands = (m: MaterialDetail, startAdding = false) =>
     setBrandFor({ material: { id: m.id, name: m.name, category: m.category, halalKind: m.halalKind, inHalalList: m.inHalalList }, startAdding });
-  /** true = mengetik nama kategori baru (bukan memilih dari daftar). */
-  const [newCategory, setNewCategory] = useState(false);
   const [pending, start] = useTransition();
 
-  const categories = useMemo(
-    () => [...new Set(materials.map((m) => m.category).filter((c): c is string => !!c))].sort(),
-    [materials]
-  );
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return materials.filter((m) => (showInactive || m.isActive) && (!needle || m.name.toLowerCase().includes(needle)));
@@ -83,7 +75,6 @@ export function MaterialsManager({
   const newPrice = draft ? parseMoneyId(draft.price) : 0;
 
   function open(m?: MaterialDetail) {
-    setNewCategory(false);
     setDraft(
       m
         ? {
@@ -256,41 +247,18 @@ export function MaterialsManager({
               <Field label="Nama bahan">
                 <input value={draft.name} onChange={set("name")} className={inputCls} maxLength={80} />
               </Field>
-              <Field label="Kategori (opsional)">
-                <select
-                  value={newCategory ? NEW_CATEGORY : draft.category}
-                  onChange={(e) => {
-                    if (e.target.value === NEW_CATEGORY) {
-                      setNewCategory(true);
-                      setDraft((d) => (d ? { ...d, category: "" } : d));
-                    } else {
-                      setNewCategory(false);
-                      setDraft((d) => (d ? { ...d, category: e.target.value } : d));
-                    }
-                  }}
-                  className={inputCls}
-                >
-                  <option value="">Tanpa kategori</option>
-                  {draft.category && !categories.includes(draft.category) && !newCategory && (
+              <Field label="Kategori">
+                <select value={draft.category} onChange={set("category")} className={inputCls}>
+                  <option value="">{editing ? "Tanpa kategori" : "Otomatis dari nama"}</option>
+                  {draft.category && !(MATERIAL_CATEGORIES as readonly string[]).includes(draft.category) && (
                     <option value={draft.category}>{draft.category}</option>
                   )}
-                  {categories.map((c) => (
+                  {MATERIAL_CATEGORIES.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
-                  <option value={NEW_CATEGORY}>+ Kategori baru…</option>
                 </select>
-                {newCategory && (
-                  <input
-                    value={draft.category}
-                    onChange={set("category")}
-                    placeholder="Nama kategori baru"
-                    autoFocus
-                    className={`${inputCls} mt-2`}
-                    maxLength={40}
-                  />
-                )}
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Satuan beli">

@@ -22,6 +22,7 @@ import { num } from "@/lib/costing/rows";
 import { sendPushToAdmins } from "@/lib/push/web-push";
 import { isPurchaseUnit } from "@/lib/costing/unit-options";
 import { brandMissing, certExpiry } from "@/lib/procurement/brand-store";
+import { isMaterialCategory, suggestMaterialCategory } from "@/lib/procurement/material-category";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -213,7 +214,14 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
   const name = input.name.trim().replace(/\s+/g, " ");
   const purchaseUnit = input.purchaseUnit.trim();
   const usageUnit = input.usageUnit.trim().toLowerCase();
-  const category = input.category?.trim() || null;
+  // Bahan baru: kategori baku wajib (kosong = ditebak dari nama). Bahan lama boleh mempertahankan kategori lamanya.
+  const typedCategory = input.category?.trim() || null;
+  const category = input.id
+    ? typedCategory
+    : isMaterialCategory(typedCategory)
+      ? typedCategory
+      : suggestMaterialCategory(name);
+  if (!input.id && !category) return { ok: false, error: "Pilih kategori bahan" };
   if (name.length < 2 || name.length > 80) return { ok: false, error: "Nama bahan 2–80 huruf" };
   if (!purchaseUnit || purchaseUnit.length > 20) return { ok: false, error: "Satuan beli wajib (mis. sak, dus, pack)" };
   // Satuan beli baku (dropdown), kecuali bila tidak diubah dari nilai lama bahan ini (dicek di cabang ubah).

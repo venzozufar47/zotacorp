@@ -31,6 +31,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { compressImageStrict } from "@/lib/images/compress-image";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { parseDecimalId } from "@/components/admin/costing/fields";
+import { MATERIAL_CATEGORIES, suggestMaterialCategory } from "@/lib/procurement/material-category";
 import {
   EXPENSE_CATEGORIES,
   categoryLabelFull,
@@ -1247,11 +1248,14 @@ function ProposeMaterial({
   const [content, setContent] = useState("");
   const [usageUnit, setUsageUnit] = useState(usageUnits[0]?.code ?? "gram");
   const [price, setPrice] = useState("");
+  // Kategori: diisi otomatis dari nama sampai petugas memilih sendiri.
+  const [pickedCategory, setPickedCategory] = useState<string | null>(null);
+  const category = pickedCategory ?? suggestMaterialCategory(name) ?? "";
   const [pending, start] = useTransition();
 
   const contentNum = parseDecimalId(content) ?? 0;
   const priceNum = num(price);
-  const ok = name.trim().length >= 2 && purchaseUnit.trim() && contentNum > 0 && priceNum > 0;
+  const ok = name.trim().length >= 2 && purchaseUnit.trim() && contentNum > 0 && priceNum > 0 && !!category;
 
   function submit() {
     start(async () => {
@@ -1262,6 +1266,7 @@ function ProposeMaterial({
         contentPerPurchase: contentNum,
         usageUnit,
         purchasePrice: priceNum,
+        category,
       });
       if (!res.ok || !res.data) {
         toast.error(res.ok ? "Gagal" : res.error);
@@ -1271,7 +1276,7 @@ function ProposeMaterial({
       onCreated({
         id: res.data.id,
         name: name.trim(),
-        category: null,
+        category: res.data.category,
         purchaseUnit: purchaseUnit.trim(),
         purchasePrice: priceNum,
         contentPerPurchase: contentNum,
@@ -1320,6 +1325,24 @@ function ProposeMaterial({
           </ul>
         </div>
       )}
+      <label className="block space-y-1">
+        <span className="text-xs font-medium text-muted-foreground">Kategori (otomatis dari nama, boleh diganti)</span>
+        <select
+          value={category}
+          onChange={(e) => setPickedCategory(e.target.value)}
+          className="h-10 w-full rounded-lg border border-border bg-background px-2 text-base md:text-sm"
+        >
+          {!category && <option value="">Pilih…</option>}
+          {MATERIAL_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[11px] text-muted-foreground">
+        Hanya untuk bahan yang masuk resep atau kemasan produk. Sabun, tisu, kresek, sarung tangan: catat sebagai pengeluaran lain, bukan bahan.
+      </p>
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Satuan beli</span>

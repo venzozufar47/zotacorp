@@ -4,6 +4,7 @@ import { AdminMobileNav } from "@/components/layout/AdminMobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
+import { PullToRefresh } from "@/components/layout/PullToRefresh";
 import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/cashflow/access";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
@@ -36,6 +37,7 @@ export default async function AdminLayout({
       return (
         <div className="flex min-h-screen bg-background">
           <RouteProgressBar />
+          <PullToRefresh />
           <AdminMobileNav pendingConfirmations={[]} scope="yeobo-booth" profile={profile} />
           <AdminSidebar
             pendingCount={0}
@@ -73,6 +75,7 @@ export default async function AdminLayout({
     return (
       <div className="flex min-h-screen bg-background">
         <RouteProgressBar />
+        <PullToRefresh />
         <Sidebar
           className="hidden md:flex"
           hasFinance={hasFinance}
@@ -119,6 +122,7 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-screen bg-background">
       <RouteProgressBar />
+      <PullToRefresh />
       <AdminMobileNav
         pendingConfirmations={pendingConfirmations}
         pendingCount={attendancePendingCount}

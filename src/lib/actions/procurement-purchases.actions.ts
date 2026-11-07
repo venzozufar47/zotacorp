@@ -28,6 +28,7 @@ import { fetchUnitsMap } from "@/lib/costing/rows";
 import { loadBrandProcurement } from "@/lib/procurement/rows";
 import { addWorkingDays, DEFAULT_LEAD_TIME_DAYS } from "@/lib/procurement/lead-time";
 import { EXPENSE_CATEGORY_VALUES } from "@/lib/procurement/categories";
+import { isMaterialCategory, suggestMaterialCategory } from "@/lib/procurement/material-category";
 import {
   convertQty,
   needsPriceReview,
@@ -427,7 +428,9 @@ export async function proposeMaterial(input: {
   contentPerPurchase: number;
   usageUnit: string;
   purchasePrice: number;
-}): Promise<ActionResult<{ id: string; existed: boolean }>> {
+  /** Kategori baku; kosong = ditebak dari nama. Tak bisa ditebak dan tak dipilih = ditolak (tak boleh tanpa kategori). */
+  category?: string | null;
+}): Promise<ActionResult<{ id: string; existed: boolean; category: string }>> {
   const gate = await requireProcurementForBu(input.businessUnit);
   if (!gate.ok) return { ok: false, error: gate.error };
   const name = input.name.trim().replace(/\s+/g, " ");
@@ -439,23 +442,28 @@ export async function proposeMaterial(input: {
   if (!isPurchaseUnit(purchaseUnit)) return { ok: false, error: "Pilih satuan beli dari daftar" };
   if (!(input.contentPerPurchase > 0)) return { ok: false, error: "Isi per satuan beli harus > 0" };
   if (!(input.purchasePrice > 0)) return { ok: false, error: "Harga beli harus > 0" };
+  const category = isMaterialCategory(input.category) ? input.category : suggestMaterialCategory(name);
+  if (!category) return { ok: false, error: "Pilih kategori bahan" };
 
   const admin = createAdminClient();
   const { data: dup } = await admin
     .from("costing_materials" as never)
-    .select("id")
+    .select("id, category")
     .eq("business_unit", input.businessUnit)
     // % dan _ pada nama bukan wildcard: di-escape supaya "tepung_" tidak cocok dengan "tepung terigu".
     .ilike("name", name.replace(/[\\%_]/g, (c) => `\\${c}`))
     .maybeSingle();
-  if (dup) return { ok: true, data: { id: (dup as { id: string }).id, existed: true } };
+  if (dup) {
+    const d = dup as { id: string; category: string | null };
+    return { ok: true, data: { id: d.id, existed: true, category: d.category ?? category } };
+  }
 
   const { data, error } = await admin
     .from("costing_materials" as never)
     .insert({
       business_unit: input.businessUnit,
       name,
-      category: null,
+      category,
       purchase_unit: purchaseUnit,
       purchase_price: round2(input.purchasePrice),
       content_per_purchase: input.contentPerPurchase,
@@ -482,7 +490,7 @@ export async function proposeMaterial(input: {
     changed_by: gate.userId,
   } as never);
   revalidateAll();
-  return { ok: true, data: { id: (data as { id: string }).id, existed: false } };
+  return { ok: true, data: { id: (data as { id: string }).id, existed: false, category } };
 }
 
 // ─────────────────────────────────────────────────────────────────────
