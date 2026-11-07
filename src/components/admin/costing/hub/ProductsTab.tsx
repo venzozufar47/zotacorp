@@ -35,14 +35,26 @@ import { fmtPercent } from "../format";
 import { parseDecimalId } from "../fields";
 import { Menu } from "./Menu";
 
-type Tone = "bad" | "warn" | "ok";
+type Tone = "bad" | "warn" | "ok" | "none";
 type Filter = "all" | "thin" | "rise";
 type SortKey = "name" | "hpp" | "price" | "margin" | "rise";
 
 const RISE_THRESHOLD = 0.05;
 
-/** Nada margin: merah bila rugi/tak valid, kuning bila di bawah target atau < 20%. */
+/**
+ * Baris yang memang tidak dijual, jadi margin tidak berlaku:
+ * - "internal": bahan setengah jadi (dipakai di resep lain, HPP-nya yang diteruskan).
+ * - "gratis": harga manual Rp 0 (freebies/promosi, HPP = biaya promosi).
+ */
+function nonSaleKind(r: CostingDashboardRow): "internal" | "gratis" | null {
+  if (r.product.category === "Bahan setengah jadi") return "internal";
+  if (r.product.price_method === "manual" && Number(r.product.manual_price) === 0) return "gratis";
+  return null;
+}
+
+/** Nada margin: merah bila rugi/tak valid, kuning bila di bawah target atau < 20%, abu-abu bila tidak dijual. */
 function toneOf(r: CostingDashboardRow): Tone {
+  if (nonSaleKind(r)) return "none";
   const mp = r.breakdown.marginPercent;
   if (r.breakdown.error || mp == null || mp <= 0) return "bad";
   const below = r.product.price_method === "margin" && mp < r.product.target_percent;
@@ -53,11 +65,13 @@ const TONE_TEXT: Record<Tone, string> = {
   bad: "text-destructive",
   warn: "text-warning",
   ok: "text-success",
+  none: "text-muted-foreground",
 };
 const TONE_DOT: Record<Tone, string> = {
   bad: "bg-destructive",
   warn: "bg-warning",
   ok: "bg-success",
+  none: "bg-muted-foreground/40",
 };
 
 const val = (r: CostingDashboardRow, k: SortKey): number | string | null => {
@@ -101,7 +115,8 @@ export function ProductsTab({
     let thin = 0;
     let rise = 0;
     for (const r of data.rows) {
-      if (toneOf(r) !== "ok") thin++;
+      const t = toneOf(r);
+      if (t !== "ok" && t !== "none") thin++;
       if (r.hppRosePct != null && r.hppRosePct > RISE_THRESHOLD) rise++;
     }
     return { thin, rise };
@@ -112,11 +127,20 @@ export function ProductsTab({
     const list = data.rows.filter((r) => {
       // Pencarian menembus filter: produk yang dicari tidak boleh hilang karena chip lain aktif.
       if (q) return r.product.name.toLowerCase().includes(q) || (r.product.category ?? "").toLowerCase().includes(q);
-      if (filter === "thin") return toneOf(r) !== "ok";
+      if (filter === "thin") {
+        const t = toneOf(r);
+        return t !== "ok" && t !== "none";
+      }
       if (filter === "rise") return r.hppRosePct != null && r.hppRosePct > RISE_THRESHOLD;
       return true;
     });
     return [...list].sort((a, b) => {
+      // Baris tidak dijual (bahan internal/gratis) selalu di bawah saat urut margin, supaya tak menutupi produk yang perlu perhatian.
+      if (sort.key === "margin") {
+        const an = toneOf(a) === "none";
+        const bn = toneOf(b) === "none";
+        if (an !== bn) return an ? 1 : -1;
+      }
       const x = val(a, sort.key);
       const y = val(b, sort.key);
       // Nilai kosong: di awal untuk margin (tak valid perlu dilihat dulu), di akhir untuk kolom lain.
@@ -357,15 +381,25 @@ export function ProductsTab({
                     <td className="px-3 py-2.5 text-right">
                       <span className={cn("inline-flex items-center gap-1.5 font-semibold tabular-nums", TONE_TEXT[tone])}>
                         <span aria-hidden className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />
-                        {b.error === "margin_too_high"
-                          ? "target >100%"
-                          : b.error === "yield_invalid"
-                            ? "yield 0"
-                            : mp != null
-                              ? fmtPercent(mp)
-                              : "—"}
+                        {nonSaleKind(r) === "internal"
+                          ? "bahan internal"
+                          : nonSaleKind(r) === "gratis"
+                            ? "gratis"
+                            : b.error === "margin_too_high"
+                              ? "target >100%"
+                              : b.error === "yield_invalid"
+                                ? "yield 0"
+                                : mp != null
+                                  ? fmtPercent(mp)
+                                  : "—"}
                         <span className="sr-only">
-                          {tone === "bad" ? " (rugi atau tidak valid)" : tone === "warn" ? " (tipis)" : " (sehat)"}
+                          {tone === "none"
+                            ? " (tidak dijual, margin tidak berlaku)"
+                            : tone === "bad"
+                              ? " (rugi atau tidak valid)"
+                              : tone === "warn"
+                                ? " (tipis)"
+                                : " (sehat)"}
                         </span>
                       </span>
                     </td>
