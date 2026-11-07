@@ -62,7 +62,7 @@ export async function loadOpnameHistory(
     for (let from = 0; ; from += PAGE) {
       const { data } = await supabase
         .from("costing_material_opname_items" as never)
-        .select("opname_id, material_id, physical_qty, expected_qty, unit_cost_snapshot")
+        .select("opname_id, material_id, physical_qty, expected_qty, unit_cost_snapshot, variance_reason")
         .in("opname_id", ids)
         .order("id")
         .range(from, from + PAGE - 1);

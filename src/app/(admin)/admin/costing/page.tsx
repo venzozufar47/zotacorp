@@ -15,10 +15,13 @@ import {
 import { HubHeader, type HubTab } from "@/components/admin/costing/hub/HubHeader";
 import { ProductsTab } from "@/components/admin/costing/hub/ProductsTab";
 import { MaterialsManager } from "@/components/admin/costing/MaterialsManager";
+import { getLeakageReport } from "@/lib/actions/leakage.actions";
+import { LeakageTab, LEAKAGE_RANGES, type LeakageRangeKey } from "@/components/admin/costing/hub/LeakageTab";
 
 const TABS: HubTab[] = [
   { key: "produk", label: "Produk" },
   { key: "bahan", label: "Bahan" },
+  { key: "kebocoran", label: "Kebocoran" },
 ];
 
 /**
@@ -28,14 +31,15 @@ const TABS: HubTab[] = [
 export default async function AdminCostingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string; tab?: string }>;
+  searchParams: Promise<{ bu?: string; tab?: string; r?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
 
-  const { bu, tab: rawTab } = await searchParams;
-  const tab = rawTab === "bahan" ? "bahan" : "produk";
+  const { bu, tab: rawTab, r: rawRange } = await searchParams;
+  const tab = rawTab === "bahan" ? "bahan" : rawTab === "kebocoran" ? "kebocoran" : "produk";
+  const range = LEAKAGE_RANGES.find((o) => o.key === rawRange) ?? LEAKAGE_RANGES[1];
   const units = await listBusinessUnits();
   const brands = costingBrands(units.map((u) => u.name));
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
@@ -61,6 +65,8 @@ export default async function AdminCostingPage({
         </p>
       ) : tab === "produk" ? (
         <ProductsTabLoader brand={activeBrand} />
+      ) : tab === "kebocoran" ? (
+        <LeakageTabLoader brand={activeBrand} range={range.key} days={range.days} />
       ) : (
         <MaterialsTabLoader brand={activeBrand} />
       )}
@@ -74,6 +80,21 @@ async function ProductsTabLoader({ brand }: { brand: string }) {
     ? res.data!
     : { rows: [], avgMarginPercent: null, belowTargetCount: 0, hppRoseCount: 0 };
   return <ProductsTab brand={brand} data={data} />;
+}
+
+async function LeakageTabLoader({
+  brand,
+  range,
+  days,
+}: {
+  brand: string;
+  range: LeakageRangeKey;
+  days: number | null;
+}) {
+  const res = await getLeakageReport(brand, days);
+  if (!res.ok || !res.data)
+    return <p className="text-sm text-destructive">Laporan gagal dimuat: {res.ok ? "tanpa data" : res.error}</p>;
+  return <LeakageTab brand={brand} range={range} report={res.data} />;
 }
 
 async function MaterialsTabLoader({ brand }: { brand: string }) {

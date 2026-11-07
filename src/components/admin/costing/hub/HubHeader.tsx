@@ -69,7 +69,7 @@ export function HubHeader({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="font-display text-2xl font-bold tracking-tight">{title}</h1>
         {brandOptions.length > 1 && (
-          <div role="group" aria-label="Pilih brand" className="inline-flex rounded-lg bg-muted p-0.5">
+          <div role="group" aria-label="Pilih brand" className="inline-flex max-w-full overflow-x-auto rounded-lg bg-muted p-0.5">
             {brandOptions.map((o) => {
               const on = o.value === activeBrand;
               return (
@@ -80,7 +80,7 @@ export function HubHeader({
                   title={o.value ?? "Semua cabang"}
                   onClick={() => pick(o.value)}
                   className={cn(
-                    "h-8 cursor-pointer rounded-md px-3 text-[13px] font-semibold transition-colors",
+                    "h-8 shrink-0 cursor-pointer whitespace-nowrap rounded-md px-3 text-[13px] font-semibold transition-colors",
                     on ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
