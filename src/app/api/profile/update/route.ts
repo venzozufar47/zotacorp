@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
+import { cleanProfileFields } from "@/lib/profile/normalize";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
@@ -87,7 +88,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const clean = sanitize(fields);
+    // Aturan baku nama/kontak/NPWP (lihat lib/profile/normalize.ts). Format
+    // dibenahi di sini; isi yang salah arti ditolak dengan pesan yang jelas.
+    const { values, errors } = cleanProfileFields(fields);
 
     // Use service role so admin edits bypass RLS and self-edits work without
     // needing a broader UPDATE policy.
@@ -95,6 +98,31 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    // Form mengirim seluruh isian tiap kali satu bagian disimpan. Isian lama
+    // yang belum memenuhi aturan tetapi tidak diubah tidak boleh menolak
+    // simpan bagian lain: bandingkan dengan isi tersimpan, lewati yang sama.
+    const badKeys = Object.keys(errors);
+    if (badKeys.length > 0) {
+      const { data: current } = await adminClient
+        .from("profiles")
+        .select(badKeys.join(","))
+        .eq("id", profileId)
+        .maybeSingle();
+      const stored = (current ?? {}) as unknown as Record<string, unknown>;
+      for (const k of badKeys) {
+        const submitted = typeof fields[k] === "string" ? (fields[k] as string) : "";
+        if (String(stored[k] ?? "") === submitted) {
+          delete errors[k];
+          delete (values as Record<string, unknown>)[k];
+        }
+      }
+    }
+    const firstError = Object.values(errors)[0];
+    if (firstError) {
+      return NextResponse.json({ error: firstError, fields: errors }, { status: 400 });
+    }
+    const clean = sanitize(values);
 
     const { error } = await adminClient
       .from("profiles")

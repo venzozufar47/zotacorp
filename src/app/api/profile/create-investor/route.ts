@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { claimPlaceholderInvestor } from "@/lib/investor/claim-placeholder";
 import { APP_MARKER } from "@/lib/auth/app-marker";
+import { cleanFullName } from "@/lib/profile/normalize";
 
 /**
  * Self-serve registrasi investor. Buat auth user + profile dengan
@@ -13,7 +14,8 @@ import { APP_MARKER } from "@/lib/auth/app-marker";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, full_name, company, claim } = body;
+    const { email, password, company, claim } = body;
+    let full_name: string = typeof body.full_name === "string" ? body.full_name : "";
 
     if (!email || !password) {
       return NextResponse.json(
@@ -30,6 +32,15 @@ export async function POST(request: Request) {
         { error: "Password minimal 8 karakter" },
         { status: 400 }
       );
+    }
+
+    // Aturan baku nama (lib/profile/normalize.ts): format dibenahi, isi salah ditolak.
+    if (full_name.trim() !== "") {
+      const nameRes = cleanFullName(full_name);
+      if (!nameRes.ok) {
+        return NextResponse.json({ error: nameRes.error }, { status: 400 });
+      }
+      full_name = nameRes.value ?? "";
     }
 
     const adminClient = createClient<Database>(

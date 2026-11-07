@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { APP_MARKER } from "@/lib/auth/app-marker";
+import { cleanFullName } from "@/lib/profile/normalize";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, full_name, role } = body;
+    const { email, password, role } = body;
+    let full_name: string = typeof body.full_name === "string" ? body.full_name : "";
 
     if (!email || !password) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -21,6 +23,15 @@ export async function POST(request: Request) {
         { error: "Password minimal 8 karakter" },
         { status: 400 }
       );
+    }
+
+    // Aturan baku nama (lib/profile/normalize.ts): format dibenahi, isi salah ditolak.
+    if (full_name.trim() !== "") {
+      const nameRes = cleanFullName(full_name);
+      if (!nameRes.ok) {
+        return NextResponse.json({ error: nameRes.error }, { status: 400 });
+      }
+      full_name = nameRes.value ?? "";
     }
 
     const adminClient = createClient<Database>(

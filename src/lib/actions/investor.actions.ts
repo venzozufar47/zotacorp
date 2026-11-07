@@ -7,6 +7,7 @@ import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { renderInviteInvestorEmail } from "@/lib/email/invite-investor-template";
 import { APP_MARKER } from "@/lib/auth/app-marker";
+import { cleanFullName } from "@/lib/profile/normalize";
 import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { isValidMoney, isValidPct, isValidYmd } from "./_validate";
 
@@ -195,11 +196,12 @@ export async function inviteInvestor(input: {
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const email = input.email.trim().toLowerCase();
-  const fullName = input.fullName.trim();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "Email tidak valid" };
   }
-  if (!fullName) return { ok: false, error: "Nama wajib diisi" };
+  const nameRes = cleanFullName(input.fullName);
+  if (!nameRes.ok) return { ok: false, error: nameRes.error };
+  const fullName = nameRes.value ?? "";
 
   const resendKey = process.env.RESEND_API_KEY;
   const resendFrom = process.env.RESEND_FROM;

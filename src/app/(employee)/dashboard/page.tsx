@@ -116,7 +116,7 @@ const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   },
   {
     title: "Contact Information",
-    keys: ["whatsapp_number", "npwp"],
+    keys: ["whatsapp_number"],
   },
   {
     title: "Emergency Contact",

@@ -41,6 +41,7 @@ import type { Profile } from "@/lib/supabase/types";
 import { AddressPicker, type AddressValues } from "./AddressPicker";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import type { Dictionary } from "@/lib/i18n/dictionary";
+import { cleanProfileFields } from "@/lib/profile/normalize";
 
 export interface BusinessUnitOption {
   name: string;
@@ -143,6 +144,17 @@ const REQUIRED_KEYS: Record<CardSection, (keyof FormState)[]> = {
     "asal_alamat",
   ],
   work: ["business_unit", "job_role"],
+  // NPWP opsional: tidak semua karyawan punya, jangan jadi penanda "belum lengkap".
+  contact: ["whatsapp_number"],
+  emergency: ["emergency_contact_name", "emergency_contact_whatsapp"],
+};
+
+/** Kolom yang divalidasi saat bagian itu disimpan (lihat lib/profile/normalize.ts). */
+const SECTION_KEYS: Record<CardSection, string[]> = {
+  personal: ["full_name", "nickname", "place_of_birth"],
+  domisili: [],
+  asal: [],
+  work: [],
   contact: ["whatsapp_number", "npwp"],
   emergency: ["emergency_contact_name", "emergency_contact_whatsapp"],
 };
@@ -207,12 +219,27 @@ export function ProfileForm({
   }
 
   async function saveSection() {
+    // Aturan baku nama/kontak/NPWP (lib/profile/normalize.ts). Hanya isian
+    // bagian yang sedang diubah yang boleh menolak simpan; isian bagian lain
+    // yang masih format lama dirapikan diam-diam bila bisa.
+    const { values, errors } = cleanProfileFields(state);
+    const mine = editing ? SECTION_KEYS[editing] : [];
+    const blocking = mine.map((k) => errors[k]).find(Boolean);
+    if (blocking) {
+      toast.error(blocking);
+      return;
+    }
+    const cleaned: Record<string, unknown> = { ...state };
+    for (const [k, v] of Object.entries(values)) {
+      if (!errors[k]) cleaned[k] = v ?? "";
+    }
+
     setSaving(true);
     try {
       const res = await fetch("/api/profile/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetId, ...state }),
+        body: JSON.stringify({ targetId, ...cleaned }),
       });
 
       const body = await res.json().catch(() => ({}));
@@ -223,7 +250,8 @@ export function ProfileForm({
       }
 
       toast.success(pf.profileSaved);
-      setSnapshot({ ...state });
+      setState(cleaned as FormState);
+      setSnapshot({ ...(cleaned as FormState) });
       setEditing(null);
       setSaving(false);
       router.refresh();
@@ -268,6 +296,7 @@ export function ProfileForm({
           <Field label={pf.nickname} value={state.nickname} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Input
               value={state.nickname}
+              maxLength={30}
               onChange={(e) => set("nickname", e.target.value)}
             />
           </Field>
@@ -595,6 +624,7 @@ export function ProfileForm({
             <Input
               value={state.npwp}
               onChange={(e) => set("npwp", e.target.value)}
+              inputMode="numeric"
               placeholder={pf.npwpPlaceholder}
             />
           </Field>
