@@ -32,7 +32,7 @@ export default async function KaryawanHubPage({
   const activeCount = roster.filter((e) => e.facts.isActive).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 animate-fade-up">
+    <div className="space-y-4 animate-fade-up">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Karyawan</h1>
         <p className="text-sm text-muted-foreground">{activeCount} aktif</p>

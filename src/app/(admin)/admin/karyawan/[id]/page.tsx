@@ -79,7 +79,7 @@ export default async function KaryawanProfilePage({
   const name = p.full_name || p.email;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 animate-fade-up">
+    <div className="space-y-4 animate-fade-up">
       <Link
         href="/admin/karyawan"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
