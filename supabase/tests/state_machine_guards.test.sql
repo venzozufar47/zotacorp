@@ -39,18 +39,28 @@ update public.payslips set payment_note = 'tes', updated_at = now() where id = (
 select set_config('request.jwt.claims', json_build_object('sub', user_id, 'role', 'authenticated')::text, true) from _fx;
 set local role authenticated;
 
--- 2) Karyawan tidak boleh menandai slipnya lunas / mengubah angka.
+-- 2) Karyawan tidak boleh mengubah status bayar / angka slipnya. Nilainya DIBALIK
+--    (slip produksi bisa saja sudah lunas; menulis nilai yang sama bukan perubahan).
 do $$ begin
-  update public.payslips set payment_status = 'paid' where id = (select payslip_id from _fx);
-  raise exception 'FAIL: karyawan menandai slipnya sendiri lunas';
+  update public.payslips
+    set payment_status = case when payment_status = 'paid' then 'unpaid' else 'paid' end
+    where id = (select payslip_id from _fx);
+  raise exception 'FAIL: karyawan mengubah status bayar slipnya sendiri';
 exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  update public.payslips set net_total = net_total + 1000000 where id = (select payslip_id from _fx);
+  raise exception 'FAIL: karyawan mengubah net_total slipnya sendiri';
+exception when insufficient_privilege or check_violation then null;
 end $$;
 
 -- 3) Karyawan tetap boleh menanggapi slipnya.
 do $$
 declare n int;
 begin
-  update public.payslips set employee_response = 'acknowledged', employee_response_at = now()
+  update public.payslips
+    set employee_response = case when employee_response = 'acknowledged' then 'pending' else 'acknowledged' end,
+        employee_response_at = now()
   where id = (select payslip_id from _fx);
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'FAIL: tanggapan karyawan tertolak (row_count=%)', n; end if;
