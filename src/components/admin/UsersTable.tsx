@@ -55,9 +55,9 @@ import type { BreakWindow } from "@/lib/supabase/types";
  *  a single `tu` prop to every sub-component instead of re-calling
  *  useTranslation() inside each one (which would work but keeps the
  *  translation pulls co-located with the parent for easier audit). */
-type AdminUsersT = Dictionary["adminUsers"];
+export type AdminUsersT = Dictionary["adminUsers"];
 
-interface UserRow {
+export interface UserRow {
   id: string;
   email: string;
   full_name: string;
@@ -779,7 +779,7 @@ function JobRoleCell({
  * `payslip_excluded=true` → tersembunyi; default false (included).
  * UI menampilkan nilai inverse (Included/Excluded) supaya intuitif.
  */
-function PayslipIncludeToggle({
+export function PayslipIncludeToggle({
   userId,
   initialExcluded,
 }: {
@@ -840,7 +840,7 @@ function PayslipIncludeToggle({
  * di dashboard mereka sendiri tetap muncul, dan WA otomatis dari
  * sistem ("tim Zota") tetap dikirim ke mereka.
  */
-function ProbationToggle({
+export function ProbationToggle({
   userId,
   initial,
 }: {
@@ -1001,7 +1001,7 @@ function LocationsCell({
  * logs for historical context) but isn't surfaced here — lateness
  * tracking is off for them, so displaying a grace number would be noise.
  */
-function ScheduleCell({
+export function ScheduleCell({
   row,
   onEdit,
   tu,
@@ -1087,7 +1087,7 @@ function ProfileStatus({
  *     but UX-wise "2 hours grace" is already past the point where the
  *     schedule itself is misconfigured.
  */
-function ScheduleEditDialog({
+export function ScheduleEditDialog({
   row,
   tu,
   onOpenChange,
