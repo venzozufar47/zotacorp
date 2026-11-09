@@ -15,42 +15,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { PayslipDetailView } from "@/components/payslip/PayslipDetailView";
 import { getDictionary } from "@/lib/i18n/server";
+import { REQUIRED_PROFILE_KEYS, missingProfileKeys } from "@/lib/profile/completion";
 
-/** Field yang harus terisi sebelum karyawan boleh lihat payslip
- *  ter-finalize. Mirror PROFILE_SECTIONS di dashboard supaya gating
- *  konsisten dengan progress bar yang dilihat karyawan. */
-const REQUIRED_PROFILE_KEYS = [
-  "full_name",
-  "gender",
-  "date_of_birth",
-  "place_of_birth",
-  "domisili_provinsi",
-  "domisili_kota",
-  "domisili_kecamatan",
-  "domisili_kelurahan",
-  "domisili_alamat",
-  "asal_provinsi",
-  "asal_kota",
-  "asal_kecamatan",
-  "asal_kelurahan",
-  "asal_alamat",
-  "business_unit",
-  "job_role",
-  "whatsapp_number",
-  "npwp",
-  "emergency_contact_name",
-  "emergency_contact_whatsapp",
-] as const;
-
+/** Karyawan boleh melihat payslip ter-finalize hanya bila profilnya lengkap.
+ *  Aturannya satu: lib/profile/completion.ts, dipakai juga kartu di dashboard. */
 export default async function EmployeePayslipsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const profile = await getCurrentProfile();
-  const missingFields = REQUIRED_PROFILE_KEYS.filter((k) => {
-    const v = (profile as Record<string, unknown> | null)?.[k];
-    return typeof v === "string" ? v.trim().length === 0 : !v;
-  });
+  const missingFields = missingProfileKeys(profile as Record<string, unknown> | null);
   const profileComplete = missingFields.length === 0;
   const completionPct = Math.round(
     ((REQUIRED_PROFILE_KEYS.length - missingFields.length) /

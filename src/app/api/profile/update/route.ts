@@ -18,6 +18,7 @@ const ALLOWED_FIELDS = [
   "current_city",
   "whatsapp_number",
   "npwp",
+  "npwp_not_applicable",
   "emergency_contact_name",
   "emergency_contact_whatsapp",
   "first_day_of_work",
@@ -123,6 +124,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: firstError, fields: errors }, { status: 400 });
     }
     const clean = sanitize(values);
+    // Penanda "tidak punya NPWP" dan isi NPWP tidak boleh saling bertentangan.
+    if (clean.npwp_not_applicable === true) clean.npwp = null;
+    else if (clean.npwp) clean.npwp_not_applicable = false;
 
     const { error } = await adminClient
       .from("profiles")

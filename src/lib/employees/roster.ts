@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import type { Database } from "@/lib/supabase/types";
+import { isProfileComplete } from "@/lib/profile/completion";
 import { parseBreakWindows } from "@/lib/utils/break-windows";
 import type { UserRow } from "@/components/admin/karyawan/schedule-controls";
 import {
@@ -14,40 +15,6 @@ import {
 } from "./lifecycle";
 
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
-
-/**
- * Kolom yang membentuk profil "lengkap". Sama dengan kartu kelengkapan profil
- * di dashboard karyawan; kalau ada kolom wajib baru di sana, tambahkan juga di sini.
- */
-export const PROFILE_COMPLETION_KEYS = [
-  "full_name",
-  "gender",
-  "date_of_birth",
-  "place_of_birth",
-  "domisili_provinsi",
-  "domisili_kota",
-  "domisili_kecamatan",
-  "domisili_kelurahan",
-  "domisili_alamat",
-  "asal_provinsi",
-  "asal_kota",
-  "asal_kecamatan",
-  "asal_kelurahan",
-  "asal_alamat",
-  "business_unit",
-  "job_role",
-  "whatsapp_number",
-  "npwp",
-  "emergency_contact_name",
-  "emergency_contact_whatsapp",
-] as const;
-
-export function isProfileComplete(p: ProfileRow): boolean {
-  return PROFILE_COMPLETION_KEYS.every((k) => {
-    const v = (p as Record<string, unknown>)[k];
-    return typeof v === "string" ? v.trim().length > 0 : Boolean(v);
-  });
-}
 
 /** Postgres TIME tampil "HH:MM:SS"; <input type="time"> butuh "HH:MM". */
 export function toHHMM(t: string | null | undefined): string | null {
@@ -76,7 +43,7 @@ export function toUserRow(p: ProfileRow, locationIds: string[]): UserRow {
     break_enabled: p.break_enabled ?? false,
     break_windows: parseBreakWindows(p.break_windows),
     holiday_bonus_enabled: p.holiday_bonus_enabled ?? false,
-    profile_complete: isProfileComplete(p),
+    profile_complete: isProfileComplete(p as Record<string, unknown>),
     assigned_location_ids: locationIds,
     payslip_excluded: p.payslip_excluded ?? false,
     is_probation: p.is_probation ?? false,
@@ -202,7 +169,7 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
       isProbation: p.is_probation ?? false,
       joinedAt: p.first_day_of_work ?? p.created_at,
       resignedAt: p.resigned_at ?? null,
-      profileComplete: isProfileComplete(p),
+      profileComplete: isProfileComplete(p as Record<string, unknown>),
       locationCount: locsByUser.get(p.id)?.length ?? 0,
       payslipIncluded: !(p.payslip_excluded ?? false),
       payslipSettingsFinal: finalByUser.get(p.id) ?? false,
@@ -219,40 +186,4 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
       actions: deriveActions(facts, now),
     };
   });
-}
-
-const FIELD_LABEL: Record<(typeof PROFILE_COMPLETION_KEYS)[number], { section: string; label: string }> = {
-  full_name: { section: "Info Pribadi", label: "Nama lengkap" },
-  gender: { section: "Info Pribadi", label: "Jenis kelamin" },
-  date_of_birth: { section: "Info Pribadi", label: "Tanggal lahir" },
-  place_of_birth: { section: "Info Pribadi", label: "Tempat lahir" },
-  domisili_provinsi: { section: "Domisili Saat Ini", label: "Provinsi" },
-  domisili_kota: { section: "Domisili Saat Ini", label: "Kota/kabupaten" },
-  domisili_kecamatan: { section: "Domisili Saat Ini", label: "Kecamatan" },
-  domisili_kelurahan: { section: "Domisili Saat Ini", label: "Kelurahan" },
-  domisili_alamat: { section: "Domisili Saat Ini", label: "Alamat" },
-  asal_provinsi: { section: "Kampung Halaman", label: "Provinsi" },
-  asal_kota: { section: "Kampung Halaman", label: "Kota/kabupaten" },
-  asal_kecamatan: { section: "Kampung Halaman", label: "Kecamatan" },
-  asal_kelurahan: { section: "Kampung Halaman", label: "Kelurahan" },
-  asal_alamat: { section: "Kampung Halaman", label: "Alamat" },
-  business_unit: { section: "Info Pekerjaan", label: "Unit bisnis" },
-  job_role: { section: "Info Pekerjaan", label: "Jabatan" },
-  whatsapp_number: { section: "Kontak", label: "Nomor WhatsApp" },
-  npwp: { section: "Kontak", label: "NPWP" },
-  emergency_contact_name: { section: "Kontak Darurat", label: "Nama kontak darurat" },
-  emergency_contact_whatsapp: { section: "Kontak Darurat", label: "WhatsApp kontak darurat" },
-};
-
-/** Kolom profil yang masih kosong, dikelompokkan per bagian formulir. */
-export function missingProfileFields(p: ProfileRow): { section: string; fields: string[] }[] {
-  const bySection = new Map<string, string[]>();
-  for (const k of PROFILE_COMPLETION_KEYS) {
-    const v = (p as Record<string, unknown>)[k];
-    const filled = typeof v === "string" ? v.trim().length > 0 : Boolean(v);
-    if (filled) continue;
-    const { section, label } = FIELD_LABEL[k];
-    bySection.set(section, [...(bySection.get(section) ?? []), label]);
-  }
-  return [...bySection].map(([section, fields]) => ({ section, fields }));
 }

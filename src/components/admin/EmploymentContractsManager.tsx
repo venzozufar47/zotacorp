@@ -714,6 +714,7 @@ function ContractsTab({
         <ContractFormModal
           mode="issue"
           employees={employees}
+          autoPick={focused}
           templates={templates}
           rolesByBu={rolesByBu}
           onClose={() => setIssuing(false)}
@@ -872,8 +873,11 @@ function ContractFormModal({
   contract,
   seed,
   onClose,
+  autoPick = false,
 }: {
   mode: "issue" | "edit";
+  /** true = dibuka dari profil satu karyawan: karyawannya dipilih dan formnya diisi otomatis. */
+  autoPick?: boolean;
   employees?: ContractEmployee[];
   templates: EmploymentContractTemplate[];
   rolesByBu: Record<string, string[]>;
@@ -890,7 +894,7 @@ function ContractFormModal({
   const isDuplicate = mode === "issue" && !!seed;
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState(
-    contract?.user_id ?? (mode === "issue" && !seed && employees?.length === 1 ? employees[0].id : "")
+    contract?.user_id ?? (autoPick && !seed && employees?.length === 1 ? employees[0].id : "")
   );
   const [fields, setFields] = useState<ContractFields>(
     contract?.fields ?? seed?.fields ?? {}
@@ -939,7 +943,7 @@ function ContractFormModal({
 
   // Dibuka dari profil karyawan: hanya satu pilihan, langsung isi formnya.
   const soleEmployeeId =
-    mode === "issue" && !isDuplicate && employees?.length === 1 ? employees[0].id : null;
+    autoPick && mode === "issue" && !isDuplicate && employees?.length === 1 ? employees[0].id : null;
   useEffect(() => {
     if (soleEmployeeId) loadFor(soleEmployeeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps

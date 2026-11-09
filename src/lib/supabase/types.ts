@@ -8190,6 +8190,7 @@ export type Database = {
           nickname: string | null
           nik: string | null
           npwp: string | null
+          npwp_not_applicable: boolean
           payslip_excluded: boolean
           place_of_birth: string | null
           pos_pin_hash: string | null
@@ -8249,6 +8250,7 @@ export type Database = {
           nickname?: string | null
           nik?: string | null
           npwp?: string | null
+          npwp_not_applicable?: boolean
           payslip_excluded?: boolean
           place_of_birth?: string | null
           pos_pin_hash?: string | null
@@ -8308,6 +8310,7 @@ export type Database = {
           nickname?: string | null
           nik?: string | null
           npwp?: string | null
+          npwp_not_applicable?: boolean
           payslip_excluded?: boolean
           place_of_birth?: string | null
           pos_pin_hash?: string | null

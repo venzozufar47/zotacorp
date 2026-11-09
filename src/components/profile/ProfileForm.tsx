@@ -69,6 +69,7 @@ type FormState = {
   place_of_birth: string;
   whatsapp_number: string;
   npwp: string;
+  npwp_not_applicable: boolean;
   emergency_contact_name: string;
   emergency_contact_whatsapp: string;
   first_day_of_work: string;
@@ -103,6 +104,7 @@ function toFormState(p: Profile): FormState {
     place_of_birth: p.place_of_birth ?? "",
     whatsapp_number: p.whatsapp_number ?? "",
     npwp: p.npwp ?? "",
+    npwp_not_applicable: p.npwp_not_applicable ?? false,
     emergency_contact_name: p.emergency_contact_name ?? "",
     emergency_contact_whatsapp: p.emergency_contact_whatsapp ?? "",
     first_day_of_work: p.first_day_of_work ?? "",
@@ -144,7 +146,7 @@ const REQUIRED_KEYS: Record<CardSection, (keyof FormState)[]> = {
     "asal_alamat",
   ],
   work: ["business_unit", "job_role"],
-  // NPWP opsional: tidak semua karyawan punya, jangan jadi penanda "belum lengkap".
+  // NPWP dicek terpisah di `missing()`: terisi, atau dicentang "tidak punya".
   contact: ["whatsapp_number"],
   emergency: ["emergency_contact_name", "emergency_contact_whatsapp"],
 };
@@ -268,7 +270,8 @@ export function ProfileForm({
     parts.map((p) => p.trim()).filter(Boolean).join(" · ") || pf.notFilled;
   /** Kunci wajib per bagian — sama dengan daftar yang dipakai kartu kelengkapan di dashboard. */
   const missing = (section: CardSection) =>
-    REQUIRED_KEYS[section].some((k) => String(state[k] ?? "").trim() === "");
+    REQUIRED_KEYS[section].some((k) => String(state[k] ?? "").trim() === "") ||
+    (section === "contact" && !state.npwp_not_applicable && state.npwp.trim() === "");
 
   return (
     <DisclosureGroup>
@@ -620,13 +623,33 @@ export function ProfileForm({
               placeholder="+62..."
             />
           </Field>
-          <Field label={pf.npwp} value={state.npwp} editing={isEditing("contact")} notFilled={pf.notFilled}>
-            <Input
-              value={state.npwp}
-              onChange={(e) => set("npwp", e.target.value)}
-              inputMode="numeric"
-              placeholder={pf.npwpPlaceholder}
-            />
+          <Field
+            label={pf.npwp}
+            value={state.npwp_not_applicable ? pf.noNpwp : state.npwp}
+            editing={isEditing("contact")}
+            notFilled={pf.notFilled}
+          >
+            <div className="space-y-2">
+              <Input
+                value={state.npwp}
+                onChange={(e) => set("npwp", e.target.value)}
+                inputMode="numeric"
+                placeholder={pf.npwpPlaceholder}
+                disabled={state.npwp_not_applicable}
+              />
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={state.npwp_not_applicable}
+                  onChange={(e) => {
+                    set("npwp_not_applicable", e.target.checked);
+                    if (e.target.checked) set("npwp", "");
+                  }}
+                  className="size-4 accent-primary"
+                />
+                {pf.noNpwp}
+              </label>
+            </div>
           </Field>
         </div>
       </SectionCard>

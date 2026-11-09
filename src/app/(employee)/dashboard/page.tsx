@@ -26,6 +26,7 @@ import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
+import { isProfileKeyFilled } from "@/lib/profile/completion";
 import { CoachingNotesCard } from "@/components/dashboard/CoachingNotesCard";
 import { LeaveRequestDialog } from "@/components/leave/LeaveRequestDialog";
 import { CleaningRedoCard } from "@/components/dashboard/CleaningRedoCard";
@@ -116,7 +117,9 @@ const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   },
   {
     title: "Contact Information",
-    keys: ["whatsapp_number"],
+    // NPWP ikut dihitung karena profil lengkap membuka slip gaji; karyawan
+    // tanpa NPWP mencentang "Tidak punya NPWP" di profil.
+    keys: ["whatsapp_number", "npwp"],
   },
   {
     title: "Emergency Contact",
@@ -265,7 +268,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
 
   const missingSections = PROFILE_SECTIONS
     .filter(({ keys }) =>
-      keys.some((k) => !profile?.[k as keyof typeof profile])
+      keys.some((k) => !isProfileKeyFilled(profile as Record<string, unknown> | null, k))
     )
     .map(({ title }) => title);
 

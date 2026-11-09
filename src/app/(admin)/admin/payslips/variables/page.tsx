@@ -71,6 +71,16 @@ export default async function PayslipVariablesPage({
   // exclude them from the payroll editor so an admin can't accidentally
   // create/finalize payslip settings for an investor account. (No NULL
   // roles exist in profiles.)
+  const baseEmployees = supabase
+    .from("profiles")
+    .select("id, full_name, email, business_unit")
+    .eq("payslip_excluded", false)
+    .eq("is_active", true)
+    .neq("role", "investor")
+    .order("business_unit", { ascending: true, nullsFirst: false })
+    .order("full_name");
+  // Saringan satu karyawan hanya aktif bila ?user= diisi; tanpa itu query sama seperti semula.
+  const employeesQuery = focusUser ? baseEmployees.eq("id", focusUser) : baseEmployees;
   const [
     { data: employees },
     { data: settings },
@@ -78,15 +88,7 @@ export default async function PayslipVariablesPage({
     { data: extraWorkLogs },
     { data: kinds },
   ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, email, business_unit")
-      .eq("payslip_excluded", false)
-      .eq("is_active", true)
-      .neq("role", "investor")
-      .order("business_unit", { ascending: true, nullsFirst: false })
-      .order("full_name")
-      .match(focusUser ? { id: focusUser } : {}),
+    employeesQuery,
     supabase.from("payslip_settings").select("*"),
     supabase.from("payslips").select("*").eq("month", month).eq("year", year),
     supabase

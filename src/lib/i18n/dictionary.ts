@@ -353,6 +353,7 @@ export const dictionary = {
       whatsappNumber: "WhatsApp Number",
       npwp: "NPWP",
       npwpPlaceholder: "Tax ID number",
+      noNpwp: "I don't have an NPWP",
       emergencyContactName: "Emergency Contact Name",
       emergencyContactWhatsapp: "Emergency Contact WhatsApp",
       // Address picker
@@ -1074,6 +1075,7 @@ export const dictionary = {
       whatsappNumber: "Nomor WhatsApp",
       npwp: "NPWP",
       npwpPlaceholder: "Nomor NPWP",
+      noNpwp: "Saya tidak punya NPWP",
       emergencyContactName: "Nama Kontak Darurat",
       emergencyContactWhatsapp: "WhatsApp Kontak Darurat",
       province: "Provinsi",
