@@ -220,3 +220,39 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
     };
   });
 }
+
+const FIELD_LABEL: Record<(typeof PROFILE_COMPLETION_KEYS)[number], { section: string; label: string }> = {
+  full_name: { section: "Info Pribadi", label: "Nama lengkap" },
+  gender: { section: "Info Pribadi", label: "Jenis kelamin" },
+  date_of_birth: { section: "Info Pribadi", label: "Tanggal lahir" },
+  place_of_birth: { section: "Info Pribadi", label: "Tempat lahir" },
+  domisili_provinsi: { section: "Domisili Saat Ini", label: "Provinsi" },
+  domisili_kota: { section: "Domisili Saat Ini", label: "Kota/kabupaten" },
+  domisili_kecamatan: { section: "Domisili Saat Ini", label: "Kecamatan" },
+  domisili_kelurahan: { section: "Domisili Saat Ini", label: "Kelurahan" },
+  domisili_alamat: { section: "Domisili Saat Ini", label: "Alamat" },
+  asal_provinsi: { section: "Kampung Halaman", label: "Provinsi" },
+  asal_kota: { section: "Kampung Halaman", label: "Kota/kabupaten" },
+  asal_kecamatan: { section: "Kampung Halaman", label: "Kecamatan" },
+  asal_kelurahan: { section: "Kampung Halaman", label: "Kelurahan" },
+  asal_alamat: { section: "Kampung Halaman", label: "Alamat" },
+  business_unit: { section: "Info Pekerjaan", label: "Unit bisnis" },
+  job_role: { section: "Info Pekerjaan", label: "Jabatan" },
+  whatsapp_number: { section: "Kontak", label: "Nomor WhatsApp" },
+  npwp: { section: "Kontak", label: "NPWP" },
+  emergency_contact_name: { section: "Kontak Darurat", label: "Nama kontak darurat" },
+  emergency_contact_whatsapp: { section: "Kontak Darurat", label: "WhatsApp kontak darurat" },
+};
+
+/** Kolom profil yang masih kosong, dikelompokkan per bagian formulir. */
+export function missingProfileFields(p: ProfileRow): { section: string; fields: string[] }[] {
+  const bySection = new Map<string, string[]>();
+  for (const k of PROFILE_COMPLETION_KEYS) {
+    const v = (p as Record<string, unknown>)[k];
+    const filled = typeof v === "string" ? v.trim().length > 0 : Boolean(v);
+    if (filled) continue;
+    const { section, label } = FIELD_LABEL[k];
+    bySection.set(section, [...(bySection.get(section) ?? []), label]);
+  }
+  return [...bySection].map(([section, fields]) => ({ section, fields }));
+}

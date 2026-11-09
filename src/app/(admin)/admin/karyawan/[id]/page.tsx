@@ -13,7 +13,7 @@ import {
   listEmploymentContracts,
 } from "@/lib/actions/employment-contracts.actions";
 import { EmploymentContractsManager } from "@/components/admin/EmploymentContractsManager";
-import { loadRoster, toUserRow } from "@/lib/employees/roster";
+import { loadRoster, missingProfileFields, toUserRow } from "@/lib/employees/roster";
 import {
   CONTRACT_LABEL,
   STAGE_LABEL,
@@ -252,7 +252,28 @@ function Ringkasan({ entry }: { entry: Entry }) {
 
 async function DataDiri({ profile }: { profile: Profile }) {
   const businessUnits = await listBusinessUnits();
-  return <ProfileForm profile={profile} targetId={profile.id} businessUnits={businessUnits} />;
+  const missing = missingProfileFields(profile);
+  return (
+    <div className="space-y-4">
+      {missing.length > 0 ? (
+        <div role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <p className="font-medium text-foreground">
+            {missing.reduce((n, m) => n + m.fields.length, 0)} kolom belum diisi
+          </p>
+          <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
+            {missing.map((m) => (
+              <li key={m.section}>
+                <span className="text-foreground">{m.section}:</span> {m.fields.join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Data diri lengkap.</p>
+      )}
+      <ProfileForm profile={profile} targetId={profile.id} businessUnits={businessUnits} />
+    </div>
+  );
 }
 
 async function Kerja({ entry }: { entry: Entry }) {
