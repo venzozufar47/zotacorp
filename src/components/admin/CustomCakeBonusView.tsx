@@ -2,15 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Info,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import { dailyTier, TIER_CAP, TIER_MIN } from "@/lib/cake-bonus/tier-formula";
 import type {
@@ -52,103 +45,50 @@ const BRANCH_LABEL: Record<string, string> = {
 };
 
 export function CustomCakeBonusView({
-  month,
-  year,
   monthLabel,
   days,
   totalBonus,
   outstanding,
 }: Props) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
-
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) {
-      m = 12;
-      y -= 1;
-    } else if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-    const params = new URLSearchParams(sp.toString());
-    params.set("month", String(m));
-    params.set("year", String(y));
-    params.set("view", "bonus-cake");
-    router.push(`${pathname}?${params.toString()}`);
-  }
-
   const totalOmset = days.reduce((s, d) => s + d.total, 0);
   const bonusDays = days.filter((d) => d.bonus > 0).length;
   // Terbaru di atas — yang biasanya dicek admin adalah hari-hari terakhir.
   const ordered = [...days].reverse();
 
   return (
-    <section className="rounded-2xl border-2 border-foreground bg-card shadow-hard p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="font-display text-base font-bold">
-            Bonus Cake — Admin Haengbocake
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Dihitung dari pembayaran order custom cake, per hari.
+    <div>
+      <div className="px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-medium">Admin Haengbocake</p>
+          <p className="text-sm font-semibold tabular-nums">{formatRp(totalBonus)}</p>
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Omset order {formatRp(totalOmset)} · {bonusDays}/{days.length} hari berbonus
+        </p>
+      </div>
+
+      {outstanding.orders.length > 0 && (
+        <Fold title={`Order belum lunas (${outstanding.orderCount})`} hint={formatRp(outstanding.amount)}>
+          <OutstandingList outstanding={outstanding} monthLabel={monthLabel} />
+        </Fold>
+      )}
+
+      <Fold title="Bonus per hari" hint={`${ordered.length} hari`}>
+        {ordered.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            Belum ada pembayaran order custom cake di {monthLabel}.
           </p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => shiftMonth(-1)}
-            className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
-            aria-label="Bulan sebelumnya"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="min-w-28 text-center text-xs font-display font-bold uppercase tracking-wider">
-            {monthLabel}
-          </span>
-          <button
-            type="button"
-            onClick={() => shiftMonth(1)}
-            className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
-            aria-label="Bulan berikutnya"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
+        ) : (
+          <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+            {ordered.map((d) => (
+              <DayRow key={d.date} day={d} />
+            ))}
+          </ul>
+        )}
+      </Fold>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="Total bonus" value={formatRp(totalBonus)} emphasis />
-        <Stat label="Omset order" value={formatRp(totalOmset)} />
-        <Stat
-          label="Outstanding"
-          value={formatRp(outstanding.amount)}
-          hint={
-            outstanding.orderCount > 0
-              ? `${outstanding.orderCount} order belum lunas`
-              : "Semua lunas"
-          }
-        />
-        <Stat
-          label="Hari berbonus"
-          value={`${bonusDays} / ${days.length}`}
-        />
-      </div>
-
-      <OutstandingList outstanding={outstanding} monthLabel={monthLabel} />
-
-      <details className="group rounded-lg bg-accent px-3 py-2 text-[11px] text-[var(--teal-700)]">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium">
-          <Info size={12} className="shrink-0" />
-          Cara hitung
-          <ChevronDown
-            size={12}
-            className="ml-auto transition-transform group-open:rotate-180"
-          />
-        </summary>
-        <ul className="mt-2 space-y-1 list-disc pl-4">
+      <Fold title="Cara hitung">
+        <ul className="space-y-1 list-disc pl-4 text-xs text-muted-foreground">
           <li>
             Omset hari = DP + pelunasan − refund dari semua order (Semarang &
             Pare), sesuai tanggal pembayaran dicatat (WIB).
@@ -160,30 +100,40 @@ export function CustomCakeBonusView({
           </li>
           <li>Order dibatalkan, dibuang, atau klaim gratis tidak dihitung.</li>
           <li>
-            Outstanding = sisa tagihan (total order − sudah dibayar) dari order
-            yang punya pembayaran di bulan ini, per saat halaman dibuka. Belum
-            masuk omset, jadi belum ikut bonus.
+            Outstanding = sisa tagihan order yang punya pembayaran di bulan
+            ini. Belum masuk omset, jadi belum ikut bonus.
           </li>
           <li>
-            Otomatis masuk <strong>cake_bonus</strong> di slip gaji pemegang
-            posisi <span className="font-mono">Admin Haengbocake</span> saat
-            generate.
+            Otomatis masuk <strong>cake_bonus</strong> di slip pemegang posisi{" "}
+            <span className="font-mono">Admin Haengbocake</span>.
           </li>
         </ul>
-      </details>
+      </Fold>
+    </div>
+  );
+}
 
-      {ordered.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-          Belum ada pembayaran order custom cake di {monthLabel}.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border overflow-hidden">
-          {ordered.map((d) => (
-            <DayRow key={d.date} day={d} />
-          ))}
-        </ul>
-      )}
-    </section>
+function Fold({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group border-t border-border">
+      <summary className="flex items-center gap-2 px-4 min-h-11 cursor-pointer list-none text-sm [&::-webkit-details-marker]:hidden">
+        {title}
+        {hint && <span className="text-xs text-muted-foreground tabular-nums">{hint}</span>}
+        <ChevronDown
+          size={14}
+          className="ml-auto text-muted-foreground transition-transform motion-reduce:transition-none group-open:rotate-180"
+        />
+      </summary>
+      <div className="px-4 pb-3">{children}</div>
+    </details>
   );
 }
 
@@ -269,42 +219,6 @@ function OutstandingList({
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  hint,
-  emphasis,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  emphasis?: boolean;
-}) {
-  return (
-    <div
-      className={
-        "rounded-xl border p-2.5 " +
-        (emphasis
-          ? "border-foreground bg-accent"
-          : "border-border bg-muted/30")
-      }
-    >
-      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={
-          "mt-0.5 font-display font-extrabold tabular-nums " +
-          (emphasis ? "text-lg" : "text-sm")
-        }
-      >
-        {value}
-      </p>
-      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }

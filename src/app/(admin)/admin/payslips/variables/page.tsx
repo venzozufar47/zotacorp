@@ -230,6 +230,9 @@ export default async function PayslipVariablesPage({
     }));
 
   const alertsCount = disputesWithName.length + sanggahan.length;
+  // Yang masih menunggu: laporan terbuka + sanggahan aktif (riwayat tak dihitung).
+  const alertsActive =
+    disputesWithName.length + sanggahan.filter((x) => x.current).length;
 
   return (
     <div className="space-y-4 animate-fade-up">
@@ -263,6 +266,7 @@ export default async function PayslipVariablesPage({
         bonusOpen={bonusOpen}
         kindsByName={kindsByName}
         alertsCount={alertsCount}
+        alertsActive={alertsActive}
         unpaidCount={paymentRows.filter((r) => r.paymentStatus === "unpaid").length}
         alerts={
           <>
@@ -329,7 +333,7 @@ async function CustomCakeBonusViewWrapper({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="divide-y divide-border">
       <DecoratorBonusCards
         semarang={{
           ...decorator.semarang,
@@ -348,6 +352,13 @@ async function CustomCakeBonusViewWrapper({
         totalBonus={data.totalBonus}
         outstanding={data.outstanding}
       />
+      <Link
+        href={`/admin/bonus?bulan=${year}-${String(month).padStart(2, "0")}`}
+        className="flex items-center justify-between gap-3 px-4 min-h-12 text-sm hover:bg-muted/50"
+      >
+        <span>Koordinator toko & kepala produksi</span>
+        <span className="text-primary">Buka kalkulator →</span>
+      </Link>
     </div>
   );
 }

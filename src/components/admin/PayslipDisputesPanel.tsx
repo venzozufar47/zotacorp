@@ -32,11 +32,11 @@ function fieldLabel(f: DisputeField): string {
 export function PayslipDisputesPanel({ disputes }: { disputes: DisputeWithUser[] }) {
   if (disputes.length === 0) return null;
   return (
-    <Card className="border-amber-300 bg-amber-50/50">
+    <Card className="border-warning/40 bg-warning/5">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <AlertTriangle size={16} className="text-amber-700" />
-          <h3 className="font-display text-base font-bold">
+          <h3 className="font-display text-sm font-bold">
             Laporan kesalahan dari karyawan ({disputes.length})
           </h3>
         </div>

@@ -1,6 +1,3 @@
-import { MessageSquareWarning } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-
 export interface SanggahanEntry {
   message: string;
   /** Kapan karyawan mengirim sanggahan ini. */
@@ -29,93 +26,80 @@ function fmt(iso: string | null): string {
   });
 }
 
+function reasonLabel(reason: string): string {
+  if (reason === "refinalized") return "Sebelum slip difinalisasi ulang";
+  if (reason === "answered") return "Sudah ditanggapi";
+  return "Sebelum diubah karyawan";
+}
+
 /**
- * Sanggahan karyawan pada slip periode ini — termasuk yang slipnya sudah
- * di-reopen dan yang pesannya sudah tergantikan (riwayat). Ringkas dulu:
- * satu baris per karyawan, isi pesan muncul saat diketuk.
+ * Sanggahan karyawan pada slip periode ini. Datar: pesan aktif langsung
+ * terbaca tanpa ketukan tambahan; hanya riwayat lama yang dilipat.
  */
 export function PayslipSanggahanPanel({ items }: { items: SanggahanItem[] }) {
   if (items.length === 0) return null;
   return (
-    <Card>
-      <CardContent className="p-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <MessageSquareWarning size={16} className="text-muted-foreground" />
-          <h3 className="font-display text-sm font-bold">
-            Sanggahan karyawan ({items.length})
-          </h3>
+    <section className="rounded-xl border border-border bg-card divide-y divide-border">
+      {items.map((it) => (
+        <div key={it.payslipId} className="p-3 space-y-2">
+          <p className="text-sm font-semibold break-words">
+            {it.userName}
+            {it.payslipStatus === "draft" && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                slip dibuka kembali
+              </span>
+            )}
+          </p>
+          {it.current ? (
+            <>
+              <Quote entry={it.current} />
+              {it.history.length > 0 && (
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer min-h-8 inline-flex items-center">
+                    +{it.history.length} sebelumnya
+                  </summary>
+                  <div className="space-y-2 pt-1">
+                    {it.history.map((h, i) => (
+                      <Quote key={i} entry={h} label={reasonLabel(h.reason)} reply={h.adminReply} muted />
+                    ))}
+                  </div>
+                </details>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              {it.history.map((h, i) => (
+                <Quote key={i} entry={h} label={reasonLabel(h.reason)} reply={h.adminReply} muted />
+              ))}
+            </div>
+          )}
         </div>
-        <ul className="space-y-1.5">
-          {items.map((it) => (
-            <li key={it.payslipId}>
-              <details className="rounded-lg border border-border bg-card group">
-                <summary className="cursor-pointer list-none px-3 py-2 flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold break-words min-w-0">
-                    {it.userName}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {it.payslipStatus === "draft" ? "slip dibuka kembali · " : ""}
-                    {it.current ? "aktif" : "riwayat"}
-                    {it.history.length > 0 ? ` · +${it.history.length} lama` : ""}
-                  </span>
-                </summary>
-                <div className="px-3 pb-3 space-y-2">
-                  {it.current && (
-                    <Quote
-                      label="Sanggahan aktif"
-                      entry={it.current}
-                    />
-                  )}
-                  {it.history.map((h, i) => (
-                    <Quote
-                      key={i}
-                      label={
-                        h.reason === "refinalized"
-                          ? "Sebelum slip difinalisasi ulang"
-                          : h.reason === "answered"
-                            ? "Sudah ditanggapi admin"
-                            : "Sebelum diubah karyawan"
-                      }
-                      entry={h}
-                      reply={h.adminReply}
-                      muted
-                    />
-                  ))}
-                </div>
-              </details>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+      ))}
+    </section>
   );
 }
 
 function Quote({
-  label,
   entry,
+  label,
   reply,
   muted,
 }: {
-  label: string;
   entry: SanggahanEntry;
+  label?: string;
   reply?: string | null;
   muted?: boolean;
 }) {
+  const meta = [label, fmt(entry.respondedAt)].filter(Boolean).join(" · ");
   return (
     <div className={muted ? "opacity-80" : undefined}>
-      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-        {label}
-        {entry.respondedAt ? ` · ${fmt(entry.respondedAt)}` : ""}
-      </p>
+      {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
       <p className="text-sm whitespace-pre-wrap break-words bg-muted/40 rounded-md p-2 mt-0.5">
         {entry.message}
       </p>
       {reply && (
         <p className="text-sm whitespace-pre-wrap break-words border-l-2 border-primary/40 pl-2 mt-1">
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-            Balasan admin
-          </span>
+          <span className="text-xs text-muted-foreground">Balasan admin</span>
           <br />
           {reply}
         </p>

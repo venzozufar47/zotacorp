@@ -9,12 +9,12 @@ import React, {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronLeft,
+  Gift,
   ChevronRight,
   Loader2,
   MessageSquareWarning,
@@ -52,6 +52,8 @@ interface Props {
   kindsByName: Record<string, ExtraWorkKindMeta>;
   /** Jumlah sanggahan + laporan kesalahan yang masih terbuka. */
   alertsCount: number;
+  /** Dari alertsCount: yang masih aktif (belum ada tanggapan). */
+  alertsActive: number;
   /** Panel sanggahan & laporan; dirender server, dibuka dengan chip. */
   alerts: ReactNode;
   /** Panel bonus cake; hanya dirender server saat bonusOpen. */
@@ -97,6 +99,7 @@ export function PayrollFlow({
   bonusOpen,
   kindsByName,
   alertsCount,
+  alertsActive,
   alerts,
   bonus,
   payments,
@@ -186,6 +189,10 @@ export function PayrollFlow({
           ? { label: "Lanjut ke bayar", run: () => setQuery({ view: "payments" }) }
           : null;
 
+  const periodLabel = new Date(year, month - 1).toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
   const openRow = rows.find((r) => r.userId === openId) ?? null;
   const groups = useMemo(() => groupByBusinessUnit(rows), [rows]);
 
@@ -243,15 +250,28 @@ export function PayrollFlow({
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setQuery({ bonus: "1", view: "variables" })}
+              className="inline-flex items-center gap-1.5 h-10 sm:h-9 px-3 rounded-lg border border-border bg-card text-xs font-semibold hover:bg-muted"
+            >
+              <Gift size={14} />
+              Bonus
+            </button>
             {alertsCount > 0 && (
               <button
                 type="button"
                 onClick={() => setAlertsOpen((v) => !v)}
                 aria-expanded={alertsOpen}
-                className="inline-flex items-center gap-1.5 h-10 sm:h-9 px-3 rounded-lg border border-warning/50 bg-warning/10 text-xs font-semibold text-foreground hover:bg-warning/20"
+                className={
+                  "inline-flex items-center gap-1.5 h-10 sm:h-9 px-3 rounded-lg border text-xs font-semibold text-foreground " +
+                  (alertsActive > 0
+                    ? "border-warning/50 bg-warning/10 hover:bg-warning/20"
+                    : "border-border bg-card hover:bg-muted")
+                }
               >
                 <MessageSquareWarning size={14} />
-                {alertsCount} sanggahan
+                {alertsActive > 0 ? `${alertsActive} sanggahan` : "Riwayat sanggahan"}
               </button>
             )}
             {view === "slip" && (
@@ -374,38 +394,21 @@ export function PayrollFlow({
               </div>
             )}
 
-            {/* Bonus: dibuka bila perlu */}
-            <div className="rounded-xl border border-border bg-card">
-              <button
-                type="button"
-                onClick={() => setQuery({ bonus: bonusOpen ? null : "1", view: "variables" })}
-                aria-expanded={bonusOpen}
-                className="w-full flex items-center justify-between gap-2 px-4 min-h-12 text-sm font-semibold"
-              >
-                Bonus cake & koordinator
-                <ChevronDown
-                  size={16}
-                  className={
-                    "text-muted-foreground transition-transform motion-reduce:transition-none " +
-                    (bonusOpen ? "rotate-180" : "")
-                  }
-                />
-              </button>
-              {bonusOpen && (
-                <div className="border-t border-border p-3 space-y-3">
-                  {bonus}
-                  <Link
-                    href="/admin/bonus"
-                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                  >
-                    Buka bonus koordinator <ChevronRight size={14} />
-                  </Link>
-                </div>
-              )}
-            </div>
           </>
         )}
       </div>
+
+      {bonusOpen && (
+        <SideDrawer
+          title="Bonus"
+          subtitle={periodLabel}
+          onClose={() => setQuery({ bonus: null })}
+        >
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            {bonus}
+          </div>
+        </SideDrawer>
+      )}
 
       {openRow && (
         <EmployeeDrawer
@@ -532,34 +535,9 @@ function EmployeeDrawer({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [shown, setShown] = useState(false);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const s = stageOf(row);
   const payslip = row.payslip;
   const finalized = payslip?.status === "finalized";
-
-  // onClose berubah identitas tiap render induk; simpan di ref supaya efek
-  // ini jalan sekali dan tidak merebut fokus dari input yang sedang diketik.
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
-
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setShown(true));
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
 
   function recalc() {
     startTransition(async () => {
@@ -623,8 +601,116 @@ function EmployeeDrawer({
 
   const one = [row];
 
+  return (
+    <SideDrawer
+      onClose={onClose}
+      title={row.fullName}
+      subtitle={
+        <>
+          <span className={"size-1.5 rounded-full " + STAGE_DOT[s]} aria-hidden />
+          {STAGE_LABEL[s]}
+          {row.businessUnit ? ` · ${row.businessUnit}` : ""}
+        </>
+      }
+    >
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs text-muted-foreground">Bersih</p>
+          <p className="text-2xl font-bold tabular-nums">
+            {payslip ? formatRp(n(payslip.net_total)) : "–"}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {row.settings?.is_finalized && !finalized && (
+            <button
+              type="button"
+              onClick={recalc}
+              disabled={pending}
+              className="h-10 px-3 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              {payslip ? "Hitung ulang" : "Hitung"}
+            </button>
+          )}
+          {payslip && (
+            <button
+              type="button"
+              onClick={toggleFinalize}
+              disabled={pending}
+              className={
+                "h-10 px-3 rounded-lg text-sm font-semibold disabled:opacity-50 " +
+                (finalized
+                  ? "border border-border bg-card hover:bg-muted"
+                  : "bg-primary text-primary-foreground")
+              }
+            >
+              {finalized ? "Buka kembali" : "Finalisasi"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {payslip ? (
+        <ExpandedDetail row={row} payslip={payslip} />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {row.settings?.is_finalized
+            ? "Slip bulan ini belum dihitung."
+            : "Atur dan finalkan pengaturan gaji dulu sebelum menghitung slip."}
+        </p>
+      )}
+
+      <Disclosure title="Pengaturan gaji" defaultOpen={!payslip}>
+        {/* Satu karyawan: kolom nama dan judul unit tidak perlu. */}
+        <div className="space-y-3 [&_[data-group-row]]:hidden [&_th:first-child]:hidden [&_td:first-child]:hidden [&_select]:min-w-36">
+          <CompensationBasisSection rows={one} />
+          <ExpectedDaysSection rows={one} month={month} year={year} />
+          <OvertimePenaltySection rows={one} />
+          <ExtraWorkSection rows={one} />
+        </div>
+      </Disclosure>
+    </SideDrawer>
+  );
+}
+
+/** Laci kanan generik: judul, isi bisa digulir, Esc / ketuk latar menutup. */
+function SideDrawer({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const [shown, setShown] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // onClose berubah identitas tiap render induk; simpan di ref supaya efek
+  // ini jalan sekali dan tidak merebut fokus dari input yang sedang diketik.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setShown(true));
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCloseRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   return createPortal(
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Slip ${row.fullName}`}>
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
         aria-label="Tutup"
@@ -637,18 +723,18 @@ function EmployeeDrawer({
       />
       <div
         className={
-          "absolute right-0 top-0 h-dvh w-full sm:max-w-2xl bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none " +
+          "absolute right-0 top-0 h-dvh w-full sm:max-w-xl bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none " +
           (shown ? "translate-x-0" : "translate-x-full")
         }
       >
-        <header className="flex items-start gap-3 px-4 py-3 border-b border-border">
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold truncate">{row.fullName}</h2>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={"size-1.5 rounded-full " + STAGE_DOT[s]} aria-hidden />
-              {STAGE_LABEL[s]}
-              {row.businessUnit ? ` · ${row.businessUnit}` : ""}
-            </p>
+            <h2 className="text-base font-semibold truncate">{title}</h2>
+            {subtitle && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
           </div>
           <button
             ref={closeRef}
@@ -660,64 +746,8 @@ function EmployeeDrawer({
             <X size={18} />
           </button>
         </header>
-
-        <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Bersih</p>
-              <p className="text-2xl font-bold tabular-nums">
-                {payslip ? formatRp(n(payslip.net_total)) : "–"}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {row.settings?.is_finalized && (
-                <button
-                  type="button"
-                  onClick={recalc}
-                  disabled={pending || finalized}
-                  className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted disabled:opacity-50"
-                >
-                  {payslip ? "Hitung ulang" : "Hitung"}
-                </button>
-              )}
-              {payslip && (
-                <button
-                  type="button"
-                  onClick={toggleFinalize}
-                  disabled={pending}
-                  className={
-                    "h-10 px-4 rounded-lg text-sm font-semibold disabled:opacity-50 " +
-                    (finalized
-                      ? "border border-border bg-card hover:bg-muted"
-                      : "bg-primary text-primary-foreground")
-                  }
-                >
-                  {finalized ? "Buka kembali" : "Finalisasi"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {payslip ? (
-            <Disclosure title="Rincian slip" defaultOpen>
-              <ExpandedDetail row={row} payslip={payslip} />
-            </Disclosure>
-          ) : (
-            <p className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-              {row.settings?.is_finalized
-                ? "Slip bulan ini belum dihitung."
-                : "Atur dan finalkan pengaturan gaji dulu sebelum menghitung slip."}
-            </p>
-          )}
-
-          <Disclosure title="Pengaturan gaji" defaultOpen={!payslip}>
-            <div className="space-y-4">
-              <CompensationBasisSection rows={one} />
-              <ExpectedDaysSection rows={one} month={month} year={year} />
-              <OvertimePenaltySection rows={one} />
-              <ExtraWorkSection rows={one} />
-            </div>
-          </Disclosure>
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3">
+          {children}
         </div>
       </div>
     </div>,

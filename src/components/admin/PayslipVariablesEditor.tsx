@@ -20,7 +20,7 @@ import type {
   PayslipBreakdown,
 } from "@/lib/supabase/types";
 import { formatRp } from "@/lib/cashflow/format";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 import { NetTotalBasis } from "@/components/payslip/NetTotalBasis";
 
@@ -1450,12 +1450,36 @@ export function ExpandedDetail({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3">
-        <div className="rounded-xl border border-border bg-card p-3 space-y-2">
-          <h4 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-            Manual entries
-          </h4>
+    <div className="space-y-3">
+        <NetTotalBasis
+          basis={basis}
+          attendanceWeightPct={Number(row.settings?.attendance_weight_pct ?? 0)}
+          deliverablesWeightPct={Number(
+            row.settings?.deliverables_weight_pct ?? 0
+          )}
+          fields={{
+            prorated_salary: Number(payslip.prorated_salary ?? 0),
+            bonus_day_pay: Number(payslip.bonus_day_pay ?? 0),
+            overtime_pay: Number(payslip.overtime_pay ?? 0),
+            late_penalty: Number(payslip.late_penalty ?? 0),
+            deliverables_pay: Number(payslip.deliverables_pay ?? 0),
+            monthly_bonus: Number(payslip.monthly_bonus ?? 0),
+            cake_bonus: Number(payslip.cake_bonus ?? 0),
+            debt_deduction: Number(payslip.debt_deduction ?? 0),
+            other_penalty: Number(payslip.other_penalty ?? 0),
+            extra_work_pay: Number(payslip.extra_work_pay ?? 0),
+            base_salary: Number(payslip.base_salary ?? 0),
+          }}
+          context={{
+            actualWorkDays: payslip.actual_work_days,
+            expectedWorkDays: payslip.expected_work_days,
+            deliverablesAchievementPct: payslip.deliverables_achievement_pct,
+          }}
+          storedNetTotal={Number(payslip.net_total ?? 0)}
+        />
+
+      <Fold title="Bonus & potongan manual" hint={manualDirty ? "belum disimpan" : (Number(manual.monthly_bonus) > 0 || Number(manual.debt_deduction) > 0 || Number(manual.other_penalty) > 0) ? "terisi" : undefined}>
+        <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <ManualField
               label="Bonus"
@@ -1533,38 +1557,10 @@ export function ExpandedDetail({
             </button>
           </div>
         </div>
+      </Fold>
 
-        <NetTotalBasis
-          basis={basis}
-          attendanceWeightPct={Number(row.settings?.attendance_weight_pct ?? 0)}
-          deliverablesWeightPct={Number(
-            row.settings?.deliverables_weight_pct ?? 0
-          )}
-          fields={{
-            prorated_salary: Number(payslip.prorated_salary ?? 0),
-            bonus_day_pay: Number(payslip.bonus_day_pay ?? 0),
-            overtime_pay: Number(payslip.overtime_pay ?? 0),
-            late_penalty: Number(payslip.late_penalty ?? 0),
-            deliverables_pay: Number(payslip.deliverables_pay ?? 0),
-            monthly_bonus: Number(payslip.monthly_bonus ?? 0),
-            cake_bonus: Number(payslip.cake_bonus ?? 0),
-            debt_deduction: Number(payslip.debt_deduction ?? 0),
-            other_penalty: Number(payslip.other_penalty ?? 0),
-            extra_work_pay: Number(payslip.extra_work_pay ?? 0),
-            base_salary: Number(payslip.base_salary ?? 0),
-          }}
-          context={{
-            actualWorkDays: payslip.actual_work_days,
-            expectedWorkDays: payslip.expected_work_days,
-            deliverablesAchievementPct: payslip.deliverables_achievement_pct,
-          }}
-          storedNetTotal={Number(payslip.net_total ?? 0)}
-        />
-
-        <div className="rounded-xl border border-border bg-card p-3">
-          <h4 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
-            Breakdown
-          </h4>
+      <Fold title="Rincian perhitungan">
+        <div>
           {payslip.breakdown_json ? (
             <PayslipBreakdownDetails
               breakdown={payslip.breakdown_json as PayslipBreakdown}
@@ -1581,32 +1577,65 @@ export function ExpandedDetail({
             </p>
           )}
         </div>
-      </div>
+      </Fold>
 
       {showsDeliverables && (
-        <DeliverablesEditor
-          payslipId={payslip.id}
-          initial={row.deliverables}
-          disabled={finalized}
-        />
+        <Fold title="Deliverables">
+        {showsDeliverables && (
+          <DeliverablesEditor
+            payslipId={payslip.id}
+            initial={row.deliverables}
+            disabled={finalized}
+          />
+        )}
+        </Fold>
       )}
 
       {row.extraWorkLogs.length > 0 && (
-        <ExtraWorkEntriesEditor
-          logs={row.extraWorkLogs}
-          disabled={finalized}
-          monthlyFixedAmount={Number(row.settings?.monthly_fixed_amount ?? 0)}
-          // Gunakan expected_work_days HASIL RESOLVE yang tersimpan di payslip
-          // (untuk pola paired_alternating / weekly_pattern ini = jumlah hari
-          // aktual bulan tsb, mis. Juni = 16), BUKAN angka statis di settings
-          // (mis. 18). Ini yang dipakai server sebagai pembagi gapok harian,
-          // jadi preview "× harian" cocok dengan payslip. Fallback ke settings.
-          expectedWorkDays={Number(
-            payslip.expected_work_days ?? row.settings?.expected_work_days ?? 0
-          )}
-        />
+        <Fold title="Kerja ekstra" hint={`${row.extraWorkLogs.length} entri`}>
+        {row.extraWorkLogs.length > 0 && (
+          <ExtraWorkEntriesEditor
+            logs={row.extraWorkLogs}
+            disabled={finalized}
+            monthlyFixedAmount={Number(row.settings?.monthly_fixed_amount ?? 0)}
+            // Gunakan expected_work_days HASIL RESOLVE yang tersimpan di payslip
+            // (untuk pola paired_alternating / weekly_pattern ini = jumlah hari
+            // aktual bulan tsb, mis. Juni = 16), BUKAN angka statis di settings
+            // (mis. 18). Ini yang dipakai server sebagai pembagi gapok harian,
+            // jadi preview "× harian" cocok dengan payslip. Fallback ke settings.
+            expectedWorkDays={Number(
+              payslip.expected_work_days ?? row.settings?.expected_work_days ?? 0
+            )}
+          />
+        )}
+        </Fold>
       )}
     </div>
+  );
+}
+
+/** Lipatan kecil: judul satu baris, isi muncul saat diketuk. */
+function Fold({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group rounded-lg border border-border bg-card">
+      <summary className="flex items-center gap-2 px-3 min-h-11 cursor-pointer list-none text-sm font-medium [&::-webkit-details-marker]:hidden">
+        {title}
+        {hint && <span className="text-xs font-normal text-muted-foreground">{hint}</span>}
+        <ChevronDown
+          size={14}
+          className="ml-auto text-muted-foreground transition-transform motion-reduce:transition-none group-open:rotate-180"
+        />
+      </summary>
+      <div className="border-t border-border p-3">{children}</div>
+    </details>
   );
 }
 
@@ -2066,44 +2095,36 @@ function SectionCard({
   onReset: () => void;
   children: React.ReactNode;
 }) {
+  // Judul satu baris; penjelasan teknis cukup lewat tooltip. Tombol simpan
+  // baru muncul setelah ada yang diubah.
   return (
-    <section className="rounded-2xl border border-border bg-card">
-      <header className="sticky top-0 z-20 flex items-start justify-between gap-3 p-4 border-b border-border bg-card/95 backdrop-blur-sm rounded-t-2xl">
-        <div className="min-w-0">
-          <h2 className="font-semibold text-foreground text-sm">{title}</h2>
-          {description && (
-            <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-              {description}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {dirtyCount > 0 && (
-            <>
-              <span className="text-[10px] text-muted-foreground tabular-nums">
-                {dirtyCount} dirty
-              </span>
-              <button
-                type="button"
-                onClick={onReset}
-                disabled={pending}
-                className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-border text-xs hover:bg-muted disabled:opacity-50"
-              >
-                <RotateCcw size={12} />
-                Batal
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={pending || dirtyCount === 0}
-            className="inline-flex items-center gap-1 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
-          >
-            <Save size={12} />
-            {pending ? "Menyimpan…" : "Simpan"}
-          </button>
-        </div>
+    <section className="rounded-xl border border-border bg-card">
+      <header className="flex items-center justify-between gap-3 px-3 min-h-11 border-b border-border">
+        <h2 className="font-semibold text-foreground text-sm" title={description}>
+          {title}
+        </h2>
+        {dirtyCount > 0 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={pending}
+              className="inline-flex items-center gap-1 h-9 px-2 rounded-md text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <RotateCcw size={12} />
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={pending}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
+            >
+              <Save size={12} />
+              {pending ? "Menyimpan…" : "Simpan"}
+            </button>
+          </div>
+        )}
       </header>
       <div className="overflow-x-auto">{children}</div>
     </section>
@@ -2144,7 +2165,7 @@ function GroupHeader({
   colspan: number;
 }) {
   return (
-    <tr className="bg-muted/40">
+    <tr className="bg-muted/40" data-group-row>
       <td
         colSpan={colspan}
         className="px-2 py-1 text-[10px] uppercase tracking-wider font-bold text-muted-foreground"

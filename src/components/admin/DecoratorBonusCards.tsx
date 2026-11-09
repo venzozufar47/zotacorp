@@ -17,9 +17,9 @@ export interface DecoratorRecipient {
 }
 
 /**
- * Dua kartu bonus decorator (Semarang per-diameter & Pare 8% omset),
- * mirror gaya kartu Tasya. Angka dihitung otomatis dari `cake_orders`
- * dan otomatis masuk ke kolom `cake_bonus` payslip saat generate.
+ * Bonus decorator (Semarang per diameter, Pare persen omset) sebagai dua
+ * baris ringkas. Angka dihitung otomatis dari `cake_orders` dan masuk ke
+ * `cake_bonus` slip saat dihitung.
  */
 export function DecoratorBonusCards({
   semarang,
@@ -38,159 +38,64 @@ export function DecoratorBonusCards({
     recipient: DecoratorRecipient;
   };
 }) {
+  const ge = SEMARANG_DIAMETER_THRESHOLD_CM;
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* Intan — Semarang */}
-      <BonusCard
-        title="Bonus Cake — Decorator Semarang"
+    <>
+      <BonusRow
+        title="Decorator Semarang"
         position={CAKE_BONUS_POSITIONS.decoratorSemarang}
         recipient={semarang.recipient}
         total={semarang.bonus}
-        formula={`Tiap cake Semarang ≥${SEMARANG_DIAMETER_THRESHOLD_CM}cm = ${rp(
-          SEMARANG_BONUS_GE_THRESHOLD
-        )} · <${SEMARANG_DIAMETER_THRESHOLD_CM}cm = ${rp(
-          SEMARANG_BONUS_LT_THRESHOLD
-        )}.`}
-      >
-        <BreakdownRow
-          label={`${semarang.geCount} cake ≥${SEMARANG_DIAMETER_THRESHOLD_CM}cm × ${rp(SEMARANG_BONUS_GE_THRESHOLD)}`}
-          value={semarang.geCount * SEMARANG_BONUS_GE_THRESHOLD}
-        />
-        <BreakdownRow
-          label={`${semarang.ltCount} cake <${SEMARANG_DIAMETER_THRESHOLD_CM}cm × ${rp(SEMARANG_BONUS_LT_THRESHOLD)}`}
-          value={semarang.ltCount * SEMARANG_BONUS_LT_THRESHOLD}
-        />
-      </BonusCard>
-
-      {/* Zahra — Pare */}
-      <BonusCard
-        title="Bonus Cake — Decorator Pare"
+        detail={`${semarang.geCount} cake ≥${ge}cm × ${rp(SEMARANG_BONUS_GE_THRESHOLD)} · ${semarang.ltCount} cake <${ge}cm × ${rp(SEMARANG_BONUS_LT_THRESHOLD)}`}
+      />
+      <BonusRow
+        title="Decorator Pare"
         position={CAKE_BONUS_POSITIONS.decoratorPare}
         recipient={pare.recipient}
         total={pare.bonus}
-        formula={`${Math.round(PARE_OMSET_BONUS_RATE * 100)}% × total omset custom cake Pare bulan ini.`}
-      >
-        <BreakdownRow
-          label={`${pare.cakeCount} cake Pare · omset ${rp(pare.omset)}`}
-          value={null}
-        />
-        <BreakdownRow
-          label={`${rp(pare.omset)} × ${Math.round(PARE_OMSET_BONUS_RATE * 100)}%`}
-          value={pare.bonus}
-        />
-      </BonusCard>
-    </div>
+        detail={`${pare.cakeCount} cake · omset ${rp(pare.omset)} × ${Math.round(PARE_OMSET_BONUS_RATE * 100)}%`}
+      />
+    </>
   );
 }
 
-function BonusCard({
+function BonusRow({
   title,
   position,
   recipient,
   total,
-  formula,
-  children,
+  detail,
 }: {
   title: string;
   position: string;
   recipient: DecoratorRecipient;
   total: number;
-  formula: string;
-  children: React.ReactNode;
+  detail: string;
 }) {
+  const warn =
+    recipient.count === 0
+      ? `Belum ada karyawan aktif dengan posisi ${position}.`
+      : recipient.count > 1
+        ? `${recipient.count} karyawan memegang posisi ini; bonus terhitung untuk masing-masing.`
+        : null;
   return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-5 shadow-hard-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-display text-base font-bold text-foreground truncate">
-            {title}
-          </h3>
-          <p className="text-[12.5px] text-muted-foreground mt-0.5">
-            {recipient.name ? (
-              <>
-                Penerima: <strong className="text-foreground">{recipient.name}</strong>{" "}
-                · <span className="font-mono">{position}</span>
-              </>
-            ) : (
-              <span className="font-mono">{position}</span>
-            )}
-          </p>
-          <p className="text-[12px] text-muted-foreground mt-1">{formula}</p>
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Total bonus
-          </div>
-          <div className="font-display text-2xl font-bold text-foreground tabular-nums">
-            {rp(total)}
-          </div>
-        </div>
+    <div className="px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium min-w-0 truncate">
+          {title}
+          {recipient.name && (
+            <span className="font-normal text-muted-foreground"> · {recipient.name}</span>
+          )}
+        </p>
+        <p className="text-sm font-semibold tabular-nums shrink-0">{rp(total)}</p>
       </div>
-
-      <div className="mt-3 rounded-xl border border-border/70 bg-muted/30 divide-y divide-border/50">
-        {children}
-      </div>
-
-      {recipient.count === 0 ? (
-        <Note tone="warn">
-          Belum ada karyawan aktif dengan posisi{" "}
-          <span className="font-mono">{position}</span>. Set field Posisi di
-          /admin/users agar bonus terhubung.
-        </Note>
-      ) : recipient.count > 1 ? (
-        <Note tone="warn">
-          {recipient.count} karyawan memegang posisi ini — bonus akan terhitung
-          untuk masing-masing. Pastikan hanya 1 orang per posisi.
-        </Note>
-      ) : (
-        <Note tone="info">
-          Otomatis masuk ke <span className="font-mono">cake_bonus</span> di
-          payslip {recipient.name ?? "penerima"} saat generate.
-        </Note>
+      <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>
+      {warn && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-foreground">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5 text-warning" />
+          {warn}
+        </p>
       )}
     </div>
-  );
-}
-
-function BreakdownRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | null;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 text-[12.5px]">
-      <span className="text-muted-foreground">{label}</span>
-      {value != null && (
-        <span className="font-mono tabular-nums text-foreground">
-          {rp(value)}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function Note({
-  tone,
-  children,
-}: {
-  tone: "warn" | "info";
-  children: React.ReactNode;
-}) {
-  return (
-    <p
-      className={
-        "mt-3 flex items-start gap-2 text-[11.5px] leading-snug rounded-lg px-2.5 py-1.5 " +
-        (tone === "warn"
-          ? "bg-warning/10 text-warning"
-          : "bg-accent text-[var(--teal-700)]")
-      }
-    >
-      {tone === "warn" && (
-        <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-      )}
-      <span>{children}</span>
-    </p>
   );
 }
