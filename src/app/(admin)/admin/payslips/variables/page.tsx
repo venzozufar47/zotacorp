@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { HubTabs } from "@/components/admin/karyawan/HubTabs";
 import { PayslipVariablesEditor } from "@/components/admin/PayslipVariablesEditor";
 import { PayslipDisputesPanel } from "@/components/admin/PayslipDisputesPanel";
 import {
@@ -234,19 +234,16 @@ export default async function PayslipVariablesPage({
   return (
     <div className="space-y-5 animate-fade-up">
       <PayslipViewPersist />
-      <PageHeader
-        title="Slip gaji"
-        subtitle={
-          view === "payments"
-            ? "Tracking respon karyawan + status pembayaran"
-            : "Atur variabel payslip semua karyawan dalam satu tabel"
-        }
-      />
+      <HubTabs active="gaji" />
       {focusUser && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-          <span>
-            Hanya menampilkan <span className="font-medium">{employees?.[0]?.full_name ?? "satu karyawan"}</span>.
-          </span>
+          {employees?.[0] ? (
+            <span>
+              Hanya menampilkan <span className="font-medium">{employees[0].full_name}</span>.
+            </span>
+          ) : (
+            <span className="text-destructive">Orang ini tidak ada di penggajian: akunnya nonaktif atau tidak ikut penggajian.</span>
+          )}
           <span className="flex gap-3">
             <Link href={`/admin/karyawan/${focusUser}?tab=gaji`} className="text-primary hover:underline">
               Kembali ke profil

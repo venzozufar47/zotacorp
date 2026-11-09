@@ -123,13 +123,14 @@ function deriveCrumbs(pathname: string): string[] {
     tickets: "Tiket",
     tasks: "Tugas",
     // Karyawan
-    users: "Users",
+    karyawan: "Karyawan",
+    struktur: "Struktur",
     payslips: "Slip Gaji",
     variables: "Variables",
     "employment-contracts": "Kontrak Kerja",
     disc: "Tes DISC",
     "evaluasi-360": "Evaluasi 360°",
-    celebrations: "Monitoring Karyawan",
+    celebrations: "Perayaan",
     // Keuangan
     finance: "Finance",
     pnl: "Profit & Loss",

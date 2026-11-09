@@ -6,7 +6,7 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { getBonusQuarter } from "@/lib/actions/bonus.actions";
 import { isValidPeriod, periodLabel, quarterLabel, quarterOf } from "@/lib/bonus/periods";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { HubTabs } from "@/components/admin/karyawan/HubTabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BonusMonthNav } from "@/components/admin/bonus/BonusMonthNav";
 import { BonusParametersCard } from "@/components/admin/bonus/BonusParametersCard";
@@ -28,7 +28,13 @@ export default async function AdminBonusPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-5 p-4 animate-fade-up">
-      <PageHeader title="Kalkulator Bonus" subtitle="Bonus koordinator toko & kepala produksi — dihitung otomatis dari omzet, HPP, dan scorecard." />
+      <HubTabs active="gaji" />
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Kalkulator bonus</h2>
+        <p className="text-sm text-muted-foreground">
+          Bonus koordinator toko dan kepala produksi, dihitung dari omzet, HPP, dan scorecard.
+        </p>
+      </div>
       <BonusMonthNav period={period} thisMonth={thisMonth} published={quarter?.publishedPeriods ?? []} sim={sim} />
       {sim && (
         <div role="status" className="rounded-xl border-2 border-warning/60 bg-warning/10 px-4 py-2.5 text-[13px] text-warning">

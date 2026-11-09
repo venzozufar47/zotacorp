@@ -9,7 +9,7 @@ import {
   listContractTemplates,
   listEmploymentContracts,
 } from "@/lib/actions/employment-contracts.actions";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { HubTabs } from "@/components/admin/karyawan/HubTabs";
 import { EmploymentContractsManager } from "@/components/admin/EmploymentContractsManager";
 
 export interface ContractEmployee {
@@ -65,10 +65,10 @@ export default async function AdminEmploymentContractsPage() {
 
   return (
     <div className="space-y-5 animate-fade-up">
-      <PageHeader
-        title="Kontrak Kerja"
-        subtitle="Kelola template Perjanjian Kerja per business unit, terbitkan & isi kontrak per karyawan, dan pantau status tanda tangan."
-      />
+      <HubTabs active="kontrak" />
+      <p className="text-sm text-muted-foreground">
+        Template per unit, terbit massal, dan arsip. Kontrak satu orang lebih cepat dikelola dari profilnya.
+      </p>
       <EmploymentContractsManager
         templates={templates}
         contracts={contracts}

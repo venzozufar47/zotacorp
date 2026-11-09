@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { HubTabs } from "@/components/admin/karyawan/HubTabs";
 import {
   listEmployeeMonitoring,
   previewBirthdayBroadcast,
@@ -32,10 +32,13 @@ export default async function AdminCelebrationsPage() {
 
   return (
     <div className="space-y-5 animate-fade-up">
-      <PageHeader
-        title="Monitoring Karyawan"
-        subtitle="Streak presensi, ulang tahun, anniversary tahun kerja, dan log notifikasi perayaan"
-      />
+      <HubTabs />
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Perayaan & streak</h2>
+        <p className="text-sm text-muted-foreground">
+          Streak presensi, ulang tahun, anniversary kerja, dan log notifikasi perayaan.
+        </p>
+      </div>
       <BirthdayBroadcastButton
         todayBirthdays={todayBirthdays.map((r) => ({
           id: r.id,

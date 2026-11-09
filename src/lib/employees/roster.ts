@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import type { Database } from "@/lib/supabase/types";
 import { parseBreakWindows } from "@/lib/utils/break-windows";
-import type { UserRow } from "@/components/admin/UsersTable";
+import type { UserRow } from "@/components/admin/karyawan/schedule-controls";
 import {
   deriveActions,
   deriveStage,
@@ -200,7 +200,7 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
       isAdmin: p.role === "admin",
       isActive: p.is_active ?? true,
       isProbation: p.is_probation ?? false,
-      createdAt: p.created_at,
+      joinedAt: p.first_day_of_work ?? p.created_at,
       resignedAt: p.resigned_at ?? null,
       profileComplete: isProfileComplete(p),
       locationCount: locsByUser.get(p.id)?.length ?? 0,

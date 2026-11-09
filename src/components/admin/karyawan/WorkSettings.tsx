@@ -8,7 +8,7 @@ import {
   ScheduleCell,
   ScheduleEditDialog,
   type UserRow,
-} from "@/components/admin/UsersTable";
+} from "@/components/admin/karyawan/schedule-controls";
 import { LocationPanel } from "./LocationPanel";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { Panel } from "./Panel";
@@ -60,15 +60,18 @@ export function WorkSettings({
         initialIds={row.assigned_location_ids}
       />
 
-      <ScheduleEditDialog
-        row={editing ? row : null}
-        tu={t.adminUsers}
-        onOpenChange={(open) => !open && setEditing(false)}
-        onSaved={() => {
-          setEditing(false);
-          router.refresh();
-        }}
-      />
+      {editing && (
+        <ScheduleEditDialog
+          key={row.id}
+          row={row}
+          tu={t.adminUsers}
+          onOpenChange={(open) => !open && setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

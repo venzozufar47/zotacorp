@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Search } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { STAGE_LABEL, STAGE_ORDER, type ActionSeverity, type EmployeeStage, type ProfileTab } from "@/lib/employees/lifecycle";
 import { StagePill } from "./StagePill";
@@ -115,27 +116,22 @@ export function RosterList({ rows }: { rows: RosterRow[] }) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-b border-border text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2 font-medium">Karyawan</th>
-              <th className="px-4 py-2 font-medium">Tahap</th>
-              <th className="px-4 py-2 font-medium">Kontrak</th>
-              <th className="px-4 py-2 font-medium">Berikutnya</th>
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Karyawan</TableHead>
+            <TableHead>Tahap</TableHead>
+            <TableHead>Kontrak</TableHead>
+            <TableHead>Berikutnya</TableHead>
+            <TableHead className="w-8" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
             {shown.map((r) => {
               const href = `/admin/karyawan/${r.id}`;
               return (
-                <tr
-                  key={r.id}
-                  onClick={() => router.push(href)}
-                  className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-                >
-                  <td className="px-4 py-2">
+                <TableRow key={r.id} onClick={() => router.push(href)} className="cursor-pointer">
+                  <TableCell>
                     <div className="flex items-center gap-2.5">
                       <EmployeeAvatar
                         size="sm"
@@ -158,12 +154,12 @@ export function RosterList({ rows }: { rows: RosterRow[] }) {
                         </p>
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-2">
+                  </TableCell>
+                  <TableCell>
                     <StagePill stage={r.stage} />
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{r.isAdmin ? "—" : r.contractLabel}</td>
-                  <td className="px-4 py-2">
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{r.isAdmin ? "—" : r.contractLabel}</TableCell>
+                  <TableCell>
                     {r.nextAction ? (
                       <span className={SEVERITY_TEXT[r.nextAction.severity]}>
                         {r.nextAction.label}
@@ -174,23 +170,22 @@ export function RosterList({ rows }: { rows: RosterRow[] }) {
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td className="pr-3 text-muted-foreground">
+                  </TableCell>
+                  <TableCell className="pr-3 text-muted-foreground">
                     <ChevronRight size={16} aria-hidden />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })}
             {shown.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                   Tidak ada karyawan yang cocok.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
-      </div>
+        </TableBody>
+      </Table>
     </div>
   );
 }

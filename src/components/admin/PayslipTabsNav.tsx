@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export type PayslipView = "variables" | "payments" | "bonus-cake";
@@ -41,6 +42,12 @@ export function PayslipTabsNav({ current }: Props) {
           {t.label}
         </button>
       ))}
+      <Link
+        href="/admin/bonus"
+        className="inline-flex items-center px-3 h-8 rounded-md text-xs font-display font-bold uppercase tracking-wider text-muted-foreground transition hover:bg-muted"
+      >
+        Bonus koordinator
+      </Link>
     </div>
   );
 }

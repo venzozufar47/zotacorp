@@ -484,7 +484,7 @@ export function AttendanceDayDrawer({
           ) : (
             <>
               <Link
-                href={`/admin/users/${subject.userId}`}
+                href={`/admin/karyawan/${subject.userId}`}
                 onClick={onClose}
                 className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[12.5px] font-medium text-white transition hover:brightness-110"
                 style={{

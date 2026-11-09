@@ -409,7 +409,7 @@ export function EmployeeDrawer({
 
         <footer className="flex items-center gap-2 px-5 py-3 border-t border-border/60 bg-muted/40">
           <Link
-            href={`/admin/users/${subject.userId}`}
+            href={`/admin/karyawan/${subject.userId}`}
             className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[12.5px] font-medium text-white transition hover:brightness-110"
             style={{
               background: "var(--grad-teal)",

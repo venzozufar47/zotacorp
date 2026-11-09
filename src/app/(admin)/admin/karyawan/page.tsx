@@ -7,6 +7,8 @@ import { CONTRACT_LABEL, contractState } from "@/lib/employees/lifecycle";
 import { HubTabs, type HubTab } from "@/components/admin/karyawan/HubTabs";
 import { RosterList, type RosterRow } from "@/components/admin/karyawan/RosterList";
 import { ActionQueue, type QueueItem } from "@/components/admin/karyawan/ActionQueue";
+import { CelebrationStrip } from "@/components/admin/karyawan/CelebrationStrip";
+import { listEmployeeMonitoring } from "@/lib/actions/employee-monitoring.actions";
 
 export default async function KaryawanHubPage({
   searchParams,
@@ -19,7 +21,10 @@ export default async function KaryawanHubPage({
   const { tab: rawTab } = await searchParams;
   const tab: HubTab = rawTab === "tindakan" ? "tindakan" : "daftar";
 
-  const roster = await loadRoster();
+  const [roster, monitoring] = await Promise.all([
+    loadRoster(),
+    tab === "daftar" ? listEmployeeMonitoring() : Promise.resolve({ data: [] }),
+  ]);
   const ownerActionCount = roster.reduce(
     (n, e) => n + e.actions.filter((a) => a.owner === "owner" && a.severity !== "info").length,
     0
@@ -33,6 +38,8 @@ export default async function KaryawanHubPage({
         <p className="text-sm text-muted-foreground">{activeCount} aktif</p>
       </div>
       <HubTabs active={tab} actionCount={ownerActionCount} />
+
+      {tab === "daftar" && <CelebrationStrip rows={monitoring.data} />}
 
       {tab === "daftar" ? (
         <RosterList

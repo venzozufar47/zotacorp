@@ -20,6 +20,7 @@ import {
   contractState,
   formatShortDate,
   onboardingSteps,
+  todayIso,
   type EmployeeStage,
   type ProfileTab,
 } from "@/lib/employees/lifecycle";
@@ -31,6 +32,7 @@ import { Panel } from "@/components/admin/karyawan/Panel";
 import { WorkSettings } from "@/components/admin/karyawan/WorkSettings";
 import { ResignControl } from "@/components/admin/karyawan/ResignControl";
 import { OffboardingItems } from "@/components/admin/karyawan/OffboardingItems";
+import { DeleteAccountControl } from "@/components/admin/karyawan/DeleteAccountControl";
 import type { Profile } from "@/lib/supabase/types";
 
 const TABS: { key: ProfileTab; label: string }[] = [
@@ -207,7 +209,7 @@ function Ringkasan({ entry }: { entry: Entry }) {
       <Panel title="Sekilas">
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           <dt className="text-muted-foreground">Bergabung</dt>
-          <dd className="text-foreground">{formatShortDate(p.created_at)}</dd>
+          <dd className="text-foreground">{formatShortDate(facts.joinedAt)}</dd>
           <dt className="text-muted-foreground">Kontrak</dt>
           <dd className="text-foreground">
             {facts.isAdmin ? "—" : CONTRACT_LABEL[contractState(facts)]}
@@ -413,7 +415,7 @@ async function IzinSp({ userId }: { userId: string }) {
       .order("created_at", { ascending: false })
       .limit(8),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -535,6 +537,13 @@ async function Keluar({ entry, isSelf }: { entry: Entry; isSelf: boolean }) {
             items={(items ?? []).map((i) => ({ id: i.id, label: i.label, done: i.done, doneAt: i.done_at }))}
           />
         </Panel>
+      )}
+
+      {!isSelf && (
+        <div className="flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-muted-foreground lg:col-span-2">
+          <span>Akun salah buat atau duplikat?</span>
+          <DeleteAccountControl userId={p.id} name={name} />
+        </div>
       )}
     </div>
   );

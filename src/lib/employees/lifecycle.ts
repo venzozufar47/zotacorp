@@ -69,7 +69,8 @@ export interface EmployeeFacts {
   isAdmin: boolean;
   isActive: boolean;
   isProbation: boolean;
-  createdAt: string;
+  /** Hari pertama kerja (profiles.first_day_of_work), atau tanggal akun dibuat bila kosong. */
+  joinedAt: string;
   resignedAt: string | null;
   profileComplete: boolean;
   locationCount: number;
@@ -110,8 +111,9 @@ function daysSince(iso: string, now: Date): number {
   return Math.floor((now.getTime() - new Date(iso).getTime()) / DAY);
 }
 
-function todayIso(now: Date): string {
-  return now.toISOString().slice(0, 10);
+/** Tanggal hari ini di WIB (YYYY-MM-DD); UTC masih "kemarin" sampai pukul 07.00 WIB. */
+export function todayIso(now = new Date()): string {
+  return now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
 }
 
 export function contractState(f: EmployeeFacts): ContractStatus | "none" {
@@ -148,7 +150,7 @@ export function deriveStage(f: EmployeeFacts, now = new Date()): EmployeeStage {
   if (leavingSoon(f, now)) return "pamit";
   if (f.isAdmin) return "aktif";
   const incomplete = onboardingSteps(f).some((s) => !s.done);
-  if (incomplete && daysSince(f.createdAt, now) < BARU_WINDOW_DAYS) return "baru";
+  if (incomplete && daysSince(f.joinedAt, now) < BARU_WINDOW_DAYS) return "baru";
   if (f.isProbation) return "probation";
   return "aktif";
 }
@@ -170,6 +172,20 @@ export function deriveActions(f: EmployeeFacts, now = new Date()): EmployeeActio
       });
     }
     return out;
+  }
+
+  const c0 = f.contract;
+  // Kontrak bisa diakhiri tanpa tanggal (tombol cepat di pengelola kontrak).
+  if (c0?.status === "terminated" && (!c0.endedAt || c0.endedAt < todayIso(now))) {
+    out.push({
+      key: "belum-dinonaktifkan",
+      label: c0.endedAt
+        ? `Kontrak berakhir ${formatShortDate(c0.endedAt)}, akun masih aktif`
+        : "Kontrak diakhiri, akun masih aktif",
+      severity: "tinggi",
+      tab: "keluar",
+      owner: "owner",
+    });
   }
 
   if (leavingSoon(f, now)) {
@@ -248,10 +264,10 @@ export function deriveActions(f: EmployeeFacts, now = new Date()): EmployeeActio
     });
   }
 
-  if (f.isProbation && daysSince(f.createdAt, now) >= PROBATION_REVIEW_DAYS) {
+  if (f.isProbation && daysSince(f.joinedAt, now) >= PROBATION_REVIEW_DAYS) {
     out.push({
       key: "probation",
-      label: `Probation ${Math.floor(daysSince(f.createdAt, now) / 30)} bulan, putuskan lanjut`,
+      label: `Probation ${Math.floor(daysSince(f.joinedAt, now) / 30)} bulan, putuskan lanjut`,
       severity: "sedang",
       tab: "kerja",
       owner: "owner",

@@ -189,16 +189,16 @@ export function buildAdminNav({
       label: "Orang & HR",
       items: [
         {
-          href: "/admin/users",
+          href: "/admin/karyawan",
           icon: Users,
-          label: t.nav.users,
+          label: "Karyawan",
           color: "bg-pop-pink",
-          homeLabel: "Daftar Karyawan",
+          homeLabel: "Karyawan",
           children: [
+            { href: "/admin/karyawan?tab=tindakan", label: "Perlu tindakan" },
             { href: "/admin/struktur", label: "Struktur Organisasi" },
             { href: "/admin/employment-contracts", label: "Kontrak Kerja" },
-            { href: "/admin/celebrations", label: "Monitoring Karyawan" },
-            { href: "/admin/offboarding", label: "Checklist Offboarding" },
+            { href: "/admin/celebrations", label: "Perayaan & streak" },
           ],
         },
         {

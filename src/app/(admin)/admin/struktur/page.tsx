@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { getOrgChart } from "@/lib/actions/org-structure.actions";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { HubTabs } from "@/components/admin/karyawan/HubTabs";
 import { OrgChartBoard } from "@/components/admin/org/OrgChartBoard";
 
 /**
@@ -21,10 +21,10 @@ export default async function StrukturPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Struktur Organisasi"
-        subtitle="Atur atasan langsung tiap karyawan — dipakai untuk persetujuan izin, pemantauan tugas, dan notulen."
-      />
+      <HubTabs active="struktur" />
+      <p className="text-sm text-muted-foreground">
+        Atur atasan langsung tiap karyawan. Dipakai untuk persetujuan izin, pemantauan tugas, dan notulen.
+      </p>
       {res.ok && res.data ? (
         <OrgChartBoard data={res.data} />
       ) : (

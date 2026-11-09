@@ -19,6 +19,7 @@ const GROUP_TITLE: Record<string, string> = {
   probation: "Probation perlu diputuskan",
   offboarding: "Checklist keluar belum selesai",
   "hari-terakhir": "Akan keluar",
+  "belum-dinonaktifkan": "Kontrak berakhir, akun masih aktif",
   profil: "Data diri belum lengkap",
 };
 
