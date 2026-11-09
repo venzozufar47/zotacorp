@@ -377,7 +377,10 @@ export async function decideLeaveRequest(input: DecideLeaveRequestInput): Promis
     }
   }
 
-  const { error } = await db()
+  // Compare-and-set: pemohon bisa punya beberapa atasan; tanpa penjaga ini
+  // keputusan yang datang belakangan menimpa yang pertama dan karyawan
+  // menerima dua push yang saling bertentangan (docs/STATE_MACHINES.md SM-3).
+  const { data: decided, error } = await db()
     .from("leave_requests")
     .update({
       status: input.decision,
@@ -386,8 +389,11 @@ export async function decideLeaveRequest(input: DecideLeaveRequestInput): Promis
       backup_user_id: input.decision === "approved" ? input.backupUserId || null : null,
       decided_at: new Date().toISOString(),
     })
-    .eq("id", input.requestId);
+    .eq("id", input.requestId)
+    .eq("status", "pending")
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!decided || decided.length === 0) return { ok: false, error: "Sudah diproses sebelumnya" };
 
   await sendPushToUser(req.user_id, {
     title: input.decision === "approved" ? "Izin disetujui" : "Izin ditolak",

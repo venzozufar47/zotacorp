@@ -64,8 +64,11 @@ export async function reviewOvertimeRequest(
   if (!request) return { error: "Request not found" };
   if (request.status !== "pending") return { error: "Request already reviewed" };
 
-  // Update the overtime request
-  const { error: updateError } = await supabase
+  // Update the overtime request. `.eq("status", "pending")` = compare-and-set:
+  // dua admin yang memutuskan bersamaan tidak boleh sama-sama "menang",
+  // karena tulisan kedua ke attendance_logs (yang dipakai slip gaji) bisa
+  // berlawanan dengan status permintaan (lihat docs/STATE_MACHINES.md SM-3).
+  const { data: claimed, error: updateError } = await supabase
     .from("overtime_requests")
     .update({
       status: decision,
@@ -74,29 +77,42 @@ export async function reviewOvertimeRequest(
       reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", requestId);
+    .eq("id", requestId)
+    .eq("status", "pending")
+    .select("id");
 
   if (updateError) return { error: updateError.message };
+  if (!claimed || claimed.length === 0) return { error: "Request already reviewed" };
 
   // Update attendance log overtime_status
-  if (decision === "rejected") {
+  const { error: logError } =
+    decision === "rejected"
+      ? await supabase
+          .from("attendance_logs")
+          .update({
+            is_overtime: false,
+            overtime_minutes: 0,
+            overtime_status: "rejected",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", request.attendance_log_id)
+      : await supabase
+          .from("attendance_logs")
+          .update({
+            overtime_status: "approved",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", request.attendance_log_id);
+  if (logError) {
+    // Kembalikan permintaan ke pending supaya bisa diputuskan ulang; kalau
+    // tidak, permintaan tercatat "sudah ditinjau" tetapi slip gaji (yang
+    // membaca attendance_logs) tidak pernah melihat keputusannya.
     await supabase
-      .from("attendance_logs")
-      .update({
-        is_overtime: false,
-        overtime_minutes: 0,
-        overtime_status: "rejected",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", request.attendance_log_id);
-  } else {
-    await supabase
-      .from("attendance_logs")
-      .update({
-        overtime_status: "approved",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", request.attendance_log_id);
+      .from("overtime_requests")
+      .update({ status: "pending", reviewed_by: null, reviewed_at: null })
+      .eq("id", requestId)
+      .eq("status", decision);
+    return { error: logError.message };
   }
 
   revalidatePath("/admin/attendance");

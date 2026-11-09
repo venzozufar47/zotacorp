@@ -13,6 +13,7 @@ import { findPosAccount } from "./pos.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sumCakeRevenue } from "@/lib/scorecard/cake-revenue";
 import { bonusPool, distributeShares, scorecardPoints } from "@/lib/bonus/logic";
+import { publishBonusRunRows } from "@/lib/bonus/publish-run";
 import {
   MANUAL_ITEMS,
   evaluateCloseChecks,
@@ -709,42 +710,28 @@ export async function publishBonusRun(input: { branch: ScorecardBranch; period: 
   if (v.error) return { ok: false, error: v.error };
   if (v.shares.length === 0) return { ok: false, error: "Belum ada penerima bonus untuk cabang ini." };
 
-  const { data: run, error } = await db()
-    .from("bonus_runs")
-    .upsert(
-      {
-        branch: input.branch,
-        period: input.period,
-        gross_profit: v.breakdown.grossProfit,
-        lk_dasar: params.lkDasar,
-        p: params.p,
-        scorecard_multiplier: v.multiplier,
-        pool: v.pool,
-        breakdown: v.breakdown,
-        status: "finalized",
-        created_by: gate.userId,
-        finalized_by: gate.userId,
-        finalized_at: new Date().toISOString(),
-      },
-      { onConflict: "branch,period" }
-    )
-    .select("id")
-    .single();
-  if (error) return { ok: false, error: error.message };
-  const runId = (run as { id: string }).id;
-
-  await db().from("bonus_run_shares").delete().eq("run_id", runId);
-  const { error: sharesErr } = await db().from("bonus_run_shares").insert(
+  const published = await publishBonusRunRows(
+    db(),
+    {
+      branch: input.branch,
+      period: input.period,
+      gross_profit: v.breakdown.grossProfit,
+      lk_dasar: params.lkDasar,
+      p: params.p,
+      scorecard_multiplier: v.multiplier,
+      pool: v.pool,
+      breakdown: v.breakdown,
+    },
     v.shares.map((s) => ({
-      run_id: runId,
       user_id: s.userId,
       hours: s.hours,
       share: s.share,
       excluded: s.excluded,
       excluded_reason: s.excludedReason,
-    }))
+    })),
+    gate.userId
   );
-  if (sharesErr) return { ok: false, error: sharesErr.message };
+  if (!published.ok) return published;
 
   await Promise.all(
     v.shares

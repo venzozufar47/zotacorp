@@ -23,6 +23,7 @@ import {
   reverseReadyCakeSalePayments,
 } from "@/lib/cake-orders/ready-cake-sale-payment";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
+import { settleLeaseFreeFilter } from "@/lib/pos/settle-lease";
 import type { FulfillmentType, SettleVia } from "./pos.actions";
 
 export interface PendingPesanan {
@@ -386,6 +387,8 @@ export async function updatePesananItems(input: {
     .eq("id", sale.id)
     .eq("payment_status", "pending")
     .is("voided_at", null)
+    // Pelunasan yang sedang berjalan sudah membaca total & item — jangan ubah di tengahnya.
+    .or(settleLeaseFreeFilter(new Date()))
     .select("id");
   if (claimErr) return { ok: false, error: claimErr.message };
   if (!claimed || claimed.length === 0)
@@ -538,12 +541,39 @@ export async function settlePesanan(input: {
   const gate = await requireAdminOrPosAssignee(sale.bank_account_id);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const total = Number(sale.total);
   const adminDb = createAdminClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+
+  // Klaim pelunasan SEBELUM efek samping apa pun (kas, pembayaran kue).
+  // Tanpa klaim, klik ganda / dua kasir sama-sama lolos pemeriksaan
+  // `payment_status` di atas dan masing-masing mencatat baris kas → omset
+  // dobel (docs/STATE_MACHINES.md SM-2). Lihat lib/pos/settle-lease.ts.
+  const { data: claimRows, error: claimErr } = await adminDb
+    .from("pos_sales")
+    .update({ settled_at: nowIso, settled_by: gate.userId } as never)
+    .eq("id", sale.id)
+    .eq("payment_status", "pending")
+    .is("voided_at", null)
+    .or(settleLeaseFreeFilter(now))
+    .select("id");
+  if (claimErr) return { ok: false, error: claimErr.message };
+  if (!claimRows || claimRows.length === 0)
+    return { ok: false, error: "Pesanan ini sedang atau sudah diselesaikan di perangkat lain." };
+  const fail = async (error: string): Promise<ActionResult<{ saleId: string }>> => {
+    await adminDb
+      .from("pos_sales")
+      .update({ settled_at: null, settled_by: null } as never)
+      .eq("id", sale.id)
+      .eq("payment_status", "pending")
+      .eq("settled_at", nowIso);
+    return { ok: false, error };
+  };
+  const LOST_CLAIM = "Pesanan ini sudah diproses di perangkat lain — tidak jadi dicatat.";
 
   const { data: account } = await supabase
     .from("bank_accounts")
@@ -572,8 +602,8 @@ export async function settlePesanan(input: {
   // Settled via admin: tidak ada cashflow event (uang di luar POS).
   if (input.settledVia === "admin") {
     const cakeErr = await recordCakePay();
-    if (cakeErr) return { ok: false, error: cakeErr };
-    const { error } = await adminDb
+    if (cakeErr) return fail(cakeErr);
+    const { data: paidRows, error } = await adminDb
       .from("pos_sales")
       .update({
         payment_method: "admin",
@@ -582,10 +612,13 @@ export async function settlePesanan(input: {
         settled_at: nowIso,
         settled_by: gate.userId,
       } as never)
-      .eq("id", sale.id);
-    if (error) {
+      .eq("id", sale.id)
+      .eq("payment_status", "pending")
+      .eq("settled_at", nowIso)
+      .select("id");
+    if (error || !paidRows || paidRows.length === 0) {
       await reverseReadyCakeSalePayments(adminDb, sale.id);
-      return { ok: false, error: error.message };
+      return fail(error?.message ?? LOST_CLAIM);
     }
     revalidatePath("/pos", "layout");
     revalidatePath("/pos/pesanan", "layout");
@@ -627,7 +660,7 @@ export async function settlePesanan(input: {
       .select("id")
       .single();
     if (newErr || !newStmt)
-      return { ok: false, error: newErr?.message ?? "Gagal membuat statement" };
+      return fail(newErr?.message ?? "Gagal membuat statement");
     statementId = newStmt.id;
   }
 
@@ -669,7 +702,7 @@ export async function settlePesanan(input: {
   const description = `POS ${methodLabel}${custTag} (pesanan): ${itemsLabel}${cakeTag}`;
 
   const cakeErr = await recordCakePay();
-  if (cakeErr) return { ok: false, error: cakeErr };
+  if (cakeErr) return fail(cakeErr);
 
   const { data: tx, error: txErr } = await supabase
     .from("cashflow_transactions")
@@ -690,10 +723,10 @@ export async function settlePesanan(input: {
     .single();
   if (txErr || !tx) {
     await reverseReadyCakeSalePayments(adminDb, sale.id);
-    return { ok: false, error: txErr?.message ?? "Gagal membuat transaksi" };
+    return fail(txErr?.message ?? "Gagal membuat transaksi");
   }
 
-  const { error: linkErr } = await adminDb
+  const { data: linkRows, error: linkErr } = await adminDb
     .from("pos_sales")
     .update({
       cashflow_transaction_id: tx.id,
@@ -705,11 +738,14 @@ export async function settlePesanan(input: {
       settled_at: nowIso,
       settled_by: gate.userId,
     } as never)
-    .eq("id", sale.id);
-  if (linkErr) {
+    .eq("id", sale.id)
+    .eq("payment_status", "pending")
+    .eq("settled_at", nowIso)
+    .select("id");
+  if (linkErr || !linkRows || linkRows.length === 0) {
     await supabase.from("cashflow_transactions").delete().eq("id", tx.id);
     await reverseReadyCakeSalePayments(adminDb, sale.id);
-    return { ok: false, error: linkErr.message };
+    return fail(linkErr?.message ?? LOST_CLAIM);
   }
 
   revalidatePath("/pos", "layout");
@@ -810,10 +846,14 @@ export async function cancelPesanan(input: {
     })
     .eq("id", sale.id)
     .is("voided_at", null)
+    // Dibayar (atau sedang dilunasi) di perangkat lain sejak dibaca di atas:
+    // membatalkannya akan meninggalkan pesanan lunas+batal dengan kas tercatat.
+    .eq("payment_status", "pending")
+    .or(settleLeaseFreeFilter(new Date()))
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!updated || updated.length === 0)
-    return { ok: false, error: "Pesanan ini baru saja dibatalkan orang lain." };
+    return { ok: false, error: "Pesanan ini baru saja dibayar atau dibatalkan orang lain." };
 
   // Pulihkan stok bila opname terakhir terjadi SETELAH pesanan dibuat —
   // dalam kasus itu void saja tidak cukup (deduksi sudah terserap baseline

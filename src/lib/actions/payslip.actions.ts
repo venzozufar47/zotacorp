@@ -1946,11 +1946,19 @@ export async function calculatePayslip(
   const { fields } = computePayslipFromInputs(inputs);
 
   if (existing) {
-    const { error } = await supabase
+    // `.eq("status", "draft")`: slip bisa difinalisasi admin lain di antara
+    // baca `existing` di atas dan tulisan ini — jangan timpa angka slip
+    // yang sudah terbit (docs/STATE_MACHINES.md SM-4).
+    const { data: written, error } = await supabase
       .from("payslips")
       .update({ ...fields, inputs_signature: sig })
-      .eq("id", existing.id);
+      .eq("id", existing.id)
+      .eq("status", "draft")
+      .select("id");
     if (error) return { error: error.message };
+    if (!written || written.length === 0) {
+      return { error: "This payslip is already finalized. Reopen it first to recalculate." };
+    }
   } else {
     const { error } = await supabase
       .from("payslips")
@@ -2111,7 +2119,7 @@ export async function updatePayslipManualEntries(
     }
   );
 
-  const { error } = await supabase
+  const { data: written, error } = await supabase
     .from("payslips")
     .update({
       ...fields,
@@ -2120,9 +2128,12 @@ export async function updatePayslipManualEntries(
       net_total: netTotal,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", payslipId);
+    .eq("id", payslipId)
+    .eq("status", "draft")
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!written || written.length === 0) return { error: "Cannot edit a finalized payslip." };
 
   revalidatePath("/admin/payslips");
   return {};
@@ -2145,6 +2156,9 @@ export async function finalizePayslip(payslipId: string) {
   // Re-finalize: reset employee_response to 'pending' so admin gets a
   // fresh ack signal on every cycle. Payment status is intentionally
   // NOT reset — real money already moved.
+  // `.eq("status", "draft")`: "siklus" = buka ulang lalu finalisasi lagi.
+  // Memanggil finalisasi pada slip yang SUDAH final (klik ganda, dua admin)
+  // dulu menghapus konfirmasi/sanggahan karyawan dan mengirim push dobel.
   const { data: updated, error } = await supabase
     .from("payslips")
     .update({
@@ -2157,14 +2171,14 @@ export async function finalizePayslip(payslipId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", payslipId)
+    .eq("status", "draft")
     .select("user_id, month, year")
     .maybeSingle();
 
   if (error) return { error: error.message };
+  if (!updated) return { error: "Slip ini sudah final atau tidak ditemukan." };
 
-  if (updated) {
-    await notifyPayslipFinalized(updated.user_id, updated.month, updated.year);
-  }
+  await notifyPayslipFinalized(updated.user_id, updated.month, updated.year);
 
   revalidatePath("/admin/payslips");
   return {};
@@ -2227,15 +2241,22 @@ export async function submitPayslipResponse(
   if (kind === "issue" && !trimmed)
     return { error: "Tulis detail masalahnya dulu" };
 
-  const { error } = await supabase
+  // `.eq("status", "finalized")`: admin bisa membuka ulang slip di antara
+  // pemeriksaan di atas dan tulisan ini; konfirmasi atas angka yang sedang
+  // direvisi tidak boleh tercatat.
+  const { data: written, error } = await supabase
     .from("payslips")
     .update({
       employee_response: kind,
       employee_response_message: kind === "issue" ? trimmed : null,
       employee_response_at: kind === "pending" ? null : new Date().toISOString(),
     })
-    .eq("id", payslipId);
+    .eq("id", payslipId)
+    .eq("status", "finalized")
+    .select("id");
   if (error) return { error: error.message };
+  if (!written || written.length === 0)
+    return { error: "Only finalized payslips can be responded to" };
 
   // Sanggahan baru -> beri tahu admin lewat push (best-effort, tidak menggagalkan aksi).
   if (kind === "issue") {
@@ -2321,7 +2342,7 @@ export async function markPayslipPaid(
   const role = await getCurrentRole();
   if (role !== "admin") return { error: "Forbidden" };
   const supabase = await createClient();
-  const { error } = await supabase
+  const query = supabase
     .from("payslips")
     .update({
       payment_status: paid ? "paid" : "unpaid",
@@ -2329,7 +2350,13 @@ export async function markPayslipPaid(
       payment_note: note?.trim() ? note.trim() : null,
     })
     .eq("id", payslipId);
+  // Hanya slip final yang boleh ditandai lunas: angka slip draft masih bisa
+  // berubah, jadi "lunas" atasnya tidak berarti apa-apa. Membatalkan tanda
+  // lunas tetap boleh di status apa pun (koreksi salah klik).
+  const { data: written, error } = await (paid ? query.eq("status", "finalized") : query).select("id");
   if (error) return { error: error.message };
+  if (!written || written.length === 0)
+    return { error: "Slip belum final (atau dibuka ulang) — finalisasi dulu sebelum ditandai lunas." };
   // Kirim WA hanya saat menandai LUNAS (bukan saat membatalkan) & diminta.
   let waSent = false;
   if (paid && opts?.notifyWa) waSent = await notifyPayslipPaid(payslipId);
@@ -2351,6 +2378,7 @@ export async function bulkMarkPayslipsPaid(
     .update({ payment_status: "paid", payment_at: new Date().toISOString() })
     .in("id", payslipIds)
     .eq("payment_status", "unpaid")
+    .eq("status", "finalized")
     .select("id");
   if (error) return { paidCount: 0, error: error.message };
   const newlyPaid = (data ?? []).map((r) => r.id);

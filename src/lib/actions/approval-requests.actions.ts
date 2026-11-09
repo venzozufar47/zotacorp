@@ -115,7 +115,10 @@ async function applyAutoApprovals(): Promise<void> {
       owner_note: "Tidak dijawab 2 hari kerja — berjalan otomatis sesuai SOP 2.4.",
       decided_at: new Date().toISOString(),
     })
-    .in("id", eligible.map((r: any) => r.id));
+    .in("id", eligible.map((r: any) => r.id))
+    // Owner bisa memutuskan di antara SELECT di atas dan UPDATE ini; jangan
+    // timpa keputusannya dengan 'auto_approved' (docs/STATE_MACHINES.md SM-3).
+    .eq("status", "pending");
 }
 
 export interface SubmitApprovalRequestInput {
@@ -202,15 +205,18 @@ export async function decideApprovalRequest(input: {
   if (!req) return { ok: false, error: "Permintaan tidak ditemukan" };
   if (req.status !== "pending") return { ok: false, error: "Sudah diproses" };
 
-  const { error } = await db()
+  const { data: decided, error } = await db()
     .from("approval_requests")
     .update({
       status: input.decision,
       owner_note: input.note?.trim() || null,
       decided_at: new Date().toISOString(),
     })
-    .eq("id", input.id);
+    .eq("id", input.id)
+    .eq("status", "pending")
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!decided || decided.length === 0) return { ok: false, error: "Sudah diproses" };
 
   const label = input.decision === "approved" ? "disetujui" : input.decision === "rejected" ? "ditolak" : "diubah Owner";
   await sendPushToUser(req.requested_by, {
