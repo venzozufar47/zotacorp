@@ -201,6 +201,13 @@ export function ProfileForm({
     return map;
   }, [businessUnits]);
 
+  // Karyawan mengisi unit bisnis, jabatan, dan hari pertama kerja SEKALI saat
+  // onboarding; setelah tersimpan hanya admin yang bisa mengubah
+  // (lib/profile/edit-policy.ts — server menolak perubahan).
+  const lockBusinessUnit = !targetId && !!profile.business_unit;
+  const lockJobRole = !targetId && !!profile.job_role;
+  const lockFirstDay = !targetId && !!profile.first_day_of_work;
+
   const availableJobRoles = useMemo(() => {
     if (!state.business_unit) return [];
     return rolesByBu.get(state.business_unit) ?? [];
@@ -506,8 +513,9 @@ export function ProfileForm({
               value={state.business_unit || undefined}
               onValueChange={(v) => {
                 set("business_unit", v ?? "");
-                set("job_role", "");
+                if (!lockJobRole) set("job_role", "");
               }}
+              disabled={lockBusinessUnit}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={pf.selectBusinessUnit} />
@@ -523,7 +531,7 @@ export function ProfileForm({
             <Select
               value={state.job_role || undefined}
               onValueChange={(v) => set("job_role", v ?? "")}
-              disabled={!state.business_unit}
+              disabled={!state.business_unit || lockJobRole}
             >
               <SelectTrigger className="w-full">
                 <SelectValue
@@ -542,8 +550,12 @@ export function ProfileForm({
               type="date"
               value={state.first_day_of_work}
               onChange={(e) => set("first_day_of_work", e.target.value)}
+              disabled={lockFirstDay}
             />
           </Field>
+          {isEditing("work") && (lockBusinessUnit || lockJobRole || lockFirstDay) && (
+            <p className="text-xs text-muted-foreground md:col-span-2">{pf.adminOnlyAfterFilled}</p>
+          )}
           <Field label={pf.motto} value={state.motto} editing={isEditing("work")} notFilled={pf.notFilled}>
             <Textarea
               value={state.motto}

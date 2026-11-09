@@ -4,59 +4,23 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 import { cleanProfileFields } from "@/lib/profile/normalize";
+import {
+  ALL_EDITABLE_FIELDS,
+  ONBOARDING_ONCE_FIELDS,
+  filterProfilePatch,
+} from "@/lib/profile/edit-policy";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
-const ALLOWED_FIELDS = [
-  "full_name",
-  "nickname",
-  "business_unit",
-  "job_role",
-  "gender",
-  "date_of_birth",
-  "place_of_birth",
-  "current_city",
-  "whatsapp_number",
-  "npwp",
-  "npwp_not_applicable",
-  "emergency_contact_name",
-  "emergency_contact_whatsapp",
-  "first_day_of_work",
-  "motto",
-  "shirt_size",
-  "is_flexible_schedule",
-  "work_start_time",
-  "work_end_time",
-  "grace_period_min",
-  "workday_check_enabled",
-  "workdays",
-  "break_enabled",
-  "break_windows",
-  "holiday_bonus_enabled",
-  "domisili_provinsi",
-  "domisili_kota",
-  "domisili_kecamatan",
-  "domisili_kelurahan",
-  "domisili_alamat",
-  "asal_provinsi",
-  "asal_kota",
-  "asal_kecamatan",
-  "asal_kelurahan",
-  "asal_alamat",
-  "extra_work_enabled",
-  "payslip_excluded",
-  "is_probation",
-] as const;
-
-function sanitize(body: Record<string, unknown>): ProfileUpdate {
+function sanitize(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const key of ALLOWED_FIELDS) {
+  for (const key of ALL_EDITABLE_FIELDS) {
     if (key in body) {
       const v = body[key];
       out[key] = v === "" ? null : v;
     }
   }
-  return out as ProfileUpdate;
+  return out;
 }
 
 export async function POST(request: Request) {
@@ -76,17 +40,17 @@ export async function POST(request: Request) {
     // Determine whose profile is being updated
     const profileId: string = targetId ?? user.id;
 
-    // If editing someone else, caller must be admin
-    if (profileId !== user.id) {
-      const { data: callerProfile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
+    // Peran pemanggil menentukan kolom yang boleh diubah (lib/profile/edit-policy.ts).
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    const callerIsAdmin = callerProfile?.role === "admin";
 
-      if (callerProfile?.role !== "admin") {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    // If editing someone else, caller must be admin
+    if (profileId !== user.id && !callerIsAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Aturan baku nama/kontak/NPWP (lihat lib/profile/normalize.ts). Format
@@ -123,7 +87,22 @@ export async function POST(request: Request) {
     if (firstError) {
       return NextResponse.json({ error: firstError, fields: errors }, { status: 400 });
     }
-    const clean = sanitize(values);
+    // Route ini menulis dengan service role (melewati RLS & trigger kolom),
+    // jadi batas "karyawan hanya data diri dasar" WAJIB ditegakkan di sini.
+    let stored: Record<string, unknown> = {};
+    if (!callerIsAdmin) {
+      const { data: current } = await adminClient
+        .from("profiles")
+        .select(ONBOARDING_ONCE_FIELDS.join(","))
+        .eq("id", profileId)
+        .maybeSingle();
+      stored = (current ?? {}) as unknown as Record<string, unknown>;
+    }
+    const allowed = filterProfilePatch(sanitize(values), { isAdmin: callerIsAdmin, stored });
+    if (!allowed.ok) {
+      return NextResponse.json({ error: allowed.error }, { status: 403 });
+    }
+    const clean = allowed.patch as ProfileUpdate;
     // Penanda "tidak punya NPWP" dan isi NPWP tidak boleh saling bertentangan.
     if (clean.npwp_not_applicable === true) clean.npwp = null;
     else if (clean.npwp) clean.npwp_not_applicable = false;

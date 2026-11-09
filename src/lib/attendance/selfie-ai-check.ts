@@ -19,6 +19,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
 
 const MODEL = "gemini-2.5-flash";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -147,7 +148,9 @@ export async function runSelfieAiCheck(input: {
     }
     if (parsed.flag !== "ok" && parsed.flag !== "anomaly") return;
 
-    await supabase
+    // Service role: karyawan tidak lagi punya hak tulis langsung ke
+    // attendance_logs (migrasi 324, SM-7); penanda AI ditulis server.
+    await createAdminClient()
       .from("attendance_logs")
       .update({
         selfie_ai_flag: parsed.flag,

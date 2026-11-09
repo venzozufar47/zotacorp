@@ -336,6 +336,12 @@ export async function checkIn(payload: CheckInPayload) {
   // record for the day. Audit trail of the prior accidental check-out
   // is intentionally lost — admin can edit if needed.
   const reopen = existing?.checked_out_at != null;
+  // Tulisan absensi memakai service role: kolom hitungan (jam masuk, status,
+  // menit telat, bonus_day) dihitung DI SINI, dan karyawan tidak lagi punya
+  // hak tulis langsung ke attendance_logs (migrasi 324, SM-7). Filter
+  // `user_id` + `checked_out_at IS NULL` meniru persis kebijakan RLS lama
+  // (`attendance_update_own`) supaya perilakunya tidak berubah.
+  const writer = createAdminClient();
   const fields = {
     user_id: user.id,
     date: today,
@@ -363,13 +369,15 @@ export async function checkIn(payload: CheckInPayload) {
     bonus_day,
   };
   const result = reopen
-    ? await supabase
+    ? await writer
         .from("attendance_logs")
         .update(fields)
         .eq("id", existing!.id)
+        .eq("user_id", user.id)
+        .is("checked_out_at", null)
         .select()
         .single()
-    : await supabase
+    : await writer
         .from("attendance_logs")
         .insert(fields)
         .select()
@@ -564,7 +572,9 @@ export async function breakOut(payload: CheckInPayload) {
     return { error: "Anda sudah istirahat untuk sesi jam ini." };
   }
 
-  const { data, error } = await supabase
+  // Service role: jam istirahat dihitung server, karyawan tidak punya hak
+  // tulis langsung ke attendance_break_logs (migrasi 324, SM-7).
+  const { data, error } = await createAdminClient()
     .from("attendance_break_logs")
     .insert({
       attendance_log_id: log.id,
@@ -633,7 +643,9 @@ export async function breakIn(payload: CheckInPayload) {
   // Idempotent close: the conditional `.is("break_in_at", null)` means only the
   // call that actually transitions the session proceeds. A concurrent retry /
   // double-tap finds no row to update and returns without re-accruing.
-  const { data: closed } = await supabase
+  // Service role (SM-7); `user_id` meniru RLS lama `attendance_break_update_own`.
+  const writer = createAdminClient();
+  const { data: closed } = await writer
     .from("attendance_break_logs")
     .update({
       break_in_at: now.toISOString(),
@@ -645,6 +657,7 @@ export async function breakIn(payload: CheckInPayload) {
       updated_at: now.toISOString(),
     })
     .eq("id", open.id)
+    .eq("user_id", user.id)
     .is("break_in_at", null)
     .select("id")
     .maybeSingle();
@@ -660,13 +673,15 @@ export async function breakIn(payload: CheckInPayload) {
     .select("break_out_at, break_in_at")
     .eq("attendance_log_id", log.id);
   const totalBreakMinutes = sumBreakMinutes(allBreaks ?? []);
-  await supabase
+  await writer
     .from("attendance_logs")
     .update({
       total_break_minutes: totalBreakMinutes,
       updated_at: now.toISOString(),
     })
-    .eq("id", log.id);
+    .eq("id", log.id)
+    .eq("user_id", user.id)
+    .is("checked_out_at", null);
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
@@ -736,7 +751,9 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
     }
 
     if (Object.keys(updates).length > 0) {
-      await supabase.from("profiles").update(updates).eq("id", userId);
+      // Service role: kolom streak bukan data diri yang boleh diubah karyawan
+      // langsung (migrasi 324, SM-6).
+      await createAdminClient().from("profiles").update(updates).eq("id", userId);
     }
 
     if (snapshot.milestoneHitNow > 0) {
@@ -1171,7 +1188,10 @@ export async function checkOut(payload?: CheckOutPayload) {
   });
   if (!opnameGate.ok) return { error: opnameGate.error };
 
-  const { data, error } = await supabase
+  // Service role (SM-7): jam pulang & lembur dihitung di atas. Filter meniru
+  // RLS lama `attendance_update_own` (milik sendiri, belum check-out).
+  const writer = createAdminClient();
+  const { data, error } = await writer
     .from("attendance_logs")
     .update({
       checked_out_at: checkoutInstant.toISOString(),
@@ -1188,6 +1208,8 @@ export async function checkOut(payload?: CheckOutPayload) {
       updated_at: now.toISOString(),
     })
     .eq("id", existing.id)
+    .eq("user_id", user.id)
+    .is("checked_out_at", null)
     .select()
     .single();
 
@@ -1195,7 +1217,7 @@ export async function checkOut(payload?: CheckOutPayload) {
 
   // If overtime was claimed, create an overtime request
   if (isOvertime && overtimeMinutes > 0 && data) {
-    await supabase.from("overtime_requests").insert({
+    await writer.from("overtime_requests").insert({
       attendance_log_id: data.id,
       user_id: user.id,
       date: today,
@@ -1579,7 +1601,9 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
     });
   }
 
-  const { data, error } = await supabase
+  // Service role (SM-7); filter meniru RLS lama `attendance_update_own`.
+  const writer = createAdminClient();
+  const { data, error } = await writer
     .from("attendance_logs")
     .update({
       checked_out_at: checkoutDate.toISOString(),
@@ -1590,6 +1614,8 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", log.id)
+    .eq("user_id", user.id)
+    .is("checked_out_at", null)
     .select()
     .single();
 
@@ -1597,7 +1623,7 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
 
   // If overtime was claimed, create an overtime request
   if (isOvertime && overtimeMinutes > 0 && data) {
-    await supabase.from("overtime_requests").insert({
+    await writer.from("overtime_requests").insert({
       attendance_log_id: data.id,
       user_id: user.id,
       date: log.date,
