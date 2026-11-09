@@ -13,7 +13,14 @@ import { findPosAccount } from "./pos.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sumCakeRevenue } from "@/lib/scorecard/cake-revenue";
 import { bonusPool, distributeShares, scorecardPoints } from "@/lib/bonus/logic";
-import { isValidPeriod, isValidQuarter, lastDayOf, monthsOfQuarter, nextMonthStart, quarterOf, shiftQuarter } from "@/lib/bonus/periods";
+import {
+  MANUAL_ITEMS,
+  evaluateCloseChecks,
+  resolveVerification,
+  type CloseCheck,
+  type CloseFacts,
+} from "@/lib/bonus/close-checks";
+import { isValidPeriod, isValidQuarter, lastDayOf, periodLabel, monthsOfQuarter, nextMonthStart, quarterOf, shiftQuarter } from "@/lib/bonus/periods";
 
 /**
  * Kalkulator Bonus Tim (PRD-10) — Perjanjian Kerja Lampiran C.
@@ -135,6 +142,8 @@ export interface BonusMonthView {
   isCurrent: boolean;
   /** Bulan sudah berakhir sehingga boleh diterbitkan. */
   canPublish: boolean;
+  /** Bulan sudah berakhir tapi verifikasi tutup buku belum lengkap (tombol Terbitkan terkunci). */
+  needsVerification: boolean;
   /** Kuartal sumber parameter bila ini SIMULASI (hanya tampilan: tidak tersimpan, tidak bisa diterbitkan). */
   simulation: string | null;
   branches: BranchBonusView[];
@@ -421,6 +430,8 @@ export async function getBonusMonth(period: string, simulateWithQuarter?: string
     const ps = await Promise.all(BONUS_BRANCHES.map((b) => loadParams(b, simulateWithQuarter)));
     if (ps.every(Boolean)) simParams = { Pare: ps[0]!, Semarang: ps[1]! };
   }
+  // Gagal membaca verifikasi = dianggap belum terverifikasi (tombol terkunci), bukan merusak halaman.
+  const verified = period < thisMonth && !simParams ? await loadVerificationRow(period).then((r) => r.row?.verified_at != null, () => false) : false;
   const frozen = await Promise.all(BONUS_BRANCHES.map((b) => (simParams ? Promise.resolve(null) : loadFrozen(b, period))));
   const needLive = frozen.some((f) => !f);
   let report: PnLReport | null = null;
@@ -438,10 +449,237 @@ export async function getBonusMonth(period: string, simulateWithQuarter?: string
     period,
     quarter,
     isCurrent: period === thisMonth,
-    canPublish: period < thisMonth && !simParams,
+    canPublish: period < thisMonth && !simParams && verified,
+    needsVerification: period < thisMonth && !simParams && !verified,
     simulation: simParams ? simulateWithQuarter! : null,
     branches,
   };
+}
+
+// ─── Verifikasi tutup buku ───────────────────────────────────────────────────
+
+export interface BonusCloseState {
+  period: string;
+  checks: CloseCheck[];
+  manual: Record<string, boolean>;
+  overrides: Record<string, string>;
+  note: string;
+  /** Lengkap menurut data SEKARANG (syarat + centang) dan sudah disimpan sebagai terverifikasi. */
+  verified: boolean;
+  verifiedAt: string | null;
+  /** false bila tabel bonus_verifications belum ada (migrasi belum diterapkan). */
+  storeReady: boolean;
+}
+
+interface VerificationRow {
+  manual_checks: Record<string, boolean> | null;
+  overrides: Record<string, string> | null;
+  note: string | null;
+  verified_at: string | null;
+}
+
+/** Baris verifikasi bulan itu. Tabel belum ada (42P01) = storeReady false, bukan error. */
+async function loadVerificationRow(period: string): Promise<{ row: VerificationRow | null; storeReady: boolean }> {
+  const { data, error } = await db().from("bonus_verifications").select("manual_checks, overrides, note, verified_at").eq("period", period).maybeSingle();
+  if (error) {
+    if (error.code === "42P01" || /does not exist|schema cache/i.test(error.message ?? "")) return { row: null, storeReady: false };
+    throw new Error(error.message);
+  }
+  return { row: (data as VerificationRow | null) ?? null, storeReady: true };
+}
+
+function must<T extends { error: { message: string } | null }>(res: T, what: string): T {
+  if (res.error) throw new Error(`${what}: ${res.error.message}`);
+  return res;
+}
+
+async function maxTxDate(accountId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const st = must(await admin.from("cashflow_statements").select("id").eq("bank_account_id", accountId), "statements");
+  const ids = (st.data ?? []).map((r) => r.id as string);
+  if (ids.length === 0) return null;
+  const tx = must(
+    await admin.from("cashflow_transactions").select("transaction_date").in("statement_id", ids).order("transaction_date", { ascending: false }).limit(1),
+    "transaksi terbaru"
+  );
+  return (tx.data?.[0]?.transaction_date as string | undefined) ?? null;
+}
+
+async function loadCloseFacts(period: string): Promise<CloseFacts> {
+  const admin = createAdminClient();
+  const first = `${period}-01`;
+  const next = nextMonthStart(period);
+  const last = lastDayOf(period);
+  const [y, mo] = period.split("-").map(Number);
+  const today = jakartaDateString(new Date());
+
+  const accts = must(
+    await admin.from("bank_accounts").select("id, bank, account_name, default_branch, pos_enabled, is_active").eq("business_unit", "Haengbocake"),
+    "rekening"
+  );
+  const all = (accts.data ?? []) as { id: string; bank: string; account_name: string; default_branch: string | null; pos_enabled: boolean; is_active: boolean }[];
+
+  const bankAccts = all.filter((a) => a.is_active && (a.bank === "jago" || a.bank === "mandiri"));
+  const banks = await Promise.all(bankAccts.map(async (a) => ({ name: a.account_name.replace(/^Bank\s+/i, "").replace(/\s+Haengbocake$/i, ""), maxTxDate: await maxTxDate(a.id) })));
+
+  // Gaji: hanya karyawan Haengbocake.
+  const profs = must(await admin.from("profiles").select("id").eq("business_unit", "Haengbocake"), "profil");
+  const userIds = ((profs.data ?? []) as { id: string }[]).map((p) => p.id);
+  let slips = 0;
+  let finalized = 0;
+  let paid = 0;
+  let lastPaidDate: string | null = null;
+  if (userIds.length > 0) {
+    const ps = must(await admin.from("payslips").select("status, payment_status, payment_at").eq("month", mo).eq("year", y).in("user_id", userIds), "slip gaji");
+    for (const r of (ps.data ?? []) as { status: string; payment_status: string | null; payment_at: string | null }[]) {
+      slips += 1;
+      if (r.status === "finalized") finalized += 1;
+      if (r.payment_status === "paid") {
+        paid += 1;
+        if (r.payment_at) {
+          const d = jakartaDateString(new Date(r.payment_at));
+          if (!lastPaidDate || d > lastPaidDate) lastPaidDate = d;
+        }
+      }
+    }
+  }
+
+  const cash = await Promise.all(
+    BONUS_BRANCHES.map(async (branch) => {
+      const a = all.find((x) => x.is_active && x.pos_enabled && x.default_branch === branch);
+      if (!a) return { branch, found: false, maxTxDate: null, unclosedShifts: 0, lastOpnameDate: null };
+      const [mx, shifts, op] = await Promise.all([
+        maxTxDate(a.id),
+        admin.from("pos_shifts").select("id", { count: "exact", head: true }).eq("bank_account_id", a.id).neq("status", "closed").lt("opened_at", `${next}T00:00:00+07:00`),
+        admin.from("pos_stock_opnames").select("opname_date").eq("bank_account_id", a.id).gte("opname_date", first).lte("opname_date", last).order("opname_date", { ascending: false }).limit(1),
+      ]);
+      must(shifts, "shift POS");
+      must(op, "opname stok");
+      return {
+        branch,
+        found: true,
+        maxTxDate: mx,
+        unclosedShifts: shifts.count ?? 0,
+        lastOpnameDate: (op.data?.[0]?.opname_date as string | undefined) ?? null,
+      };
+    })
+  );
+
+  const pu = must(await admin.from("cashflow_pusat_allocations").select("side").eq("business_unit", "Haengbocake").eq("period_year", y).eq("period_month", mo), "alokasi Pusat");
+  const puRows = (pu.data ?? []) as { side: string }[];
+  const pusat = { credit: puRows.filter((r) => r.side === "credit").length, debit: puRows.filter((r) => r.side === "debit").length };
+
+  // Transaksi belum terkategori di semua rekening Haengbocake pada bulan itu.
+  const stAll = must(await admin.from("cashflow_statements").select("id").in("bank_account_id", all.map((a) => a.id)), "statements");
+  const stIds = ((stAll.data ?? []) as { id: string }[]).map((r) => r.id);
+  let uncategorized = 0;
+  for (let i = 0; i < stIds.length; i += 50) {
+    const r = must(
+      await admin
+        .from("cashflow_transactions")
+        .select("id", { count: "exact", head: true })
+        .in("statement_id", stIds.slice(i, i + 50))
+        .gte("transaction_date", first)
+        .lt("transaction_date", next)
+        .or("category.is.null,category.eq."),
+      "transaksi belum terkategori"
+    );
+    uncategorized += r.count ?? 0;
+  }
+
+  const quarter = quarterOf(period);
+  const paramsMissing: string[] = [];
+  for (const b of BONUS_BRANCHES) if (!(await loadParams(b, quarter))) paramsMissing.push(b);
+
+  return { period, today, banks, salary: { slips, finalized, paid, lastPaidDate }, cash, pusat, uncategorized, paramsMissing };
+}
+
+async function buildCloseState(period: string): Promise<BonusCloseState> {
+  const [facts, { row, storeReady }] = await Promise.all([loadCloseFacts(period), loadVerificationRow(period)]);
+  const checks = evaluateCloseChecks(facts);
+  const manual = row?.manual_checks ?? {};
+  const overrides = row?.overrides ?? {};
+  const res = resolveVerification(checks, manual, overrides);
+  return {
+    period,
+    checks,
+    manual,
+    overrides,
+    note: row?.note ?? "",
+    verified: storeReady && res.verified && row?.verified_at != null,
+    verifiedAt: row?.verified_at ?? null,
+    storeReady,
+  };
+}
+
+export async function getBonusCloseState(period: string): Promise<{ ok: true; state: BonusCloseState } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  if (!isValidPeriod(period)) return { ok: false, error: "Bulan tidak valid" };
+  try {
+    return { ok: true, state: await buildCloseState(period) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal memeriksa syarat tutup buku" };
+  }
+}
+
+/** Simpan centang manual, alasan meloloskan syarat yang gagal, dan catatan. Terverifikasi hanya bila semuanya lengkap. */
+export async function saveBonusVerification(input: {
+  period: string;
+  manual: Record<string, boolean>;
+  overrides: Record<string, string>;
+  note: string;
+}): Promise<{ ok: true; state: BonusCloseState } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  if (!isValidPeriod(input.period)) return { ok: false, error: "Bulan tidak valid" };
+  const today = jakartaDateString(new Date());
+  if (input.period >= today.slice(0, 7)) return { ok: false, error: "Bulan ini belum selesai." };
+
+  try {
+    const { count } = await db().from("bonus_runs").select("id", { count: "exact", head: true }).eq("period", input.period).eq("status", "finalized");
+    if ((count ?? 0) > 0) return { ok: false, error: "Bonus bulan ini sudah terbit; verifikasi tidak bisa diubah." };
+
+    const facts = await loadCloseFacts(input.period);
+    const checks = evaluateCloseChecks(facts);
+
+    // Bersihkan masukan: hanya kunci yang dikenal, alasan hanya untuk syarat yang memang gagal sekarang.
+    const manual: Record<string, boolean> = {};
+    for (const m of MANUAL_ITEMS) manual[m.key] = input.manual?.[m.key] === true;
+    const overrides: Record<string, string> = {};
+    for (const c of checks) {
+      const r = (input.overrides?.[c.key] ?? "").trim().slice(0, 500);
+      if (!c.ok && r) overrides[c.key] = r;
+    }
+    const note = (input.note ?? "").trim().slice(0, 1000);
+    const res = resolveVerification(checks, manual, overrides);
+    const now = new Date().toISOString();
+
+    const { error } = await db()
+      .from("bonus_verifications")
+      .upsert(
+        {
+          period: input.period,
+          checks_snapshot: checks,
+          manual_checks: manual,
+          overrides,
+          note: note || null,
+          verified_by: res.verified ? gate.userId : null,
+          verified_at: res.verified ? now : null,
+          updated_by: gate.userId,
+          updated_at: now,
+        },
+        { onConflict: "period" }
+      );
+    if (error) {
+      if (error.code === "42P01") return { ok: false, error: "Tabel verifikasi bonus belum tersedia (migrasi 322 belum diterapkan)." };
+      return { ok: false, error: error.message };
+    }
+    revalidatePath("/admin/bonus");
+    return { ok: true, state: await buildCloseState(input.period) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan verifikasi" };
+  }
 }
 
 // ─── Terbitkan ───────────────────────────────────────────────────────────────
@@ -459,6 +697,11 @@ export async function publishBonusRun(input: { branch: ScorecardBranch; period: 
 
   const params = await loadParams(input.branch, quarterOf(input.period));
   if (!params) return { ok: false, error: "Isi parameter kuartal (p dan LK dasar) dulu." };
+
+  // Gerbang verifikasi tutup buku: dievaluasi ulang sekarang, bukan hanya percaya pada centang yang tersimpan.
+  const close = await buildCloseState(input.period);
+  if (!close.storeReady) return { ok: false, error: "Tabel verifikasi bonus belum tersedia (migrasi 322 belum diterapkan)." };
+  if (!close.verified) return { ok: false, error: `Verifikasi tutup buku ${periodLabel(input.period)} belum lengkap atau datanya berubah sejak diverifikasi. Buka panel Verifikasi dan simpan ulang.` };
 
   const [y, mo] = input.period.split("-").map(Number);
   const report = await fetchPnL(createAdminClient(), "Haengbocake", { year: y, month: mo }, { year: y, month: mo });

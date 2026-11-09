@@ -28,7 +28,7 @@ function Row({ label, value, strong, minus, hint }: { label: string; value: stri
  * Hitungan bonus satu cabang untuk satu bulan: omzet → HPP → LK aktual → selisih dari LK dasar → × p → × pengali
  * scorecard → kolam, lalu pembagian ke penerima. Semua langkah ditampilkan supaya transparan (dan siap dipakai slip gaji).
  */
-export function BranchBonusCard({ view, period, canPublish, simulated }: { view: BranchBonusView; period: string; canPublish: boolean; simulated?: boolean }) {
+export function BranchBonusCard({ view, period, canPublish, needsVerification, simulated }: { view: BranchBonusView; period: string; canPublish: boolean; needsVerification?: boolean; simulated?: boolean }) {
   const b = view.breakdown;
   const params = view.params;
   const legacy = b.regime === "laba_rugi";
@@ -53,7 +53,7 @@ export function BranchBonusCard({ view, period, canPublish, simulated }: { view:
           )}
         >
           {status === "terbit" && !simulated ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-          {simulated ? "Simulasi" : status === "terbit" ? "Sudah terbit" : canPublish ? "Belum terbit" : "Sementara"}
+          {simulated ? "Simulasi" : status === "terbit" ? "Sudah terbit" : canPublish ? "Belum terbit" : needsVerification ? "Menunggu verifikasi" : "Sementara"}
         </span>
       </header>
 

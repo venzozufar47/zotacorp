@@ -8,7 +8,7 @@ export async function BonusResults({ period, simulateWith }: { period: string; s
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {month.branches.map((b) => (
-        <BranchBonusCard key={b.branch} view={b} period={period} canPublish={month.canPublish} simulated={!!month.simulation} />
+        <BranchBonusCard key={b.branch} view={b} period={period} canPublish={month.canPublish} needsVerification={month.needsVerification} simulated={!!month.simulation} />
       ))}
     </div>
   );

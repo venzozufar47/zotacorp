@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BonusMonthNav } from "@/components/admin/bonus/BonusMonthNav";
 import { BonusParametersCard } from "@/components/admin/bonus/BonusParametersCard";
 import { BonusResults } from "@/components/admin/bonus/BonusResults";
+import { BonusVerification } from "@/components/admin/bonus/BonusVerification";
 
 /**
  * Kalkulator Bonus Tim: owner menentukan p & LK dasar per kuartal, lalu menggeser bulan untuk melihat hitungan bonus
@@ -43,6 +44,12 @@ export default async function AdminBonusPage({ searchParams }: { searchParams: P
         </div>
       )}
       {quarter && <BonusParametersCard key={quarter.quarter} view={quarter} period={period} sim={sim} />}
+      {/* Verifikasi tutup buku: hanya untuk bulan yang sudah selesai, belum terbit, dan bukan simulasi. */}
+      {!sim && period < thisMonth && !(quarter?.publishedPeriods ?? []).includes(period) && (
+        <Suspense key={`v|${period}`} fallback={<Skeleton className="h-16" />}>
+          <BonusVerification period={period} />
+        </Suspense>
+      )}
       <Suspense
         key={`${period}|${sim ?? ""}`}
         fallback={
