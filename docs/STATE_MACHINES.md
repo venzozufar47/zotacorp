@@ -21,7 +21,7 @@ This file lists the app's state machines: their states, invariants, transition t
 |---|---|---|---|---|---|
 | 1 | Payslip | `payslips.status`, `employee_response`, `payment_status` | explicit, composite | full | SM-11, SM-12 |
 | 2 | Overtime | `overtime_requests.status` + `attendance_logs.overtime_status` | explicit, dual-write | full | none |
-| 3 | Attendance log | `attendance_logs.checked_out_at`, `status`, `late_proof_status` | implicit + explicit | partial | SM-7 |
+| 3 | Attendance log | `attendance_logs.checked_out_at`, `status`, `late_proof_status` | implicit + explicit | full | SM-13 |
 | 4 | Leave request | `leave_requests.status` | explicit | full | none |
 | 5 | Approval request | `approval_requests.status` | explicit | full | none |
 | 6 | POS sale / pesanan | `pos_sales.payment_status`, `voided_at`, `settled_at`, `cashflow_transaction_id` | implicit | full | SM-10 |
@@ -31,7 +31,7 @@ This file lists the app's state machines: their states, invariants, transition t
 | 10 | Ticket | `tickets.status`, `handler_level` | explicit | partial | SM-9 |
 | 11 | Assigned task | `assigned_tasks.status` | explicit | partial | none found |
 | 12 | HR grievance | `hr_grievances.status` | explicit | partial | none found |
-| 13 | Employee lifecycle | `profiles.is_active`, `resigned_at` | implicit | full | SM-6 |
+| 13 | Employee lifecycle | `profiles.is_active`, `resigned_at` | implicit | full | none |
 | 14 | Employment contract | `employment_contracts.status` | explicit | listed only | not audited |
 | 15 | Other machines | see [Not audited](#not-audited) | | listed only | |
 
@@ -95,18 +95,21 @@ Files: `src/lib/actions/attendance.actions.ts`, `src/app/api/attendance/upload-p
 
 **Invariants**
 
-- I1. The employee can update only their own open log (RLS `attendance_update_own`).
-- I2. `late_excused`, `late_proof_status ∈ {approved, rejected}`, and `late_proof_admin_note` are set only by an admin. This is a DB trigger since migration 323.
+- I1. Employees never write `attendance_logs`, `attendance_break_logs`, or `overtime_requests` directly. Since migration 324 they can only **read** their own rows. Every computed column (check-in and check-out time, `status`, `late_minutes`, `bonus_day`, overtime, break times, `total_break_minutes`) is computed and written by a server action using the service role.
+- I2. The service-role writes copy the old RLS filter exactly: `user_id = me`, and for updates also `checked_out_at IS NULL`. Behavior is therefore unchanged, including SM-13.
+- I3. `late_excused`, `late_proof_status ∈ {approved, rejected}`, and `late_proof_admin_note` are set only by an admin. This is a DB trigger since migration 323.
 
-| From | To | Action | Actor |
+| From | To | Action | Actor → writer |
 |---|---|---|---|
-| none | open | check-in (insert) | employee |
-| open | closed | check-out | employee |
-| late · proof null | late · proof pending | upload proof | employee |
+| none | open | `checkIn` (insert) | employee → service role |
+| open | open (break) | `breakOut`, `breakIn` (`attendance_break_logs`, `total_break_minutes`) | employee → service role |
+| open | closed | `checkOut`, `lateCheckout` (+ `overtime_requests` insert) | employee → service role |
+| late · proof null/rejected | late · proof pending | upload proof (`/api/attendance/upload-proof`) | employee → service role |
 | late · proof pending | late_excused · approved, or late · rejected | `reviewLateProof` | admin |
 | any | bonus | `setLogWorkdayClassification` | admin |
+| closed | open (re-check-in) | `checkIn` on an already-closed log | **never succeeds** (SM-13) |
 
-Open: SM-7. The computed columns (`status`, `late_minutes`, `checked_in_at`, `bonus_day`) are written with the employee's own client.
+Fixed: SM-7. Open: SM-13.
 
 ## 4. Leave request
 
@@ -212,7 +215,7 @@ File: `src/lib/actions/tickets.actions.ts`. `status ∈ {open, in_progress, esca
 
 - **Assigned task** `{backlog, open, submitted, approved, cancelled}`: submit, review, and cancel are CAS with row checks. No issue found.
 - **Grievance** `{submitted, confirmed, investigating, decided}`: confirm is CAS `status=submitted`, decide is CAS `status≠decided`. No issue found.
-- **Employee lifecycle** (implicit): pending registration (`is_active=false`, `resigned_at` null), then active (`is_active=true`), then resigned (`is_active=false`, `resigned_at` set). A resigned employee can be reactivated, and the audit columns are kept. Admin approval and rejection are CAS (`pending-registrations.actions.ts`). Before migration 323, `profiles_update_own` let a pending registrant set their own `is_active=true` through PostgREST and skip approval. The DB trigger `profiles_guard_lifecycle` now blocks this. See SM-1. Open: SM-6.
+- **Employee lifecycle** (implicit): pending registration (`is_active=false`, `resigned_at` null), then active (`is_active=true`), then resigned (`is_active=false`, `resigned_at` set). A resigned employee can be reactivated, and the audit columns are kept. Admin approval and rejection are CAS (`pending-registrations.actions.ts`). Before migration 323, `profiles_update_own` let a pending registrant set their own `is_active=true` through PostgREST and skip approval. This is now blocked by the DB trigger `profiles_guard_columns` (migration 324, which replaces `profiles_guard_lifecycle` from 323). See SM-1 and SM-6.
 
 ## Not audited
 
@@ -241,18 +244,19 @@ Priority means business impact × reachability. **P0**: anyone with an employee 
 
 | ID | P | Status | Summary |
 |---|---|---|---|
-| SM-1 | P0 | **Fixed in code, migration 323 not yet applied** | Employees could write decision columns directly |
+| SM-1 | P0 | **Ready; migration 323 not yet applied** | Employees could write decision columns directly |
 | SM-2 | P1 | Fixed | Pesanan double settle and settle-versus-cancel races |
 | SM-3 | P1 | Fixed | Pending-decision read-check races (overtime, leave, approvals) |
 | SM-4 | P1 | Fixed | Payslip lifecycle read-check races and double finalize |
 | SM-5 | P2 | Fixed | Bonus publish left a finalized run without shares |
-| SM-6 | P1 | **Open, needs a product decision** | `/api/profile/update` lets employees edit payroll fields on themselves |
-| SM-7 | P2 | Open | Computed attendance columns are written with the employee's client |
+| SM-6 | P1 | **Ready; app code + migration 324 not yet deployed** | Employees could edit payroll and schedule fields on themselves |
+| SM-7 | P1 | **Ready; app code + migration 324 not yet deployed** | Employees could rewrite computed attendance columns |
 | SM-8 | P3 | Open | Reopening a cancelled ready-stock cake leaves its stock withdrawn |
 | SM-9 | P3 | Open | `delegateTicket` reports success and pushes when the update hit 0 rows |
 | SM-10 | P3 | Open | A settle that starts during `editPesanan` can see half-edited items |
 | SM-11 | P3 | Open, decision | `reopenPayslip` allows reopening a paid slip, giving draft + paid |
 | SM-12 | P3 | Open | `saveDeliverables` replaces deliverables before the draft check holds |
+| SM-13 | P3 | Open, decision | Re-check-in after check-out has never worked |
 
 ### SM-1: employees can write decision columns directly (P0)
 
@@ -273,9 +277,9 @@ Priority means business impact × reachability. **P0**: anyone with an employee 
 
 **Fix.** `supabase/migrations/323_state_machine_guards.sql` adds `BEFORE` triggers in the same pattern as `cleaning_guard_review_columns`. Admins and the service role pass, and everyone else is limited to the columns their workflow needs. It also makes the money columns of a finalized payslip immutable for every role. That also closes the race between bulk recalculate and finalize, whose upsert cannot carry a state filter.
 
-**Test.** `supabase/tests/state_machine_guards.test.sql` runs in one transaction and rolls back.
+**Test.** `supabase/tests/state_machine_guards.test.sql` runs in one transaction and rolls back. It is run locally by `supabase/tests/run-db-tests.mjs`; see [Deployment](#deployment-migrations-323--324).
 
-**Not yet applied to production.** Apply it, then run the SQL test.
+**Not yet applied to production.**
 
 ### SM-2: pesanan settle (P1)
 
@@ -302,19 +306,44 @@ All of these now use CAS. Bulk upsert is covered by the trigger from SM-1.
 
 See [machine 9](#9-bonus-run).
 
-### SM-6: employees can edit payroll fields on themselves (P1, open)
+### SM-6: employees could edit payroll and schedule fields on themselves (P1, ready)
 
-`src/app/api/profile/update/route.ts` writes with the **service role** and has one `ALLOWED_FIELDS` list for self-edits and admin edits. Any employee can therefore set these fields on their own profile:
+**Before.** `src/app/api/profile/update/route.ts` wrote with the service role and used one field list for self-edits and admin edits. Any employee could set their own `grace_period_min`, work hours, workdays, flexible schedule, break windows, holiday bonus, extra work, `payslip_excluded`, and probation flag. Separately, `profiles_update_own` together with full column grants let them change any column through PostgREST, including `position`, `push_notification_exempt`, `disc_test_required`, and streak values.
 
-- `grace_period_min`, `work_start_time`, `work_end_time`, `workdays`, `workday_check_enabled`, `is_flexible_schedule`, `break_enabled`, `break_windows`: these change lateness, and therefore late penalties and attendance status.
-- `holiday_bonus_enabled`, `extra_work_enabled`, `payslip_excluded`, `is_probation`
-- `business_unit`, `job_role`, `first_day_of_work`
+**Policy** (decided 2026-11-09). Employees can edit only basic personal profile information. Everything else is admin-only. The single source of truth is `src/lib/profile/edit-policy.ts`:
 
-The service role bypasses SM-1's triggers. This is a product decision: decide which fields an employee may edit on their own profile, then split the list into self-editable fields and admin-only fields.
+- **Self-editable:** name, nickname, gender, date and place of birth, city, WhatsApp, NPWP (and the "no NPWP" flag), emergency contact, motto, shirt size, current address (`domisili_*`), and home address (`asal_*`). Employees can also change these technical columns: avatar and POS PIN.
+- **Fill once during onboarding:** `business_unit`, `job_role`, and `first_day_of_work`. Registration does not set them, and business unit and job role are required for a complete profile, which unlocks payslips. An employee may therefore fill them while they are empty. Once a value is stored, only an admin can change it.
+- **Admin-only:** everything else, including all of the payroll and schedule fields above.
 
-### SM-7: computed attendance columns are self-writable (P2, open)
+**Fix**
 
-Check-in and check-out write `status`, `late_minutes`, `checked_in_at`, and `bonus_day` with the employee's client, so an employee can rewrite them through PostgREST while their log is open. Migration 323 only locks the decision columns. Fix: move check-in and check-out writes to the service role, then guard those columns too.
+- The route applies `filterProfilePatch`:
+  - Admin-only keys in an employee's request are silently dropped, because the form posts every field on each save.
+  - A changed value for a filled onboarding field is rejected with 403.
+- `ProfileForm` shows filled onboarding fields as read-only for employees, with the hint "Setelah terisi, hanya admin yang bisa mengubahnya." (Once filled, only an admin can change it.)
+- Migration 324's trigger `profiles_guard_columns` applies the same whitelist to direct PostgREST writes. A test checks that the trigger's whitelist and `edit-policy.ts` match.
+- Streak bookkeeping moved to the service role.
+
+### SM-7: computed attendance columns were self-writable (P1, ready)
+
+**Before.** Check-in, check-out, late check-out, breaks, and overtime requests were written with the employee's own client. That client is governed by RLS `attendance_insert_own`, `attendance_update_own`, `attendance_break_*_own`, and `overtime_requests_insert_own`. So, through PostgREST, an employee could:
+
+- insert a log for any date;
+- rewrite `checked_in_at`, `status`, `late_minutes`, and `bonus_day` on their open log;
+- shorten their breaks.
+
+**Fix**
+
+- `attendance.actions.ts` (`checkIn`, `breakOut`, `breakIn`, `checkOut`, `lateCheckout`) keeps every read and every gate on the employee's client, but writes with the service role. Each write uses filters that copy the old policies, so existing behavior is unchanged.
+- `selfie-ai-check.ts` was switched to the service role too. It is currently disabled, but it would otherwise fail silently if re-enabled.
+- Migration 324 drops the five employee write policies. Employees keep `SELECT` on their own rows.
+
+**Deploy order matters.** The app code must be live **before** 324 drops the policies, because the old code writes with the employee client. The new code works with or without the policies.
+
+### SM-13: re-check-in after check-out has never worked (P3, open, decision)
+
+`checkIn` has a "re-check-in" branch that reopens a log already checked out today, meant for a cashier who taps check-out by mistake. The old RLS policy `attendance_update_own` only allows updates where `checked_out_at IS NULL`, so this update always matched 0 rows and failed with a raw PostgREST error. SM-7 deliberately keeps that behavior. Decide whether employees should be able to reopen a closed day. If so, drop the `.is("checked_out_at", null)` filter on that branch only, and show a clear message.
 
 ### SM-8: reopening a cancelled ready-stock cake (P3, open)
 
@@ -341,8 +370,34 @@ The action checks `status = draft`, deletes and reinserts deliverables, and then
 | Test | Covers |
 |---|---|
 | `src/lib/state-machines/transitions.test.ts` (in `npm test`) | SM-2, SM-3, SM-4, SM-5. Runs the real server actions on `fake-db.ts`, which evaluates filters and can inject a concurrent write between read and write (`onRead`) or a failure (`failOn`). Against the pre-fix actions, 12 of 17 fail |
-| `supabase/tests/state_machine_guards.test.sql` | SM-1 (DB triggers). Needs migration 323 applied, or pasted after `begin;` |
+| `src/lib/state-machines/attendance-profile.test.ts` (in `npm test`) | SM-6, SM-7. Runs the real attendance actions and profile route with an employee client that rejects every write to the guarded tables, as production does after 324. Check-in, breaks, check-out, late check-out, and streak must still succeed through the service role, and the route must drop or reject restricted fields. Against the pre-change code, 5 of 10 fail |
+| `supabase/tests/state_machine_guards.test.sql` | SM-1, with 323 applied (stages A and C) |
+| `supabase/tests/profile_attendance_guards.test.sql` | SM-1, SM-6, SM-7, with 323 and 324 applied. It also includes a compatibility matrix covering every write path the app uses: employee, service role, and admin |
+| `supabase/tests/run-db-tests.mjs` | Runs the SQL tests on **local** Postgres 17 (PGlite) seeded with the production schema snapshot `env/baseline_prod_2026-11-09.sql`. Stages: A (323), B (323 + 324), C (rollback 324), D (full rollback, catalog identical to baseline), E (324 applied twice). Both SQL tests fail on the unmigrated baseline |
 | `src/lib/tickets/notifications.test.ts` | ticket CAS (existing) |
+
+## Deployment: migrations 323 + 324
+
+Production runs on the Supabase **Free** plan (checked 2026-11-09). There are no automatic backups, no PITR, and no branching. Both migrations are DDL only: triggers, functions, and policies. They rewrite no data, so the rollback scripts restore the previous state completely. This was verified locally in stage D.
+
+1. **Before.** Run `npm test` and `node supabase/tests/run-db-tests.mjs`; both must be green. Optionally, download a dashboard backup or run `supabase db dump` with the database password, for extra assurance.
+2. **Apply 323** (`323_state_machine_guards.sql`). It is compatible with the code that is live today.
+3. **Deploy the app.** Push to `main`. Vercel deploys the SM-2 through SM-7 code.
+4. **Smoke-test in production:**
+   - An employee checks in, starts and ends a break, and checks out.
+   - An employee edits their nickname.
+   - An admin edits an employee's schedule.
+   - An admin finalizes and pays a slip.
+5. **Apply 324** (`324_profile_attendance_write_guards.sql`) only after step 4 passes and the new deployment is fully live.
+6. **Verify.**
+   - The production catalog matches stage B: the triggers `payslips_guard_transitions`, `attendance_logs_guard_decisions`, and `profiles_guard_columns` exist, and the five `*_own` write policies are gone.
+   - Repeat the step 4 smoke test.
+
+**Rollback**
+
+- `supabase/rollback/324_profile_attendance_write_guards.down.sql` restores the policies and the 323 profile guard. The app keeps working without it.
+- Then `323_state_machine_guards.down.sql`.
+- Reverting the app is a revert of the Vercel deployment. If 324 is live, roll it back **before** reverting the app.
 
 ## Production evidence queries (2026-11-09)
 
