@@ -9,7 +9,7 @@ import {
   ScheduleEditDialog,
   type UserRow,
 } from "@/components/admin/UsersTable";
-import { EmployeeLocationAssignment } from "@/components/admin/EmployeeLocationAssignment";
+import { LocationPanel } from "./LocationPanel";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { Panel } from "./Panel";
 
@@ -54,13 +54,11 @@ export function WorkSettings({
         </dl>
       </Panel>
 
-      <div className="lg:col-span-2">
-        <EmployeeLocationAssignment
-          employeeId={row.id}
-          allLocations={allLocations}
-          initialAssignedIds={row.assigned_location_ids}
-        />
-      </div>
+      <LocationPanel
+        employeeId={row.id}
+        allLocations={allLocations}
+        initialIds={row.assigned_location_ids}
+      />
 
       <ScheduleEditDialog
         row={editing ? row : null}

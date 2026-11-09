@@ -21,7 +21,7 @@ export default async function KaryawanHubPage({
 
   const roster = await loadRoster();
   const ownerActionCount = roster.reduce(
-    (n, e) => n + e.actions.filter((a) => a.owner === "owner").length,
+    (n, e) => n + e.actions.filter((a) => a.owner === "owner" && a.severity !== "info").length,
     0
   );
   const activeCount = roster.filter((e) => e.facts.isActive).length;

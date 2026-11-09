@@ -99,7 +99,7 @@ export default async function KaryawanProfilePage({
         {!facts.isAdmin && <Lifeline stage={stage} />}
       </header>
 
-      <nav aria-label="Bagian profil" className="flex gap-1 overflow-x-auto border-b border-border">
+      <nav aria-label="Bagian profil" className="flex flex-wrap gap-1 border-b border-border">
         {TABS.map((t) => (
           <Link
             key={t.key}
