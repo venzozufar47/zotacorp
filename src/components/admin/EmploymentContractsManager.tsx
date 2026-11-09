@@ -95,6 +95,7 @@ export function EmploymentContractsManager({
   businessUnits,
   rolesByBu,
   employerSignatures,
+  focusUserId,
 }: {
   templates: EmploymentContractTemplate[];
   contracts: ContractListRow[];
@@ -103,11 +104,26 @@ export function EmploymentContractsManager({
   /** Daftar jabatan per business unit (untuk dropdown Jabatan). */
   rolesByBu: Record<string, string[]>;
   employerSignatures: Record<string, EmployerSignatureStatus>;
+  /** Diisi dari profil karyawan: hanya kontrak orang ini, tanpa tab template/arsip. */
+  focusUserId?: string;
 }) {
   const [tab, setTab] = useState<"templates" | "contracts" | "archive">("contracts");
   // Arsip = disembunyikan dari daftar utama, TIDAK dihapus.
   const activeContracts = useMemo(() => contracts.filter((c) => !c.archived_at), [contracts]);
   const archivedContracts = useMemo(() => contracts.filter((c) => !!c.archived_at), [contracts]);
+  if (focusUserId) {
+    return (
+      <ContractsTab
+        focused
+        templates={templates}
+        rolesByBu={rolesByBu}
+        contracts={activeContracts.filter((c) => c.user_id === focusUserId)}
+        employees={employees.filter((e) => e.id === focusUserId)}
+        businessUnits={businessUnits}
+        employerSignatures={employerSignatures}
+      />
+    );
+  }
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b border-border">
@@ -428,6 +444,7 @@ function ContractsTab({
   businessUnits,
   employerSignatures,
   archivedView = false,
+  focused = false,
 }: {
   templates: EmploymentContractTemplate[];
   rolesByBu: Record<string, string[]>;
@@ -437,6 +454,8 @@ function ContractsTab({
   employerSignatures: Record<string, EmployerSignatureStatus>;
   /** true = tab Arsip: hanya baca + Kembalikan, tanpa penerbitan/edit. */
   archivedView?: boolean;
+  /** true = tampil di profil satu karyawan: tanpa terbit massal & kolom karyawan/BU. */
+  focused?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -542,7 +561,7 @@ function ContractsTab({
       {!archivedView && (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">TTD Pemberi Kerja:</span>
+          {contracts.length > 0 && <span className="font-semibold text-foreground">TTD Pemberi Kerja:</span>}
           {Array.from(new Set(contracts.map((c) => c.business_unit))).map((b) => (
             <span key={b} className="inline-flex items-center gap-1.5">
               {b}
@@ -551,9 +570,11 @@ function ContractsTab({
           ))}
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setBatching(true)} className={BTN_OUTLINE}>
-            <Users size={15} /> Terbitkan massal
-          </button>
+          {!focused && (
+            <button onClick={() => setBatching(true)} className={BTN_OUTLINE}>
+              <Users size={15} /> Terbitkan massal
+            </button>
+          )}
           <button onClick={() => setIssuing(true)} className={BTN_PRIMARY}>
             <Plus size={15} /> Terbitkan kontrak
           </button>
@@ -585,8 +606,8 @@ function ContractsTab({
                     {nomorDir === 1 ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
                   </button>
                 </th>
-                <th className="px-3 py-2 font-semibold">Karyawan</th>
-                <th className="px-3 py-2 font-semibold">Business Unit</th>
+                {!focused && <th className="px-3 py-2 font-semibold">Karyawan</th>}
+                {!focused && <th className="px-3 py-2 font-semibold">Business Unit</th>}
                 <th className="px-3 py-2 font-semibold">Status</th>
                 <th className="px-3 py-2 font-semibold">Ditandatangani</th>
                 <th className="px-3 py-2 font-semibold text-right">Aksi</th>
@@ -598,8 +619,8 @@ function ContractsTab({
                   <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] tabular-nums">
                     {contractNomorSurat(c) ?? "—"}
                   </td>
-                  <td className="px-3 py-2 font-medium">{c.employee_name}</td>
-                  <td className="px-3 py-2">{c.business_unit}</td>
+                  {!focused && <td className="px-3 py-2 font-medium">{c.employee_name}</td>}
+                  {!focused && <td className="px-3 py-2">{c.business_unit}</td>}
                   <td className="px-3 py-2">
                     <StatusBadge contract={c} />
                     <EndInfo contract={c} />
@@ -868,7 +889,9 @@ function ContractFormModal({
   const router = useRouter();
   const isDuplicate = mode === "issue" && !!seed;
   const [pending, startTransition] = useTransition();
-  const [userId, setUserId] = useState(contract?.user_id ?? "");
+  const [userId, setUserId] = useState(
+    contract?.user_id ?? (mode === "issue" && !seed && employees?.length === 1 ? employees[0].id : "")
+  );
   const [fields, setFields] = useState<ContractFields>(
     contract?.fields ?? seed?.fields ?? {}
   );
@@ -911,6 +934,18 @@ function ContractFormModal({
       if (!isDuplicate) setLoaded(false);
       return;
     }
+    loadFor(id);
+  };
+
+  // Dibuka dari profil karyawan: hanya satu pilihan, langsung isi formnya.
+  const soleEmployeeId =
+    mode === "issue" && !isDuplicate && employees?.length === 1 ? employees[0].id : null;
+  useEffect(() => {
+    if (soleEmployeeId) loadFor(soleEmployeeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function loadFor(id: string) {
     startTransition(async () => {
       const res = await prefillContractFields(id);
       if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
@@ -938,7 +973,7 @@ function ContractFormModal({
       setPickedBu(res.data.businessUnit);
       setLoaded(true);
     });
-  };
+  }
 
   const submit = () => {
     startTransition(async () => {

@@ -13,6 +13,8 @@ const GROUP_TITLE: Record<string, string> = {
   lokasi: "Absen bebas lokasi",
   kontrak: "Kontrak",
   gaji: "Setelan gaji belum final",
+  sanggahan: "Sanggahan slip",
+  perpanjangan: "Masa kontrak habis",
   izin: "Izin menunggu keputusan",
   probation: "Probation perlu diputuskan",
   offboarding: "Checklist keluar belum selesai",

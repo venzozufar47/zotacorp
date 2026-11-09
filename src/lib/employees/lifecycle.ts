@@ -47,6 +47,22 @@ export interface ContractFacts {
   status: ContractStatus;
   endedAt: string | null;
   resignNoticeAt: string | null;
+  /** Akhir masa kontrak (fields.tgl_berakhir), ISO. Null = tanpa batas waktu. */
+  termEndsOn: string | null;
+}
+
+/** Peringatan perpanjangan muncul sekian hari sebelum masa kontrak habis. */
+export const RENEWAL_WARN_DAYS = 45;
+
+const ID_MONTHS = ["januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember"];
+
+/** "9 Mei 2027" → "2027-05-09". Teks lain → null. */
+export function parseIdDate(text: string | null | undefined): string | null {
+  const m = /^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/i.exec((text ?? "").trim());
+  if (!m) return null;
+  const month = ID_MONTHS.indexOf(m[2].toLowerCase());
+  if (month < 0) return null;
+  return `${m[3]}-${String(month + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 }
 
 export interface EmployeeFacts {
@@ -63,6 +79,8 @@ export interface EmployeeFacts {
   contract: ContractFacts | null;
   offboarding: { total: number; done: number } | null;
   pendingLeave: number;
+  /** Slip yang disanggah karyawan dan belum dijawab admin. */
+  openPayslipIssues: number;
 }
 
 /** Bagian profil 360 tempat tindakan diselesaikan. */
@@ -184,8 +202,40 @@ export function deriveActions(f: EmployeeFacts, now = new Date()): EmployeeActio
     });
   }
 
+  const termEnd = f.contract?.status === "signed" ? f.contract.termEndsOn : null;
+  if (termEnd) {
+    const daysLeft = Math.ceil((new Date(termEnd).getTime() - now.getTime()) / DAY);
+    if (daysLeft < 0) {
+      out.push({
+        key: "perpanjangan",
+        label: `Masa kontrak habis ${formatShortDate(termEnd)}`,
+        severity: "tinggi",
+        tab: "kontrak",
+        owner: "owner",
+      });
+    } else if (daysLeft <= RENEWAL_WARN_DAYS) {
+      out.push({
+        key: "perpanjangan",
+        label: `Kontrak habis ${formatShortDate(termEnd)}, perpanjang?`,
+        severity: "sedang",
+        tab: "kontrak",
+        owner: "owner",
+      });
+    }
+  }
+
   if (f.payslipIncluded && !f.payslipSettingsFinal) {
     out.push({ key: "gaji", label: "Setelan gaji belum final", severity: "sedang", tab: "gaji", owner: "owner" });
+  }
+
+  if (f.openPayslipIssues > 0) {
+    out.push({
+      key: "sanggahan",
+      label: `${f.openPayslipIssues} sanggahan slip belum dijawab`,
+      severity: "tinggi",
+      tab: "gaji",
+      owner: "owner",
+    });
   }
 
   if (f.pendingLeave > 0) {

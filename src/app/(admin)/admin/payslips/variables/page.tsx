@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
@@ -29,6 +30,8 @@ interface SearchParams {
   year?: string;
   scope?: string;
   view?: string;
+  /** Saring ke satu karyawan (dibuka dari profil karyawan). */
+  user?: string;
 }
 
 export default async function PayslipVariablesPage({
@@ -54,6 +57,7 @@ export default async function PayslipVariablesPage({
         ? "bonus-cake"
         : "variables";
 
+  const focusUser = sp.user && /^[0-9a-f-]{36}$/.test(sp.user) ? sp.user : null;
   const supabase = await createClient();
   // Extra-work logs date range: bulan target (1st → end of month).
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -81,7 +85,8 @@ export default async function PayslipVariablesPage({
       .eq("is_active", true)
       .neq("role", "investor")
       .order("business_unit", { ascending: true, nullsFirst: false })
-      .order("full_name"),
+      .order("full_name")
+      .match(focusUser ? { id: focusUser } : {}),
     supabase.from("payslip_settings").select("*"),
     supabase.from("payslips").select("*").eq("month", month).eq("year", year),
     supabase
@@ -237,6 +242,21 @@ export default async function PayslipVariablesPage({
             : "Atur variabel payslip semua karyawan dalam satu tabel"
         }
       />
+      {focusUser && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+          <span>
+            Hanya menampilkan <span className="font-medium">{employees?.[0]?.full_name ?? "satu karyawan"}</span>.
+          </span>
+          <span className="flex gap-3">
+            <Link href={`/admin/karyawan/${focusUser}?tab=gaji`} className="text-primary hover:underline">
+              Kembali ke profil
+            </Link>
+            <Link href="/admin/payslips/variables" className="text-muted-foreground hover:text-foreground">
+              Semua karyawan
+            </Link>
+          </span>
+        </div>
+      )}
 
       <PayslipTabsNav current={view} />
 

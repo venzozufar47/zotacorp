@@ -5,6 +5,7 @@ import type { UserRow } from "@/components/admin/UsersTable";
 import {
   deriveActions,
   deriveStage,
+  parseIdDate,
   type ContractFacts,
   type ContractStatus,
   type EmployeeAction,
@@ -108,15 +109,28 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
   // Tabel di bawah belum semua ada di tipe hasil generate; baca sebagai `never`.
   const contractsQ = db
     .from("employment_contracts" as never)
-    .select("user_id, status, ended_at, resign_notice_at, archived_at, created_at")
+    .select("user_id, status, ended_at, resign_notice_at, archived_at, created_at, fields")
     .is("archived_at", null)
     .order("created_at", { ascending: false });
   const leaveQ = db.from("leave_requests").select("user_id").eq("status", "pending");
   const settingsQ = db.from("payslip_settings").select("user_id, is_finalized");
   const locQ = db.from("employee_locations").select("employee_id, location_id");
+  const issueQ = db
+    .from("payslips")
+    .select("user_id")
+    .eq("employee_response", "issue")
+    .is("admin_issue_reply", null);
   const offQ = db.from("offboarding_checklists").select("id, user_id").order("created_at", { ascending: false });
 
-  const [{ data: profiles }, { data: contracts }, { data: leaves }, { data: settings }, { data: locs }, { data: offs }] =
+  const [
+    { data: profiles },
+    { data: contracts },
+    { data: leaves },
+    { data: settings },
+    { data: locs },
+    { data: offs },
+    { data: issues },
+  ] =
     await Promise.all([
       profilesQ,
       only ? contractsQ.eq("user_id" as never, only as never) : contractsQ,
@@ -124,6 +138,7 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
       only ? settingsQ.eq("user_id", only) : settingsQ,
       only ? locQ.eq("employee_id", only) : locQ,
       only ? offQ.eq("user_id", only) : offQ,
+      only ? issueQ.eq("user_id", only) : issueQ,
     ]);
 
   const offRows = (offs ?? []) as { id: string; user_id: string }[];
@@ -140,14 +155,23 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
     status: ContractStatus;
     ended_at: string | null;
     resign_notice_at: string | null;
+    fields: Record<string, string> | null;
   }[]) {
     if (!contractByUser.has(c.user_id)) {
-      contractByUser.set(c.user_id, { status: c.status, endedAt: c.ended_at, resignNoticeAt: c.resign_notice_at });
+      contractByUser.set(c.user_id, {
+        status: c.status,
+        endedAt: c.ended_at,
+        resignNoticeAt: c.resign_notice_at,
+        termEndsOn: parseIdDate(c.fields?.tgl_berakhir),
+      });
     }
   }
 
   const leaveCount = new Map<string, number>();
   for (const l of leaves ?? []) leaveCount.set(l.user_id, (leaveCount.get(l.user_id) ?? 0) + 1);
+
+  const issueCount = new Map<string, number>();
+  for (const i of issues ?? []) issueCount.set(i.user_id, (issueCount.get(i.user_id) ?? 0) + 1);
 
   const finalByUser = new Map((settings ?? []).map((s) => [s.user_id, !!s.is_finalized]));
 
@@ -185,6 +209,7 @@ export async function loadRoster(opts?: { userId?: string }): Promise<RosterEntr
       contract: contractByUser.get(p.id) ?? null,
       offboarding: offId ? offTally.get(offId) ?? { total: 0, done: 0 } : null,
       pendingLeave: leaveCount.get(p.id) ?? 0,
+      openPayslipIssues: issueCount.get(p.id) ?? 0,
     };
     return {
       profile: p,

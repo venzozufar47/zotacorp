@@ -7,6 +7,12 @@ import { getCurrentRole, getCurrentUser } from "@/lib/supabase/cached";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { listLocations } from "@/lib/actions/location.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
+import {
+  getEmployerSignatureStatus,
+  listContractTemplates,
+  listEmploymentContracts,
+} from "@/lib/actions/employment-contracts.actions";
+import { EmploymentContractsManager } from "@/components/admin/EmploymentContractsManager";
 import { loadRoster, toUserRow } from "@/lib/employees/roster";
 import {
   CONTRACT_LABEL,
@@ -24,6 +30,7 @@ import { StagePill } from "@/components/admin/karyawan/StagePill";
 import { Panel } from "@/components/admin/karyawan/Panel";
 import { WorkSettings } from "@/components/admin/karyawan/WorkSettings";
 import { ResignControl } from "@/components/admin/karyawan/ResignControl";
+import { OffboardingItems } from "@/components/admin/karyawan/OffboardingItems";
 import type { Profile } from "@/lib/supabase/types";
 
 const TABS: { key: ProfileTab; label: string }[] = [
@@ -123,8 +130,8 @@ export default async function KaryawanProfilePage({
       {tab === "ringkasan" && <Ringkasan entry={entry} />}
       {tab === "data" && <DataDiri profile={p as Profile} />}
       {tab === "kerja" && <Kerja entry={entry} />}
-      {tab === "kontrak" && <Kontrak userId={id} />}
-      {tab === "gaji" && <Gaji userId={id} included={facts.payslipIncluded} settingsFinal={facts.payslipSettingsFinal} />}
+      {tab === "kontrak" && <Kontrak entry={entry} />}
+      {tab === "gaji" && <Gaji userId={id} included={facts.payslipIncluded} />}
       {tab === "izin" && <IzinSp userId={id} />}
       {tab === "keluar" && <Keluar entry={entry} isSelf={me?.id === id} />}
     </div>
@@ -202,7 +209,12 @@ function Ringkasan({ entry }: { entry: Entry }) {
           <dt className="text-muted-foreground">Bergabung</dt>
           <dd className="text-foreground">{formatShortDate(p.created_at)}</dd>
           <dt className="text-muted-foreground">Kontrak</dt>
-          <dd className="text-foreground">{facts.isAdmin ? "—" : CONTRACT_LABEL[contractState(facts)]}</dd>
+          <dd className="text-foreground">
+            {facts.isAdmin ? "—" : CONTRACT_LABEL[contractState(facts)]}
+            {facts.contract?.status === "signed" && facts.contract.termEndsOn && (
+              <span className="text-muted-foreground"> s.d. {formatShortDate(facts.contract.termEndsOn)}</span>
+            )}
+          </dd>
           <dt className="text-muted-foreground">Jadwal</dt>
           <dd className="text-foreground">{schedule}</dd>
           <dt className="text-muted-foreground">Lokasi absen</dt>
@@ -251,100 +263,120 @@ async function Kerja({ entry }: { entry: Entry }) {
   );
 }
 
-async function Kontrak({ userId }: { userId: string }) {
-  const { data } = await createAdminClient()
-    .from("employment_contracts" as never)
-    .select("id, contract_number, status, created_at, employee_signed_at, ended_at, end_reason, archived_at, version")
-    .eq("user_id" as never, userId as never)
-    .order("created_at", { ascending: false });
-  const rows = (data ?? []) as unknown as {
-    id: string;
-    contract_number: string | null;
-    status: keyof typeof CONTRACT_LABEL;
-    created_at: string;
-    employee_signed_at: string | null;
-    ended_at: string | null;
-    end_reason: string | null;
-    archived_at: string | null;
-    version: number | null;
-  }[];
+async function Kontrak({ entry }: { entry: Entry }) {
+  const p = entry.profile;
+  const [templates, contracts, employerSignatures, businessUnits] = await Promise.all([
+    listContractTemplates(),
+    listEmploymentContracts(),
+    getEmployerSignatureStatus(),
+    listBusinessUnits(),
+  ]);
+  const mine = contracts.filter((c) => c.user_id === p.id);
+  const archived = mine.filter((c) => c.archived_at).length;
+  const buNames = [
+    ...new Set([p.business_unit, ...templates.map((t) => t.business_unit), ...mine.map((c) => c.business_unit)]),
+  ].filter((v): v is string => !!v);
 
   return (
     <Panel
       title="Kontrak kerja"
       hint="Draft → Menunggu TTD → Berlaku → Berakhir"
       action={
-        <Link href="/admin/employment-contracts" className="text-sm text-primary hover:underline">
-          Terbitkan / kelola
+        <Link href="/admin/employment-contracts" className="text-sm text-muted-foreground hover:text-foreground">
+          Template & semua kontrak
         </Link>
       }
     >
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Belum ada kontrak.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="py-1 font-medium">Nomor</th>
-              <th className="py-1 font-medium">Status</th>
-              <th className="py-1 font-medium">Dibuat</th>
-              <th className="py-1 font-medium">Ditandatangani</th>
-              <th className="py-1 font-medium">Berakhir</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((c) => (
-              <tr key={c.id} className={cn("border-t border-border", c.archived_at && "text-muted-foreground")}>
-                <td className="py-1.5">
-                  {c.contract_number ?? "—"}
-                  {c.version && c.version > 1 ? <span className="ml-1 text-xs text-muted-foreground">v{c.version}</span> : null}
-                </td>
-                <td className="py-1.5">{c.archived_at ? "Diarsipkan" : CONTRACT_LABEL[c.status]}</td>
-                <td className="py-1.5">{formatShortDate(c.created_at)}</td>
-                <td className="py-1.5">{c.employee_signed_at ? formatShortDate(c.employee_signed_at) : "—"}</td>
-                <td className="py-1.5">{c.ended_at ? formatShortDate(c.ended_at) : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <EmploymentContractsManager
+        focusUserId={p.id}
+        templates={templates}
+        contracts={mine}
+        employees={[{ id: p.id, full_name: p.full_name, business_unit: p.business_unit ?? null }]}
+        businessUnits={buNames}
+        rolesByBu={Object.fromEntries(businessUnits.map((b) => [b.name, b.roles]))}
+        employerSignatures={employerSignatures}
+      />
+      {archived > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">{archived} kontrak lama diarsipkan.</p>
       )}
     </Panel>
   );
 }
 
-async function Gaji({ userId, included, settingsFinal }: { userId: string; included: boolean; settingsFinal: boolean }) {
-  const { data } = await createAdminClient()
-    .from("payslips")
-    .select("id, month, year, net_total, status, payment_status, employee_response")
-    .eq("user_id", userId)
-    .order("year", { ascending: false })
-    .order("month", { ascending: false })
-    .limit(6);
+async function Gaji({ userId, included }: { userId: string; included: boolean }) {
+  const db = createAdminClient();
+  const [{ data: slips }, { data: settings }] = await Promise.all([
+    db
+      .from("payslips")
+      .select("id, month, year, net_total, status, payment_status, employee_response")
+      .eq("user_id", userId)
+      .order("year", { ascending: false })
+      .order("month", { ascending: false })
+      .limit(6),
+    db
+      .from("payslip_settings")
+      .select("calculation_basis, monthly_fixed_amount, expected_work_days, is_finalized")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
+  const editor = (q: string) => `/admin/payslips/variables?user=${userId}${q}`;
+
+  if (!included) {
+    return (
+      <Panel title="Gaji">
+        <p className="text-sm text-muted-foreground">
+          Orang ini tidak ikut penggajian bulanan. Nyalakan &ldquo;Masuk penggajian&rdquo; di tab Kerja bila perlu.
+        </p>
+      </Panel>
+    );
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-[2fr_3fr]">
       <Panel
         title="Setelan gaji"
         action={
-          <Link href="/admin/payslips/variables" className="text-sm text-primary hover:underline">
-            Ubah setelan
+          <Link href={editor("&scope=settings")} className="text-sm text-primary hover:underline">
+            Ubah
           </Link>
         }
       >
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-          <dt className="text-muted-foreground">Penggajian</dt>
-          <dd className="text-foreground">{included ? "Ikut" : "Tidak ikut"}</dd>
-          <dt className="text-muted-foreground">Setelan</dt>
-          <dd className={settingsFinal ? "text-foreground" : "text-destructive"}>{settingsFinal ? "Final" : "Belum final"}</dd>
-        </dl>
+        {!settings ? (
+          <p className="text-sm text-destructive">Belum diatur.</p>
+        ) : (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            <dt className="text-muted-foreground">Dasar hitung</dt>
+            <dd className="text-foreground">{settings.calculation_basis ?? "—"}</dd>
+            <dt className="text-muted-foreground">Gaji pokok</dt>
+            <dd className="tabular-nums text-foreground">{rupiah(settings.monthly_fixed_amount)}</dd>
+            <dt className="text-muted-foreground">Hari kerja/bulan</dt>
+            <dd className="text-foreground">{settings.expected_work_days ?? "—"}</dd>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd className={settings.is_finalized ? "text-foreground" : "text-destructive"}>
+              {settings.is_finalized ? "Final" : "Belum final"}
+            </dd>
+          </dl>
+        )}
       </Panel>
-      <Panel title="Slip terakhir">
-        {(data ?? []).length === 0 ? (
+      <Panel
+        title="Slip terakhir"
+        action={
+          <span className="flex gap-3 text-sm">
+            <Link href={editor("&scope=monthly")} className="text-primary hover:underline">
+              Slip bulan ini
+            </Link>
+            <Link href={editor("&view=payments")} className="text-muted-foreground hover:text-foreground">
+              Pembayaran
+            </Link>
+          </span>
+        }
+      >
+        {(slips ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">Belum ada slip.</p>
         ) : (
           <table className="w-full text-sm">
             <tbody>
-              {(data ?? []).map((s) => (
+              {(slips ?? []).map((s) => (
                 <tr key={s.id} className="border-t border-border first:border-0">
                   <td className="py-1.5 text-foreground">
                     {MONTHS[s.month - 1]} {s.year}
@@ -352,6 +384,7 @@ async function Gaji({ userId, included, settingsFinal }: { userId: string; inclu
                   <td className="py-1.5 text-right tabular-nums text-foreground">{rupiah(s.net_total)}</td>
                   <td className="py-1.5 pl-4 text-muted-foreground">
                     {s.status === "draft" ? "Draft" : s.payment_status === "paid" ? "Dibayar" : "Final, belum dibayar"}
+                    {s.employee_response === "issue" && <span className="ml-2 text-destructive">ada sanggahan</span>}
                   </td>
                 </tr>
               ))}
@@ -453,8 +486,8 @@ async function Keluar({ entry, isSelf }: { entry: Entry; isSelf: boolean }) {
     .limit(1)
     .maybeSingle();
   const { data: items } = checklist
-    ? await db.from("offboarding_manual_items").select("id, label, done").eq("checklist_id", checklist.id)
-    : { data: [] as { id: string; label: string; done: boolean }[] };
+    ? await db.from("offboarding_manual_items").select("id, label, done, done_at").eq("checklist_id", checklist.id)
+    : { data: [] as { id: string; label: string; done: boolean; done_at: string | null }[] };
   const c = facts.contract;
 
   return (
@@ -487,7 +520,7 @@ async function Keluar({ entry, isSelf }: { entry: Entry; isSelf: boolean }) {
           )}
         </dl>
         {facts.isActive && c?.status === "signed" && (
-          <Link href="/admin/employment-contracts" className="mt-3 inline-block text-sm text-primary hover:underline">
+          <Link href="?tab=kontrak" className="mt-3 inline-block text-sm text-primary hover:underline">
             Akhiri kontrak
           </Link>
         )}
@@ -497,24 +530,10 @@ async function Keluar({ entry, isSelf }: { entry: Entry; isSelf: boolean }) {
         <Panel
           title="Checklist keluar"
           hint={`Dibuat ${formatShortDate(checklist.effective_at)}. PIN POS, tim, dan akses app sudah dicabut otomatis.`}
-          action={
-            <Link href="/admin/offboarding" className="text-sm text-primary hover:underline">
-              Centang
-            </Link>
-          }
         >
-          <ul className="space-y-1.5 text-sm">
-            {(items ?? []).map((i) => (
-              <li key={i.id} className="flex items-center gap-2">
-                {i.done ? (
-                  <Check size={14} className="text-success" aria-label="selesai" />
-                ) : (
-                  <span aria-label="belum" className="size-3.5 rounded-full border border-muted-foreground" />
-                )}
-                <span className={i.done ? "text-muted-foreground line-through" : "text-foreground"}>{i.label}</span>
-              </li>
-            ))}
-          </ul>
+          <OffboardingItems
+            items={(items ?? []).map((i) => ({ id: i.id, label: i.label, done: i.done, doneAt: i.done_at }))}
+          />
         </Panel>
       )}
     </div>
