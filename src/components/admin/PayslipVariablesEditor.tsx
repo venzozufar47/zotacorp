@@ -1,19 +1,11 @@
 "use client";
 
 import React, { createContext, useContext, useMemo, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Lock, Save, RotateCcw } from "lucide-react";
 import {
   bulkUpsertPayslipSettings,
-  bulkUpdateMonthlyEntries,
-  bulkFinalizePayslipSettings,
-  bulkCalculatePayslips,
-  bulkFinalizePayslipsForMonth,
-  calculatePayslip,
-  finalizePayslipSettings,
-  finalizePayslip,
-  reopenPayslip,
   saveDeliverables,
   updatePayslipManualEntries,
 } from "@/lib/actions/payslip.actions";
@@ -28,7 +20,7 @@ import type {
   PayslipBreakdown,
 } from "@/lib/supabase/types";
 import { formatRp } from "@/lib/cashflow/format";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 import { NetTotalBasis } from "@/components/payslip/NetTotalBasis";
 
@@ -60,7 +52,7 @@ interface ExtraWorkLogRow {
   multiplier_override: number | null;
 }
 
-interface EmployeeRow {
+export interface EmployeeRow {
   userId: string;
   fullName: string;
   businessUnit: string | null;
@@ -118,7 +110,7 @@ function MutedCellText({ children = "—" }: { children?: React.ReactNode }) {
 }
 
 /** Stable group order — null/empty BU di akhir. */
-function groupByBusinessUnit(
+export function groupByBusinessUnit(
   rows: EmployeeRow[]
 ): Array<{ name: string; rows: EmployeeRow[] }> {
   const groups = new Map<string, EmployeeRow[]>();
@@ -136,22 +128,13 @@ function groupByBusinessUnit(
   return sorted.map(([name, rows]) => ({ name, rows }));
 }
 
-interface ExtraWorkKindMeta {
+export interface ExtraWorkKindMeta {
   formulaKind: string;
   fixedRateIdr: number;
   dailyMultiplier: number;
 }
 
-const KindsByNameContext = createContext<Record<string, ExtraWorkKindMeta>>({});
-
-interface Props {
-  rows: EmployeeRow[];
-  scope: "settings" | "monthly";
-  month: number;
-  year: number;
-  monthLabel: string;
-  kindsByName?: Record<string, ExtraWorkKindMeta>;
-}
+export const KindsByNameContext = createContext<Record<string, ExtraWorkKindMeta>>({});
 
 const WEEKDAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
@@ -269,143 +252,6 @@ function basisSelectClass(basis: Basis): string {
   }
 }
 
-export function PayslipVariablesEditor({
-  rows,
-  scope,
-  month,
-  year,
-  monthLabel,
-  kindsByName,
-}: Props) {
-  const router = useRouter();
-  const sp = useSearchParams();
-
-  function setQuery(patch: Record<string, string>) {
-    const params = new URLSearchParams(sp.toString());
-    for (const [k, v] of Object.entries(patch)) params.set(k, v);
-    router.push(`/admin/payslips/variables?${params.toString()}`);
-  }
-
-  return (
-    <KindsByNameContext.Provider value={kindsByName ?? {}}>
-    <div className="space-y-5">
-      <ScopeAndPeriod
-        scope={scope}
-        month={month}
-        year={year}
-        monthLabel={monthLabel}
-        onChangeScope={(s) => setQuery({ scope: s })}
-        onChangeMonth={(m, y) =>
-          setQuery({ month: String(m), year: String(y) })
-        }
-      />
-
-      {scope === "settings" ? (
-        <SettingsScope rows={rows} month={month} year={year} />
-      ) : (
-        <MonthlyScope rows={rows} month={month} year={year} />
-      )}
-    </div>
-    </KindsByNameContext.Provider>
-  );
-}
-
-function ScopeAndPeriod({
-  scope,
-  month,
-  year,
-  monthLabel,
-  onChangeScope,
-  onChangeMonth,
-}: {
-  scope: "settings" | "monthly";
-  month: number;
-  year: number;
-  monthLabel: string;
-  onChangeScope: (s: "settings" | "monthly") => void;
-  onChangeMonth: (m: number, y: number) => void;
-}) {
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const years = Array.from({ length: 5 }, (_, i) => year - 2 + i);
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-3 flex flex-wrap items-center gap-3">
-      <div className="flex gap-1.5 rounded-full border border-border bg-muted/40 p-1">
-        {(["settings", "monthly"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onChangeScope(s)}
-            className={
-              "px-3 py-1 text-xs font-semibold rounded-full transition " +
-              (s === scope
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground")
-            }
-          >
-            {s === "settings" ? "Settings (per karyawan)" : "Bulanan"}
-          </button>
-        ))}
-      </div>
-      {/* Periode (bulan + tahun) tampil di KEDUA scope. Di scope "Bulanan"
-          ia memilih periode deliverables; di scope "Settings" ia jadi acuan
-          hitung otomatis hari kerja pola "selang-seling berpasangan" — jumlah
-          hari berubah mengikuti bulan & tahun yang dipilih di sini. */}
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-muted-foreground">Periode:</span>
-        <select
-          value={month}
-          onChange={(e) => onChangeMonth(Number(e.target.value), year)}
-          className="h-8 rounded-md border border-border bg-background px-2"
-        >
-          {months.map((m) => (
-            <option key={m} value={m}>
-              {new Date(year, m - 1).toLocaleDateString("id-ID", {
-                month: "long",
-              })}
-            </option>
-          ))}
-        </select>
-        <select
-          value={year}
-          onChange={(e) => onChangeMonth(month, Number(e.target.value))}
-          className="h-8 rounded-md border border-border bg-background px-2"
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-        <span className="text-muted-foreground tabular-nums">{monthLabel}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-//  Settings scope
-// ─────────────────────────────────────────────────────────────────────
-
-function SettingsScope({
-  rows,
-  month,
-  year,
-}: {
-  rows: EmployeeRow[];
-  month: number;
-  year: number;
-}) {
-  return (
-    <div className="space-y-4">
-      <CompensationBasisSection rows={rows} />
-      <ExpectedDaysSection rows={rows} month={month} year={year} />
-      <OvertimePenaltySection rows={rows} />
-      <ExtraWorkSection rows={rows} />
-    </div>
-  );
-}
-
 
 // Generic single-field section.
 function NumericSection({
@@ -516,7 +362,7 @@ function NumericSection({
   );
 }
 
-function CompensationBasisSection({ rows }: { rows: EmployeeRow[] }) {
+export function CompensationBasisSection({ rows }: { rows: EmployeeRow[] }) {
   type Draft = {
     salary?: string;
     basis?: Basis;
@@ -740,7 +586,7 @@ function CompensationBasisSection({ rows }: { rows: EmployeeRow[] }) {
   );
 }
 
-function ExtraWorkSection({ rows }: { rows: EmployeeRow[] }) {
+export function ExtraWorkSection({ rows }: { rows: EmployeeRow[] }) {
   return (
     <NumericSection
       title="Extra work rate"
@@ -754,7 +600,7 @@ function ExtraWorkSection({ rows }: { rows: EmployeeRow[] }) {
 }
 
 
-function ExpectedDaysSection({
+export function ExpectedDaysSection({
   rows,
   month,
   year,
@@ -1264,7 +1110,7 @@ function ExpectedDaysSection({
   );
 }
 
-function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
+export function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
   type Draft = {
     otMode?: OvertimeMode;
     otFirstHour?: string;
@@ -1544,427 +1390,8 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-//  Monthly scope — comprehensive table per karyawan
-// ─────────────────────────────────────────────────────────────────────
 
-function MonthlyHeader({
-  rows,
-  month,
-  year,
-}: {
-  rows: EmployeeRow[];
-  month: number;
-  year: number;
-}) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  const notCalculated = rows.filter(
-    (r) => r.settings?.is_finalized && !r.payslip
-  ).length;
-  const draftPayslip = rows.filter(
-    (r) => r.payslip?.status === "draft"
-  ).length;
-  const finalizedPayslip = rows.filter(
-    (r) => r.payslip?.status === "finalized"
-  ).length;
-
-  function bulkCalc(force = false) {
-    startTransition(async () => {
-      const res = await bulkCalculatePayslips(month, year, { force });
-      const parts: string[] = [];
-      if (res.calculatedCount > 0) parts.push(`${res.calculatedCount} dihitung`);
-      if (res.cachedCount > 0) parts.push(`${res.cachedCount} cached`);
-      if (res.skippedCount > 0)
-        parts.push(`${res.skippedCount} skipped (finalized)`);
-      if (parts.length > 0) toast.success(parts.join(" · "));
-      if (res.errorCount > 0) toast.error(`${res.errorCount} gagal di-calculate`);
-      else if (parts.length === 0) toast.info("Tidak ada payslip untuk dihitung");
-      router.refresh();
-    });
-  }
-
-  function bulkFinalize() {
-    if (draftPayslip === 0) return;
-    if (
-      !confirm(
-        `Finalize ${draftPayslip} payslip draft untuk bulan ini? Setelah finalized payslip read-only — admin perlu reopen manual untuk koreksi.`
-      )
-    )
-      return;
-    startTransition(async () => {
-      const res = await bulkFinalizePayslipsForMonth(month, year);
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(`${res.finalizedCount} payslip ter-finalize`);
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-3 flex flex-wrap items-center gap-3">
-      <div className="flex-1 min-w-0 flex flex-wrap gap-3 text-xs">
-        <Stat label="Belum dihitung" value={notCalculated} tone="amber" />
-        <Stat label="Draft" value={draftPayslip} tone="default" />
-        <Stat label="Finalized" value={finalizedPayslip} tone="emerald" />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => bulkCalc(false)}
-          disabled={pending}
-          title="Hitung ulang hanya yang berubah (cache yang tidak berubah)"
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50"
-        >
-          {pending ? "Working…" : "Calculate / Recalculate semua"}
-        </button>
-        <button
-          type="button"
-          onClick={() => bulkCalc(true)}
-          disabled={pending}
-          title="Force: bypass cache, hitung ulang semua dari nol"
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"
-        >
-          Force recalc
-        </button>
-        <button
-          type="button"
-          onClick={bulkFinalize}
-          disabled={pending || draftPayslip === 0}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
-        >
-          Finalize {draftPayslip} draft
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "amber" | "emerald" | "default";
-}) {
-  const cls =
-    tone === "amber"
-      ? "border-amber-300 bg-amber-50 text-amber-900"
-      : tone === "emerald"
-        ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-        : "border-border bg-muted/40 text-foreground";
-  return (
-    <span
-      className={
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border " + cls
-      }
-    >
-      <span className="font-bold tabular-nums">{value}</span>
-      <span className="text-[10px] uppercase tracking-wider">{label}</span>
-    </span>
-  );
-}
-
-function MonthlyScope({
-  rows,
-  month,
-  year,
-}: {
-  rows: EmployeeRow[];
-  month: number;
-  year: number;
-}) {
-  return (
-    <div className="space-y-4">
-      <MonthlyHeader rows={rows} month={month} year={year} />
-      <ComprehensiveMonthlyTable rows={rows} month={month} year={year} />
-    </div>
-  );
-}
-
-function ComprehensiveMonthlyTable({
-  rows,
-  month,
-  year,
-}: {
-  rows: EmployeeRow[];
-  month: number;
-  year: number;
-}) {
-  const groups = useMemo(() => groupByBusinessUnit(rows), [rows]);
-  return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              {[
-                "",
-                "Karyawan",
-                "Status",
-                "Net",
-                "Prorated",
-                "OT",
-                "Hr bonus",
-                "Late",
-                "Deliv",
-                "Extra",
-                "Bonus",
-                "Debt",
-                "Penalty",
-                "",
-              ].map((c, i) => (
-                <th
-                  key={i}
-                  className={
-                    "text-[10px] uppercase tracking-wider font-semibold text-muted-foreground py-1.5 px-2 " +
-                    (i <= 1 ? "text-left" : "text-right")
-                  }
-                >
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <React.Fragment key={g.name}>
-                <GroupHeader name={g.name} count={g.rows.length} colspan={14} />
-                {g.rows.map((r) => (
-                  <MonthlyRow
-                    key={r.userId}
-                    row={r}
-                    month={month}
-                    year={year}
-                  />
-                ))}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function MonthlyRow({
-  row,
-  month,
-  year,
-}: {
-  row: EmployeeRow;
-  month: number;
-  year: number;
-}) {
-  const router = useRouter();
-  const [expanded, setExpanded] = useState(false);
-  const [pending, startTransition] = useTransition();
-
-  const settings = row.settings;
-  const payslip = row.payslip;
-  const finalized = payslip?.status === "finalized";
-
-  const status = !settings
-    ? { label: "No settings", cls: "bg-muted text-muted-foreground" }
-    : !settings.is_finalized
-      ? {
-          label: "Settings draft",
-          cls: "bg-amber-100 text-amber-800",
-        }
-      : !payslip
-        ? {
-            label: "Belum dihitung",
-            cls: "bg-amber-100 text-amber-800",
-          }
-        : finalized
-          ? {
-              label: "Finalized",
-              cls: "bg-emerald-100 text-emerald-800",
-            }
-          : { label: "Draft", cls: "bg-sky-100 text-sky-800" };
-
-  function recalc() {
-    startTransition(async () => {
-      const res = await calculatePayslip(row.userId, month, year);
-      if ("error" in res && res.error) {
-        toast.error(res.error);
-        return;
-      }
-      if ("cached" in res && res.cached) {
-        toast.success("Tidak ada perubahan — payslip sudah up-to-date");
-      } else {
-        toast.success("Payslip ter-recalculate");
-      }
-      router.refresh();
-    });
-  }
-
-  function toggleFinalize() {
-    if (!payslip) return;
-    startTransition(async () => {
-      if (!finalized) {
-        const res = await finalizePayslip(payslip.id);
-        if ("error" in res && res.error) {
-          toast.error(res.error);
-          return;
-        }
-        toast.success("Finalized");
-        router.refresh();
-        return;
-      }
-
-      // Reopen flow with double-verification when employee has acknowledged.
-      const first = await reopenPayslip(payslip.id);
-      if ("error" in first && first.error) {
-        toast.error(first.error);
-        return;
-      }
-      if ("requiresConfirm" in first && first.requiresConfirm) {
-        const ackAt = first.employeeResponseAt
-          ? new Date(first.employeeResponseAt).toLocaleString("id-ID", {
-              day: "2-digit",
-              month: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "(tanpa timestamp)";
-        const proceed = confirm(
-          `⚠ Karyawan SUDAH mengkonfirmasi payslip ini (${ackAt}).\n\n` +
-            `Reopen akan membatalkan konfirmasi mereka — mereka harus konfirmasi ulang setelah kamu finalize lagi.\n\n` +
-            `Yakin lanjut reopen?`
-        );
-        if (!proceed) return;
-        const second = await reopenPayslip(payslip.id, { confirm: true });
-        if ("error" in second && second.error) {
-          toast.error(second.error);
-          return;
-        }
-      }
-      toast.success("Reopened");
-      router.refresh();
-    });
-  }
-
-  const numCell = (n: number | null | undefined): string =>
-    n == null ? "—" : formatRp(Number(n));
-
-  return (
-    <>
-      <tr
-        className={
-          "border-b border-border/50 " + (finalized ? "opacity-60" : "")
-        }
-      >
-        <td className="px-2 py-1.5 w-8">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            disabled={!payslip}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-            aria-label={expanded ? "Tutup" : "Buka"}
-          >
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        </td>
-        <NameCell row={row} />
-        <td className="px-2 py-1.5">
-          <span
-            className={
-              "inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider " +
-              status.cls
-            }
-          >
-            {status.label}
-          </span>
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums font-bold text-foreground">
-          {numCell(payslip?.net_total)}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
-          {numCell(payslip?.prorated_salary)}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
-          {numCell(payslip?.overtime_pay)}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-emerald-700">
-          {numCell(payslip?.bonus_day_pay)}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-destructive/80">
-          {payslip ? `−${formatRp(Number(payslip.late_penalty))}` : "—"}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
-          {numCell(payslip?.deliverables_pay)}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
-          {numCell(payslip?.extra_work_pay)}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-emerald-700">
-          {payslip
-            ? formatRp(
-                Number(payslip.monthly_bonus ?? 0) +
-                  Number(payslip.cake_bonus ?? 0)
-              )
-            : "—"}
-          {Number(payslip?.cake_bonus ?? 0) > 0 && (
-            <span className="block text-[10px] text-muted-foreground">
-              termasuk cake {formatRp(Number(payslip?.cake_bonus))}
-            </span>
-          )}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-destructive/80">
-          {payslip ? `−${formatRp(Number(payslip.debt_deduction))}` : "—"}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-destructive/80">
-          {payslip ? `−${formatRp(Number(payslip.other_penalty))}` : "—"}
-        </td>
-        <td className="px-2 py-1.5 text-right">
-          <div className="flex items-center justify-end gap-1">
-            {settings?.is_finalized && (
-              <button
-                type="button"
-                onClick={recalc}
-                disabled={pending}
-                className="text-[10px] font-semibold px-2 h-7 rounded-md border border-border hover:bg-muted disabled:opacity-50"
-                title={payslip ? "Recalculate payslip" : "Calculate payslip"}
-              >
-                {payslip ? "Recalc" : "Calc"}
-              </button>
-            )}
-            {payslip && (
-              <button
-                type="button"
-                onClick={toggleFinalize}
-                disabled={pending}
-                className={
-                  "text-[10px] font-semibold px-2 h-7 rounded-md border disabled:opacity-50 " +
-                  (finalized
-                    ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                    : "border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100")
-                }
-              >
-                {finalized ? "Reopen" : "Finalize"}
-              </button>
-            )}
-          </div>
-        </td>
-      </tr>
-      {expanded && payslip && (
-        <tr>
-          <td colSpan={14} className="px-3 py-3 bg-muted/20">
-            <ExpandedDetail row={row} payslip={payslip} />
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-function ExpandedDetail({
+export function ExpandedDetail({
   row,
   payslip,
 }: {
@@ -2024,7 +1451,7 @@ function ExpandedDetail({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <div className="rounded-xl border border-border bg-card p-3 space-y-2">
           <h4 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
             Manual entries

@@ -38,6 +38,8 @@ interface Props {
   month: number;
   year: number;
   monthLabel: string;
+  /** Periode sudah dipilih di bilah atas alur penggajian. */
+  hideMonthNav?: boolean;
 }
 
 function formatDateTime(iso: string | null): string {
@@ -63,7 +65,13 @@ function groupByBU(rows: PaymentRow[]): Array<{ name: string; rows: PaymentRow[]
     .map(([name, rows]) => ({ name, rows }));
 }
 
-export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
+export function PayslipPaymentsTable({
+  rows,
+  month,
+  year,
+  monthLabel,
+  hideMonthNav,
+}: Props) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -123,7 +131,7 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
     });
   }
 
-  const monthNav = (
+  const monthNav = hideMonthNav ? null : (
     <div className="rounded-2xl border border-border bg-card p-2.5 flex items-center gap-2 flex-wrap">
       <button
         type="button"

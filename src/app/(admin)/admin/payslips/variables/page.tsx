@@ -5,14 +5,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
 import { HubTabs } from "@/components/admin/karyawan/HubTabs";
-import { PayslipVariablesEditor } from "@/components/admin/PayslipVariablesEditor";
+import { PayrollFlow, type PayrollView } from "@/components/admin/PayrollFlow";
 import { PayslipDisputesPanel } from "@/components/admin/PayslipDisputesPanel";
 import {
   PayslipSanggahanPanel,
   type SanggahanItem,
 } from "@/components/admin/PayslipSanggahanPanel";
 import { PayslipPaymentsTable, type PaymentRow } from "@/components/admin/PayslipPaymentsTable";
-import { PayslipTabsNav, type PayslipView } from "@/components/admin/PayslipTabsNav";
 import { PayslipViewPersist } from "@/components/admin/PayslipViewPersist";
 import { CustomCakeBonusView } from "@/components/admin/CustomCakeBonusView";
 import {
@@ -28,8 +27,9 @@ import type { PayslipSettings } from "@/lib/supabase/types";
 interface SearchParams {
   month?: string;
   year?: string;
-  scope?: string;
   view?: string;
+  /** "1" membuka panel bonus cake di bawah daftar slip. */
+  bonus?: string;
   /** Saring ke satu karyawan (dibuka dari profil karyawan). */
   user?: string;
 }
@@ -48,14 +48,10 @@ export default async function PayslipVariablesPage({
   const today = new Date();
   const month = parseInt(sp.month ?? String(today.getMonth() + 1), 10);
   const year = parseInt(sp.year ?? String(today.getFullYear()), 10);
-  const scope: "settings" | "monthly" =
-    sp.scope === "monthly" ? "monthly" : "settings";
-  const view: PayslipView =
-    sp.view === "payments"
-      ? "payments"
-      : sp.view === "bonus-cake"
-        ? "bonus-cake"
-        : "variables";
+  const view: PayrollView = sp.view === "payments" ? "payments" : "slip";
+  // view=bonus-cake dari tautan lama membuka panel bonus di langkah Periksa.
+  const bonusOpen =
+    view === "slip" && (sp.bonus === "1" || sp.view === "bonus-cake");
 
   const focusUser = sp.user && /^[0-9a-f-]{36}$/.test(sp.user) ? sp.user : null;
   const supabase = await createClient();
@@ -233,8 +229,10 @@ export default async function PayslipVariablesPage({
       paymentNote: r.payslip!.payment_note ?? null,
     }));
 
+  const alertsCount = disputesWithName.length + sanggahan.length;
+
   return (
-    <div className="space-y-5 animate-fade-up">
+    <div className="space-y-4 animate-fade-up">
       <PayslipViewPersist />
       <HubTabs active="gaji" />
       {focusUser && (
@@ -257,41 +255,40 @@ export default async function PayslipVariablesPage({
         </div>
       )}
 
-      <PayslipTabsNav current={view} />
-
-      {view !== "bonus-cake" && <PayslipSanggahanPanel items={sanggahan} />}
-
-      {view === "variables" && (
-        <>
-          <PayslipDisputesPanel disputes={disputesWithName} />
-
-          <PayslipVariablesEditor
-            rows={rows}
-            scope={scope}
+      <PayrollFlow
+        rows={rows}
+        month={month}
+        year={year}
+        view={view}
+        bonusOpen={bonusOpen}
+        kindsByName={kindsByName}
+        alertsCount={alertsCount}
+        unpaidCount={paymentRows.filter((r) => r.paymentStatus === "unpaid").length}
+        alerts={
+          <>
+            <PayslipDisputesPanel disputes={disputesWithName} />
+            <PayslipSanggahanPanel items={sanggahan} />
+          </>
+        }
+        bonus={
+          bonusOpen ? (
+            <CustomCakeBonusViewWrapper
+              month={month}
+              year={year}
+              monthLabel={monthLabel}
+            />
+          ) : null
+        }
+        payments={
+          <PayslipPaymentsTable
+            rows={paymentRows}
             month={month}
             year={year}
             monthLabel={monthLabel}
-            kindsByName={kindsByName}
+            hideMonthNav
           />
-        </>
-      )}
-
-      {view === "payments" && (
-        <PayslipPaymentsTable
-          rows={paymentRows}
-          month={month}
-          year={year}
-          monthLabel={monthLabel}
-        />
-      )}
-
-      {view === "bonus-cake" && (
-        <CustomCakeBonusViewWrapper
-          month={month}
-          year={year}
-          monthLabel={monthLabel}
-        />
-      )}
+        }
+      />
     </div>
   );
 }
