@@ -244,13 +244,13 @@ Priority means business impact × reachability. **P0**: anyone with an employee 
 
 | ID | P | Status | Summary |
 |---|---|---|---|
-| SM-1 | P0 | **Ready; migration 323 not yet applied** | Employees could write decision columns directly |
+| SM-1 | P0 | **Fixed in production** (323 applied 2026-11-09 18:02 WIB; 324 applied 2026-11-10 21:3x WIB) | Employees could write decision columns directly |
 | SM-2 | P1 | Fixed | Pesanan double settle and settle-versus-cancel races |
 | SM-3 | P1 | Fixed | Pending-decision read-check races (overtime, leave, approvals) |
 | SM-4 | P1 | Fixed | Payslip lifecycle read-check races and double finalize |
 | SM-5 | P2 | Fixed | Bonus publish left a finalized run without shares |
-| SM-6 | P1 | **Ready; app code + migration 324 not yet deployed** | Employees could edit payroll and schedule fields on themselves |
-| SM-7 | P1 | **Ready; app code + migration 324 not yet deployed** | Employees could rewrite computed attendance columns |
+| SM-6 | P1 | **Fixed in production** | Employees could edit payroll and schedule fields on themselves |
+| SM-7 | P1 | **Fixed in production** (break path not yet observed live) | Employees could rewrite computed attendance columns |
 | SM-8 | P3 | Open | Reopening a cancelled ready-stock cake leaves its stock withdrawn |
 | SM-9 | P3 | Open | `delegateTicket` reports success and pushes when the update hit 0 rows |
 | SM-10 | P3 | Open | A settle that starts during `editPesanan` can see half-edited items |
