@@ -21,6 +21,7 @@ import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { createAdminClient as createShiftAdminClient } from "./_supabase-admin";
+import { resolveDailyRevenueTarget } from "@/lib/pos/daily-revenue-target";
 import { saleShiftContext } from "@/lib/pos/shift-data";
 import { resolveLedgerAccountId } from "@/lib/pos/ledger";
 import {
@@ -1957,7 +1958,7 @@ export async function getPosDailyRevenueSummary(
 
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("daily_revenue_target, default_branch, ledger_account_id")
+    .select("default_branch, ledger_account_id")
     .eq("id", bankAccountId)
     .maybeSingle();
   // Rekening POS Mamaya membukukan ke buku Semarang: omset hari ini = baris buku itu yang bertag cabang Mamaya,
@@ -1971,7 +1972,7 @@ export async function getPosDailyRevenueSummary(
     .eq("period_month", periodMonth)
     .maybeSingle();
 
-  const target = account?.daily_revenue_target ?? null;
+  const target = await resolveDailyRevenueTarget(bankAccountId, today);
 
   const empty = (): PosDailyRevenueSummary => ({
     today,

@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "./_supabase-admin";
 import { requireInsightsViewer, type ActionResult } from "./_gates";
+import { resolveDailyRevenueTarget } from "@/lib/pos/daily-revenue-target";
 import { jakartaDateMinusDays, jakartaHour } from "@/lib/utils/jakarta";
 import {
   SUGAR_LEVELS,
@@ -122,12 +123,7 @@ export async function getPosInsights(
   const today = range.to;
   const fromDate = range.from;
 
-  const { data: account } = await supabase
-    .from("bank_accounts")
-    .select("daily_revenue_target")
-    .eq("id", bankAccountId)
-    .maybeSingle();
-  const dailyRevenueTarget = account?.daily_revenue_target ?? null;
+  const dailyRevenueTarget = await resolveDailyRevenueTarget(bankAccountId, range.to);
 
   // Sales di window — paginasi 1000-row PostgREST cap.
   type SaleRow = {
