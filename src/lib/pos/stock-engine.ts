@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { collectOffRanges, offRangeOf, type OffRange } from "./sku-off-dates";
 
 /**
  * Mesin stok POS — primitif bersama.
@@ -50,6 +51,11 @@ export interface Sku {
    * produk baru menekan angka historis secara palsu.
    */
   createdAt: string;
+  /**
+   * Periode tanggal SKU ini tidak dijual (produk dan/atau varian dinonaktifkan). Terisi untuk SKU aktif yang pernah
+   * dinonaktifkan sebentar, dan untuk SKU nonaktif bila `includeRecentlyInactive` dipakai. Lihat sku-off-dates.ts.
+   */
+  offRanges?: OffRange[];
 }
 
 /** Ukuran halaman PostgREST. Batas keras server adalah 1000 baris. */
@@ -110,46 +116,69 @@ export async function fetchAllPages<T>(
  */
 export async function listActiveSkus(
   supabase: PosDbClient,
-  bankAccountId: string
+  bankAccountId: string,
+  opts: {
+    /**
+     * Ikutkan juga produk/varian NONAKTIF yang tanggal penonaktifannya diketahui (`inactive_since`, migrasi 326), lengkap
+     * dengan `offRanges`-nya. Hanya untuk Service Level, yang menghitung per tanggal; pemanggil lain tetap memakai katalog
+     * aktif saja. Produk nonaktif tanpa tanggal tetap tidak ikut.
+     */
+    includeRecentlyInactive?: boolean;
+  } = {}
 ): Promise<{ skus: Sku[]; aggregateProductIds: Set<string> }> {
-  const { data: products } = await supabase
+  const includeInactive = opts.includeRecentlyInactive === true;
+  let productQuery = supabase
     .from("pos_products")
-    .select("id, name, price, sort_order, stock_aggregate_variants, created_at")
+    .select(
+      "id, name, price, sort_order, stock_aggregate_variants, created_at, active, inactive_since, reactivated_on"
+    )
     .eq("bank_account_id", bankAccountId)
-    .eq("active", true)
-    .eq("track_stock", true)
+    .eq("track_stock", true);
+  productQuery = includeInactive
+    ? productQuery.or("active.eq.true,inactive_since.not.is.null")
+    : productQuery.eq("active", true);
+  const { data: products } = await productQuery
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   const productIds = (products ?? []).map((p) => p.id);
   const aggregateProductIds = new Set(
     (products ?? []).filter((p) => p.stock_aggregate_variants).map((p) => p.id)
   );
-  const { data: variants } = productIds.length
-    ? await supabase
-        .from("pos_product_variants")
-        .select("id, product_id, name, price, sort_order, created_at")
-        .in("product_id", productIds)
-        .eq("active", true)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true })
-    : {
-        data: [] as Array<{
-          id: string;
-          product_id: string;
-          name: string;
-          price: number;
-          sort_order: number;
-          created_at: string;
-        }>,
-      };
-  const variantsByProduct = new Map<string, NonNullable<typeof variants>>();
-  for (const v of variants ?? []) {
+  type VariantRow = {
+    id: string;
+    product_id: string;
+    name: string;
+    price: number;
+    sort_order: number;
+    created_at: string;
+    active: boolean;
+    inactive_since: string | null;
+    reactivated_on: string | null;
+  };
+  let variants: VariantRow[] = [];
+  if (productIds.length) {
+    let variantQuery = supabase
+      .from("pos_product_variants")
+      .select(
+        "id, product_id, name, price, sort_order, created_at, active, inactive_since, reactivated_on"
+      )
+      .in("product_id", productIds);
+    if (!includeInactive) variantQuery = variantQuery.eq("active", true);
+    const { data } = await variantQuery
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+    // Varian nonaktif tanpa tanggal tidak ikut (sama seperti sebelum ada tanggal).
+    variants = ((data ?? []) as VariantRow[]).filter((v) => v.active || v.inactive_since !== null);
+  }
+  const variantsByProduct = new Map<string, VariantRow[]>();
+  for (const v of variants) {
     const arr = variantsByProduct.get(v.product_id) ?? [];
     arr.push(v);
     variantsByProduct.set(v.product_id, arr);
   }
   const skus: Sku[] = [];
   for (const p of products ?? []) {
+    const productOff = offRangeOf(p);
     const vs = variantsByProduct.get(p.id) ?? [];
     if (vs.length === 0 || p.stock_aggregate_variants) {
       skus.push({
@@ -159,6 +188,7 @@ export async function listActiveSkus(
         variantName: null,
         unitPrice: Number(p.price),
         createdAt: p.created_at,
+        offRanges: collectOffRanges(productOff),
       });
     } else {
       for (const v of vs) {
@@ -173,6 +203,7 @@ export async function listActiveSkus(
           // bisa dijual.
           createdAt:
             v.created_at > p.created_at ? v.created_at : p.created_at,
+          offRanges: collectOffRanges(productOff, offRangeOf(v)),
         });
       }
     }
@@ -383,9 +414,9 @@ export interface StockEventStream {
 export async function loadStockEventStream(
   supabase: PosDbClient,
   bankAccountId: string,
-  opts: { anchorIso?: string | null; toIso: string }
+  opts: { anchorIso?: string | null; toIso: string; includeRecentlyInactive?: boolean }
 ): Promise<StockEventStream> {
-  const { anchorIso = null, toIso } = opts;
+  const { anchorIso = null, toIso, includeRecentlyInactive = false } = opts;
   // Delta dipotong EKSKLUSIF di jangkar (cocok dengan `.gt(sinceIso)` di
   // computeExpectedCounts); opname INKLUSIF supaya baris jangkar sendiri
   // ikut termuat dan bisa jadi baseline.
@@ -393,7 +424,7 @@ export async function loadStockEventStream(
 
   const [{ skus, aggregateProductIds }, opnameHeadersRes, movementsRes, salesRes] =
     await Promise.all([
-      listActiveSkus(supabase, bankAccountId),
+      listActiveSkus(supabase, bankAccountId, { includeRecentlyInactive }),
       fetchAllPages<{ id: string; created_at: string }>(() => {
         let q = supabase
           .from("pos_stock_opnames")

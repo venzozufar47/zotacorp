@@ -49,6 +49,9 @@ interface Props {
   initialProducts: PosProduct[];
 }
 
+const SERVICE_LEVEL_OFF_NOTE =
+  "Nonaktif: produk tidak ikut Service Level mulai hari ini. Hari-hari sebelumnya tetap terhitung.";
+
 export function ProductCatalogClient({
   bankAccountId,
   accountName,
@@ -145,6 +148,8 @@ export function ProductCatalogClient({
       if (!res.ok) {
         toast.error(res.error ?? "Gagal update");
         setProducts(prev);
+      } else if (patch.active === false && prev.find((p) => p.id === id)?.trackStock) {
+        toast.info(SERVICE_LEVEL_OFF_NOTE);
       }
     });
   }
@@ -226,6 +231,8 @@ export function ProductCatalogClient({
       if (!res.ok) {
         toast.error(res.error ?? "Gagal update");
         setProducts(prev);
+      } else if (patch.active === false && prev.find((p) => p.id === productId)?.trackStock) {
+        toast.info(SERVICE_LEVEL_OFF_NOTE);
       }
     });
   }

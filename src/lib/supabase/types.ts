@@ -6840,6 +6840,8 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
+          inactive_since: string | null
+          reactivated_on: string | null
           name: string
           price: number
           product_id: string
@@ -6851,6 +6853,8 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          inactive_since?: string | null
+          reactivated_on?: string | null
           name: string
           price: number
           product_id: string
@@ -6862,6 +6866,8 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          inactive_since?: string | null
+          reactivated_on?: string | null
           name?: string
           price?: number
           product_id?: string
@@ -6885,6 +6891,8 @@ export type Database = {
           bank_account_id: string
           created_at: string
           id: string
+          inactive_since: string | null
+          reactivated_on: string | null
           is_open_price: boolean
           name: string
           notes: string | null
@@ -6902,6 +6910,8 @@ export type Database = {
           bank_account_id: string
           created_at?: string
           id?: string
+          inactive_since?: string | null
+          reactivated_on?: string | null
           is_open_price?: boolean
           name: string
           notes?: string | null
@@ -6919,6 +6929,8 @@ export type Database = {
           bank_account_id?: string
           created_at?: string
           id?: string
+          inactive_since?: string | null
+          reactivated_on?: string | null
           is_open_price?: boolean
           name?: string
           notes?: string | null

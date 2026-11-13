@@ -8,6 +8,7 @@ import {
   type SkuKey,
 } from "./stock-engine";
 import { buildServiceLevelUnits } from "./service-level-groups";
+import { isOffOn } from "./sku-off-dates";
 
 /**
  * Metrik Service Level POS — berapa persen produk ready stock,
@@ -239,6 +240,8 @@ export async function computeServiceLevel(
   const stream = await loadStockEventStream(db, bankAccountId, {
     anchorIso: anchor.cutoffIso,
     toIso: grid[grid.length - 1].atIso,
+    // Produk yang baru dinonaktifkan tetap dimuat; offRanges menentukan tanggal mana ia tidak dihitung (migrasi 326).
+    includeRecentlyInactive: true,
   });
 
   if (stream.skuKeys.length === 0) return empty();
@@ -325,6 +328,8 @@ export async function computeServiceLevel(
       const live = js.filter((j) => {
         const k = stream.skuKeys[j];
         if (excluded.has(k)) return false;
+        // Sedang nonaktif pada tanggal itu (produk/varian dinonaktifkan) → tidak dihitung; hari sebelumnya tetap.
+        if (isOffOn(skuByKey.get(k)?.offRanges, date)) return false;
         // Belum ada di katalog pada tanggal itu → belum boleh dihitung.
         const born = bornOn.get(k);
         return !(born && born > date);
