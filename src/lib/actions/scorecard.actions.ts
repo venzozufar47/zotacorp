@@ -43,6 +43,15 @@ import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "@/lib/feedback/cons
  */
 
 export type ScorecardBranch = "Pare" | "Semarang";
+
+/**
+ * Reset scorecard cabang: seluruh angka cabang ini hanya menghitung data SEJAK tanggal ini (WIB). Data sumber
+ * (penjualan, stok, service level, feedback) tidak dihapus. Cabang yang tidak tercantum = tanpa batas. Berlaku juga untuk
+ * Kalkulator Bonus karena memakai fungsi hitung yang sama.
+ */
+const SCORECARD_START: Partial<Record<ScorecardBranch, string>> = {
+  Semarang: "2026-11-16",
+};
 export type ScorecardBand = "green" | "yellow" | "red" | "measuring" | "unset";
 
 export interface ScorecardMetric {
@@ -222,23 +231,31 @@ export async function computeMetricsAsOf(
   // Mingguan: 7 hari bergulir (bukan Senin–Minggu): tidak kosong tiap Senin, dan tidak ikut menghitung
   // hari sesudah `asOf` saat Kalkulator Bonus menghitung akhir bulan lampau.
   const weekEnd = asOf;
-  const monthStart = monthStartOf(asOf);
+  const floor = SCORECARD_START[branch] ?? null;
+  const beforeFloor = floor !== null && asOf < floor;
+  const clamp = (d: string) => (floor !== null && d < floor ? floor : d);
+  const thresholdMonth = monthStartOf(asOf);
+  const monthStart = clamp(thresholdMonth);
   // Tampilan: waste & service level adalah rasio → 30 hari bergulir (selalu cukup data, tidak mulai dari nol tiap
   // tanggal 1); omzet & keluhan tetap bulan berjalan karena dibandingkan dengan target bulanan.
-  const weekStart = period === "month" ? addDays(asOf, -29) : addDays(asOf, -6);
+  const weekStart = clamp(period === "month" ? addDays(asOf, -29) : addDays(asOf, -6));
   const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
-  const daysElapsed = Number(asOf.slice(8, 10));
+  const daysElapsed = floor !== null && !beforeFloor && floor.slice(0, 7) === asOf.slice(0, 7)
+    ? Number(asOf.slice(8, 10)) - Number(floor.slice(8, 10)) + 1
+    : Number(asOf.slice(8, 10));
 
   const [wastePct, serviceLevel, mtd, cakeMtd, th, fbWindow] = await Promise.all([
     computeWastePercent(bankAccountId, weekStart, weekEnd),
     pooledServiceLevel(bankAccountId, weekStart, weekEnd),
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
-    opts ? sumCakeRevenue(branch, monthStart, asOf) : Promise.resolve(0),
+    opts && !beforeFloor ? sumCakeRevenue(branch, monthStart, asOf) : Promise.resolve(0),
     // Ambang Waste/Service level/Feedback yang diatur owner (kartu "Ambang warna Scorecard Cabang"); bawaan bila belum ada.
     // Ambang bulan itu: ambang umum, ditimpa target khusus cabang+bulan bila ada (mis. Service level Pare Oktober 2026).
-    loadThresholdsFor(createAdminClient(), branch, monthStart),
+    loadThresholdsFor(createAdminClient(), branch, thresholdMonth),
     // Feedback customer: 30 hari bergulir, selalu (juga untuk kalkulator bonus), supaya sama dengan yang dilihat di scorecard.
-    loadFeedbackWindow(createAdminClient(), branch, addDays(asOf, -(FEEDBACK_WINDOW_DAYS - 1)), asOf).catch(() => null),
+    beforeFloor
+      ? Promise.resolve(null)
+      : loadFeedbackWindow(createAdminClient(), branch, clamp(addDays(asOf, -(FEEDBACK_WINDOW_DAYS - 1))), asOf).catch(() => null),
   ]);
   const fb = fbWindow
     ? computeFeedbackStats(fbWindow.ratings, targetDays(fbWindow.firstDate, asOf), th)
