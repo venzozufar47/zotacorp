@@ -61,3 +61,13 @@ test("kasus yang hanya berisi warna kerudung dianggap lunak (tidak langsung ke I
   assert.equal(isSoftSelfieIssueSet([]), false);
   assert.equal(isSoftSelfieIssueSet(null), false);
 });
+
+test("prompt warna: coklat mencakup coklat tua/kehitaman & marun/plum; hanya hitam pekat tanpa rona yang 'other'", () => {
+  const p = buildPrompt(uniform("brown"));
+  for (const w of ["dark brown", "blackish brown", "maroon", "burgundy", "plum", "aubergine"]) {
+    assert.ok(p.includes(w), `prompt harus menyebut ${w}`);
+  }
+  assert.ok(p.includes("pure jet black"), "hitam pekat tetap 'other'");
+  // Prompt tanpa filter seragam tidak membawa instruksi warna sama sekali (hemat token).
+  assert.ok(!buildPrompt(rules()).includes("hijabColor"));
+});

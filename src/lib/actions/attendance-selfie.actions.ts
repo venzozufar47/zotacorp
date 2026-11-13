@@ -11,6 +11,7 @@ import {
   selfieModelName,
   type SelfieFilters,
   type SelfieIssue,
+  type SelfieObservation,
 } from "@/lib/attendance/selfie-gate";
 import {
   looseDb,
@@ -158,10 +159,18 @@ export async function verifyCheckInSelfie(input: { selfie_path: string }): Promi
   const rules = await loadSelfieRules(admin, user.id);
   if (!rules || !hasActiveFilters(rules)) return { status: "skipped" };
 
-  const record = async (verdict: "ok" | "reject" | "error" | "skipped", issues: SelfieIssue[] = [], message: string | null = null) => {
+  const record = async (
+    verdict: "ok" | "reject" | "error" | "skipped",
+    issues: SelfieIssue[] = [],
+    message: string | null = null,
+    observation: SelfieObservation | null = null
+  ) => {
     await db
       .from("attendance_selfie_checks")
-      .upsert({ user_id: user.id, selfie_path: path, verdict, issues, message }, { onConflict: "selfie_path", ignoreDuplicates: true });
+      .upsert(
+        { user_id: user.id, selfie_path: path, verdict, issues, message, observation },
+        { onConflict: "selfie_path", ignoreDuplicates: true }
+      );
   };
 
   const { count } = await db
@@ -185,11 +194,11 @@ export async function verifyCheckInSelfie(input: { selfie_path: string }): Promi
   const judged = await judgeSelfie(await blob.arrayBuffer(), mime, rules);
 
   if (judged.status === "ok") {
-    await record("ok");
+    await record("ok", [], null, judged.observation);
     return { status: "ok" };
   }
   if (judged.status === "reject") {
-    await record("reject", judged.issues, judged.message);
+    await record("reject", judged.issues, judged.message, judged.observation);
     return { status: "reject", message: judged.message, issues: judged.issues };
   }
   console.error("[selfie-gate] AI gagal:", judged.error);

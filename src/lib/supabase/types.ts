@@ -742,6 +742,7 @@ export type Database = {
           id: string
           issues: string[]
           message: string | null
+          observation: Json | null
           selfie_path: string
           user_id: string
           verdict: string
@@ -751,6 +752,7 @@ export type Database = {
           id?: string
           issues?: string[]
           message?: string | null
+          observation?: Json | null
           selfie_path: string
           user_id: string
           verdict: string
@@ -760,6 +762,7 @@ export type Database = {
           id?: string
           issues?: string[]
           message?: string | null
+          observation?: Json | null
           selfie_path?: string
           user_id?: string
           verdict?: string

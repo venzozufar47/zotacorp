@@ -62,9 +62,10 @@ export interface SelfieObservation {
   hijabColor?: UniformHijabColor | "white" | "other" | "none";
 }
 
+/** `observation` = apa yang dibaca AI dari foto; disimpan supaya penolakan kasus batas (mis. warna kerudung) bisa diaudit. */
 export type SelfieJudgement =
-  | { status: "ok" }
-  | { status: "reject"; issues: SelfieIssue[]; message: string }
+  | { status: "ok"; observation: SelfieObservation }
+  | { status: "reject"; issues: SelfieIssue[]; message: string; observation: SelfieObservation }
   | { status: "error"; error: string };
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -218,7 +219,7 @@ export function buildPrompt(rules: SelfieRuleSet): string {
   if (rules.headCover) lines.push("cover: true if a beanie/cap/head covering is over the hair.");
   if (f.uniform) {
     lines.push(
-      "hijabColor: hue of the hijab only (ignore clothing, apron, walls; the room has pink walls/light that tint everything): blue=any blue incl. pale, baby, sky, grey-blue; brown=any brown incl. dark brown, chocolate, coffee, mocha, taupe, khaki; pink=any pink incl. very pale, blush, peach, salmon, dusty rose (a pink tint is visible); white=white, ivory, cream or grey with NO pink tint at all (if unsure between pink and white, answer pink); other=black, purple, green, etc.; none=no hijab.",
+      "hijabColor: hue of the hijab only (ignore clothing, apron, walls; the room has pink walls/light that tint everything): blue=any blue incl. pale, baby, sky, grey-blue; brown=any brown incl. dark brown, blackish brown, chocolate, coffee, mocha, taupe, khaki, and maroon, burgundy, plum, aubergine, dark reddish-brown (a very dark hijab that shows any brown or reddish undertone is brown); pink=any pink incl. very pale, blush, peach, salmon, dusty rose (a pink tint is visible); white=white, ivory, cream or grey with NO pink tint at all (if unsure between pink and white, answer pink); other=pure jet black with no brown or reddish undertone, bright purple, green, etc.; none=no hijab.",
     );
   }
   return lines.join("\n");
@@ -326,9 +327,10 @@ export async function judgeSelfie(bytes: ArrayBuffer, mime: string, rules: Selfi
     if (!res.ok) return { status: "error", error: body.error?.message ?? `HTTP ${res.status}` };
     const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) return { status: "error", error: "Jawaban AI kosong" };
-    const issues = issuesFromObservation(JSON.parse(text) as SelfieObservation, rules);
-    if (issues.length === 0) return { status: "ok" };
-    return { status: "reject", issues, message: messageFromIssues(issues, rules.requiredHijabColor) };
+    const observation = JSON.parse(text) as SelfieObservation;
+    const issues = issuesFromObservation(observation, rules);
+    if (issues.length === 0) return { status: "ok", observation };
+    return { status: "reject", issues, message: messageFromIssues(issues, rules.requiredHijabColor), observation };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : "AI gagal" };
   } finally {
