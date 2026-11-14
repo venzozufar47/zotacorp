@@ -29,6 +29,7 @@ import {
   type CostingDashboard,
   type CostingDashboardRow,
 } from "@/lib/actions/costing.actions";
+import { LOW_MARGIN_THRESHOLD } from "@/lib/costing/calc";
 import { downloadHppExcel } from "@/lib/costing/exportHppExcel";
 import { downloadQuotePdf } from "@/lib/costing/downloadQuotePdf";
 import { fmtPercent } from "../format";
@@ -57,8 +58,7 @@ function toneOf(r: CostingDashboardRow): Tone {
   if (nonSaleKind(r)) return "none";
   const mp = r.breakdown.marginPercent;
   if (r.breakdown.error || mp == null || mp <= 0) return "bad";
-  const below = r.product.price_method === "margin" && mp < r.product.target_percent;
-  return below || mp < 0.2 ? "warn" : "ok";
+  return mp < LOW_MARGIN_THRESHOLD ? "warn" : "ok";
 }
 
 const TONE_TEXT: Record<Tone, string> = {

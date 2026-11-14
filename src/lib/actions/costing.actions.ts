@@ -21,6 +21,7 @@ import {
   computeAll,
 } from "@/lib/costing/rows";
 import {
+  LOW_MARGIN_THRESHOLD,
   type HppBreakdown,
   type LaborMode,
   type OverheadMethod,
@@ -930,8 +931,9 @@ export async function getCostingDashboard(
   const belowTargetCount = rows.filter(
     (r) =>
       r.breakdown.marginPercent != null &&
-      r.product.price_method === "margin" &&
-      r.breakdown.marginPercent < r.product.target_percent
+      r.product.category !== "Bahan setengah jadi" &&
+      !(r.product.price_method === "manual" && r.product.manual_price === 0) &&
+      r.breakdown.marginPercent < LOW_MARGIN_THRESHOLD
   ).length;
   const hppRoseCount = rows.filter(
     (r) => r.hppRosePct != null && r.hppRosePct > HPP_RISE_THRESHOLD

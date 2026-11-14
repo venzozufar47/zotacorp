@@ -13,6 +13,9 @@
 
 export type OverheadMethod = "persen" | "nominal";
 export type PriceMethod = "margin" | "markup" | "manual";
+
+/** Margin di bawah ini (atas harga jual) ditandai tipis di semua produk, apa pun metode harganya. */
+export const LOW_MARGIN_THRESHOLD = 0.5;
 export type RoundingMode = "floor" | "nearest" | "ceil";
 export type LaborMode = "nominal" | "hourly";
 
