@@ -16,6 +16,7 @@ import {
 } from "@/lib/pos/service-level";
 import { listActiveSkus } from "@/lib/pos/stock-engine";
 import { loadThresholdsFor } from "@/lib/scorecard/thresholds-store";
+import { scorecardStartFor } from "@/lib/scorecard/start-dates";
 import { computeWaste, type WasteResult } from "@/lib/pos/waste";
 
 /**
@@ -69,8 +70,23 @@ export async function getServiceLevel(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const supabase = await createClient();
+  // Cabang yang di-reset (mis. Semarang mulai 16 Nov 2026) hanya dihitung
+  // sejak tanggal mulainya — sama dengan Scorecard Cabang dan ringkasan.
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("default_branch")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  const floor = scorecardStartFor(account?.default_branch);
+  const fromDate = floor && range.fromDate < floor ? floor : range.fromDate;
+  if (fromDate > range.toDate) {
+    return {
+      ok: false,
+      error: `Service level ${account?.default_branch} dihitung mulai ${floor}.`,
+    };
+  }
   const data = await computeServiceLevel(supabase, bankAccountId, {
-    fromDate: range.fromDate,
+    fromDate,
     toDate: range.toDate,
   });
   return { ok: true, data };
@@ -226,7 +242,11 @@ export async function getServiceLevelSummary(
   let hasPartialOpname = false;
   const trend: ServiceLevelSummary["trend"] = [];
 
+  // Reset per cabang (mis. Semarang mulai 16 Nov 2026): baris sebelum
+  // tanggal mulai tidak ikut dihitung. Barisnya tidak dihapus.
+  const floor = scorecardStartFor(account?.default_branch);
   for (const r of rows ?? []) {
+    if (floor && r.snapshot_date < floor) continue;
     if (r.source === "backfill") hasBackfill = true;
     if (r.partial_opname) hasPartialOpname = true;
     const denom = r.tracked_skus * r.sample_count;

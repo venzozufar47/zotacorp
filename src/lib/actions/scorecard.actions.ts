@@ -20,6 +20,7 @@ import {
   type BandRange,
 } from "@/lib/scorecard/thresholds";
 import { loadThresholdsFor } from "@/lib/scorecard/thresholds-store";
+import { SCORECARD_START } from "@/lib/scorecard/start-dates";
 import { loadFeedbackWindow } from "@/lib/feedback/store";
 import { computeFeedbackStats, targetDays } from "@/lib/feedback/stats";
 import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "@/lib/feedback/constants";
@@ -44,14 +45,7 @@ import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "@/lib/feedback/cons
 
 export type ScorecardBranch = "Pare" | "Semarang";
 
-/**
- * Reset scorecard cabang: seluruh angka cabang ini hanya menghitung data SEJAK tanggal ini (WIB). Data sumber
- * (penjualan, stok, service level, feedback) tidak dihapus. Cabang yang tidak tercantum = tanpa batas. Berlaku juga untuk
- * Kalkulator Bonus karena memakai fungsi hitung yang sama.
- */
-const SCORECARD_START: Partial<Record<ScorecardBranch, string>> = {
-  Semarang: "2026-11-16",
-};
+// Tanggal mulai per cabang (reset scorecard) ada di @/lib/scorecard/start-dates — dipakai bersama Service Level.
 export type ScorecardBand = "green" | "yellow" | "red" | "measuring" | "unset";
 
 export interface ScorecardMetric {
