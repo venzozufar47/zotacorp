@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { productImageSrc } from "@/lib/pos/product-images";
 import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import { PosShell } from "./PosShell";
@@ -13,7 +15,10 @@ import "./workstation.css";
 import {
   BarChart3,
   Boxes,
+  CupSoda,
   History,
+  PartyPopper,
+  PenLine,
   Home,
   Loader2,
   Minus,
@@ -27,6 +32,13 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+
+/** Ikon pengganti foto untuk produk yang memang tidak punya foto. */
+const PRODUCT_ICONS: Record<string, typeof CupSoda> = {
+  drinks: CupSoda,
+  lilin: PartyPopper,
+  "tambah nama": PenLine,
+};
 import {
   createPosSale,
   setPosProductNotes,
@@ -1456,7 +1468,30 @@ export function POSClient({
                     : "border-border bg-card cursor-pointer"
                 }`}
               >
-                <div className="font-semibold text-foreground text-sm sm:text-base leading-tight pr-8">
+                {(() => {
+                  const img = productImageSrc(p.name);
+                  const Icon = PRODUCT_ICONS[p.name.trim().toLowerCase()];
+                  if (!img && Icon)
+                    return (
+                      <span
+                        aria-hidden
+                        className="float-right ml-2 mb-1 grid size-16 sm:size-20 place-items-center rounded-2xl bg-primary/10 text-primary"
+                      >
+                        <Icon className="size-8 sm:size-10" strokeWidth={1.5} />
+                      </span>
+                    );
+                  return img ? (
+                    <Image
+                      src={img}
+                      alt=""
+                      width={256}
+                      height={256}
+                      quality={90}
+                      className="float-right ml-2 mb-1 size-16 sm:size-20 object-contain"
+                    />
+                  ) : null;
+                })()}
+                <div className="font-semibold text-foreground text-sm sm:text-base leading-tight">
                   {p.name}
                   {/* Sisa stok produk ditampilkan inline di samping
                       nama, mis. "BCB (12)" — kasir tidak perlu buka

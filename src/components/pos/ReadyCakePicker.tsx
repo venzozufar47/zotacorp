@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChefHat, Palette, Hourglass } from "lucide-react";
+import { Cake, Check, ChefHat, Palette, Hourglass } from "lucide-react";
 import type { ReadyCakeItem, ReadyCakeStage } from "@/lib/actions/pos-ready-cake.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -54,7 +54,13 @@ export function ReadyCakeTile({
           inCart > 0 ? "border-primary bg-primary/5" : "border-border bg-card"
         }`}
       >
-        <div className="pr-8 text-sm font-semibold leading-tight text-foreground sm:text-base">
+        <span
+          aria-hidden
+          className="float-right mb-1 ml-2 grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary sm:size-20"
+        >
+          <Cake className="size-8 sm:size-10" strokeWidth={1.5} />
+        </span>
+        <div className="text-sm font-semibold leading-tight text-foreground sm:text-base">
           Ready Cake
           <span className={`ml-1 font-normal tabular-nums ${ready > 0 ? "text-muted-foreground" : "text-destructive"}`}>({ready})</span>
         </div>
