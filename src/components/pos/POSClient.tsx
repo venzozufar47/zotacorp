@@ -19,6 +19,7 @@ import {
   History,
   PartyPopper,
   PenLine,
+  StickyNote,
   Home,
   Loader2,
   Minus,
@@ -1273,7 +1274,7 @@ export function POSClient({
     <div
       data-pos-shell
       data-pos-palette={posPalette(basePath)}
-      className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)_360px] md:grid-rows-[56px_minmax(0,1fr)] bg-background"
+      className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)_320px] xl:grid-cols-[64px_minmax(0,1fr)_360px] md:grid-rows-[56px_minmax(0,1fr)] bg-background"
     >
       {/* ── Top bar ───────────────────────────────────────── */}
       <header className="md:col-span-3 h-14 border-b border-border bg-card flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 z-20">
@@ -1344,7 +1345,7 @@ export function POSClient({
       </aside>
 
       {/* ── Main area: search + product grid ──────────────── */}
-      <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="@container min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
         {/* Strip informasional di atas grid produk — ikut ter-scroll saat
             kasir menelusuri produk, jadi tidak permanen memakan ruang. */}
         {(dailyRevenue || serviceLevel || feedbackToday) && (
@@ -1387,7 +1388,7 @@ export function POSClient({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
+        <div className="grid grid-cols-2 gap-1.5 p-2 @[560px]:grid-cols-3 @[820px]:grid-cols-4 @[1080px]:grid-cols-5">
           {readyCake && (searchQuery.trim() === "" || "ready cake".includes(searchQuery.trim().toLowerCase())) && (
             <ReadyCakeTile summary={readyCake} inCart={readyLines.length} onOpen={() => setReadyPickerOpen(true)} />
           )}
@@ -1400,7 +1401,6 @@ export function POSClient({
             ? openPriceByProductId.get(p.id)
             : undefined;
           const openPriceQty = openPriceAgg?.qty ?? 0;
-          const openPriceLineCount = openPriceAgg?.lines ?? 0;
           const selected =
             totalQtyOnThisProduct > 0 || openPriceQty > 0;
           // Produk tanpa varian yang WAJIB GULA tidak boleh punya pill:
@@ -1436,9 +1436,9 @@ export function POSClient({
               )
             : [];
           return (
-            <div key={p.id} className="relative">
+            <div key={p.id} className="relative h-full">
               {stockState.kind === "habis" && (
-                <span className="absolute top-1.5 right-1.5 z-10 inline-flex items-center rounded-full border border-foreground/40 bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <span className="absolute top-1 right-1 z-10 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Habis
                 </span>
               )}
@@ -1460,7 +1460,7 @@ export function POSClient({
                     handleProductTap(p);
                   }
                 }}
-                className={`w-full min-h-[104px] sm:min-h-[120px] rounded-2xl border text-left p-2.5 sm:p-3 transition-colors active:bg-muted ${
+                className={`flex h-full w-full items-center gap-2 rounded-xl border p-1.5 text-left transition-colors active:bg-muted ${showInlinePill ? "pb-9" : ""} ${
                   stockState.kind === "habis"
                     ? "border-dashed border-border bg-muted/30 opacity-60 cursor-not-allowed grayscale-[20%]"
                     : selected
@@ -1468,144 +1468,113 @@ export function POSClient({
                     : "border-border bg-card cursor-pointer"
                 }`}
               >
+                {/* Tingkat 1 (selalu terlihat): foto, nama, harga. Sisanya
+                    muncul hanya saat relevan — jumlah di keranjang sebagai
+                    lencana di foto (rincian varian ada di panel keranjang),
+                    stok hanya menonjol bila menipis, catatan baru tampil
+                    bila sudah ada isinya. */}
                 {(() => {
                   const img = productImageSrc(p.name);
-                  const Icon = PRODUCT_ICONS[p.name.trim().toLowerCase()];
-                  if (!img && Icon)
-                    return (
-                      <span
-                        aria-hidden
-                        className="float-right ml-2 mb-1 grid size-16 sm:size-20 place-items-center rounded-2xl bg-primary/10 text-primary"
-                      >
-                        <Icon className="size-8 sm:size-10" strokeWidth={1.5} />
-                      </span>
-                    );
-                  return img ? (
-                    <Image
-                      src={img}
-                      alt=""
-                      width={256}
-                      height={256}
-                      quality={90}
-                      className="float-right ml-2 mb-1 size-16 sm:size-20 object-contain"
-                    />
-                  ) : null;
-                })()}
-                <div className="font-semibold text-foreground text-sm sm:text-base leading-tight">
-                  {p.name}
-                  {/* Sisa stok produk ditampilkan inline di samping
-                      nama, mis. "BCB (12)" — kasir tidak perlu buka
-                      /pos/stok untuk cek kapasitas. */}
-                  {(() => {
-                    const r = productRemainingStock(p, stockByKey, cart);
-                    return r != null ? (
-                      <span className="ml-1 font-normal text-muted-foreground tabular-nums">
-                        ({r})
-                      </span>
-                    ) : null;
-                  })()}
-                </div>
-                <div className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                  {p.isOpenPrice
-                    ? "Harga custom"
-                    : hasVariants
-                      ? variantPriceLabel(p.variants)
-                      : formatRp(p.price)}
-                </div>
-                {stockState.kind === "low" && (
-                  <div className="mt-0.5 text-[10px] font-semibold tabular-nums text-pop-pink">
-                    Sisa {stockState.remaining}
-                  </div>
-                )}
-                {/* Keterangan varian habis — DITURUNKAN dari stok, bukan
-                    diketik. Sengaja baris tersendiri (bukan disisipkan ke
-                    p.notes) karena catatan manual bisa diedit/ditimpa kasir,
-                    sedangkan ini harus selalu mengikuti stok sebenarnya.
-                    Disembunyikan saat SEMUA varian habis: kartunya sudah
-                    kelabu + badge "Habis", jadi baris ini hanya mengulang. */}
-                {stockState.kind !== "habis" && soldOutVariants.length > 0 && (
-                  <div className="mt-1 rounded-md border border-dashed border-foreground/25 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground line-clamp-2">
-                    Habis: {soldOutVariants.map((v) => v.name).join(", ")}
-                  </div>
-                )}
-                {p.notes ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setNotesEditFor(p.id);
-                    }}
-                    className="mt-1 w-full text-left rounded-md border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-foreground line-clamp-2 hover:bg-warning/20"
-                    aria-label="Edit catatan"
-                  >
-                    📝 {p.notes}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setNotesEditFor(p.id);
-                    }}
-                    className="mt-1 inline-flex items-center gap-0.5 rounded-md border border-dashed border-border bg-transparent px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                    aria-label="Tambah catatan"
-                  >
-                    <Plus size={9} strokeWidth={2.5} /> Catatan
-                  </button>
-                )}
-                {p.isOpenPrice && openPriceLineCount > 0 && (
-                  <div className="mt-1 text-[10px] uppercase tracking-wider text-primary font-semibold">
-                    {openPriceLineCount} line · {openPriceQty}× di cart
-                  </div>
-                )}
-                {/* Pengganti pill untuk minuman tanpa varian — qty tetap
-                    terlihat walau +/- hanya tersedia di keranjang. */}
-                {needsSugarSingle && totalQtyOnThisProduct > 0 && (
-                  <div className="mt-1 text-[10px] uppercase tracking-wider text-primary font-semibold">
-                    {totalQtyOnThisProduct}× di cart
-                  </div>
-                )}
-                {hasVariants && (
-                  <>
-                    <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {p.variants.length} varian
-                      {totalQtyOnThisProduct > 0 && ` · ${totalQtyOnThisProduct} di cart`}
+                  const Icon =
+                    PRODUCT_ICONS[p.name.trim().toLowerCase()] ?? ShoppingBasket;
+                  const badgeQty = showInlinePill
+                    ? 0
+                    : totalQtyOnThisProduct + openPriceQty;
+                  return (
+                    <div className="relative size-12 shrink-0 @[560px]:size-14">
+                      <div className="relative size-full overflow-hidden rounded-lg">
+                        {img ? (
+                          <Image
+                            src={img}
+                            alt=""
+                            fill
+                            sizes="56px"
+                            quality={90}
+                            className="object-contain"
+                          />
+                        ) : (
+                          <span
+                            aria-hidden
+                            className="absolute inset-0 grid place-items-center bg-muted/50 text-primary/70"
+                          >
+                            <Icon className="size-6" strokeWidth={1.5} />
+                          </span>
+                        )}
+                      </div>
+                      {badgeQty > 0 && (
+                        <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-bold tabular-nums text-primary-foreground">
+                          {badgeQty}
+                        </span>
+                      )}
                     </div>
-                    {totalQtyOnThisProduct > 0 && (
-                      <ul className="mt-1.5 space-y-0.5">
-                        {p.variants
-                          .map((v) => ({
-                            v,
-                            qty: cartQtyForSku(cart, p.id, v.id),
-                            remaining: variantRemainingStock(
-                              p,
-                              v.id,
-                              stockByKey,
-                              cart
-                            ),
-                          }))
-                          .filter((x) => x.qty > 0)
-                          .map(({ v, qty, remaining }) => (
-                            <li
-                              key={v.id}
-                              className="text-xs text-primary tabular-nums"
-                            >
-                              <span className="font-semibold">{qty}×</span>{" "}
-                              {v.name}
-                              {remaining != null && (
-                                <span className="ml-1 text-muted-foreground font-normal">
-                                  ({remaining})
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                      </ul>
-                    )}
-                  </>
-                )}
+                  );
+                })()}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`line-clamp-2 text-[13px] font-semibold leading-tight text-foreground sm:text-sm ${
+                      selected || p.notes ? "pr-5" : ""
+                    }`}
+                  >
+                    {p.name}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">
+                    {p.isOpenPrice
+                      ? "Harga custom"
+                      : hasVariants
+                        ? variantPriceLabel(p.variants)
+                        : formatRp(p.price)}
+                    {(() => {
+                      const r = productRemainingStock(p, stockByKey, cart);
+                      if (r == null) return null;
+                      return stockState.kind === "low" ? (
+                        <span className="ml-1.5 font-semibold text-pop-pink">
+                          Sisa {r}
+                        </span>
+                      ) : (
+                        <span className="ml-1.5 opacity-70">· {r}</span>
+                      );
+                    })()}
+                  </div>
+                  {/* Varian yang sudah tidak bisa dijual — DITURUNKAN dari
+                      stok, bukan diketik, supaya kasir tahu dari luar kartu.
+                      Disembunyikan saat SEMUA varian habis: kartunya sudah
+                      kelabu + badge "Habis". */}
+                  {stockState.kind !== "habis" && soldOutVariants.length > 0 && (
+                    <div className="truncate text-[11px] font-medium text-pop-pink">
+                      Habis: {soldOutVariants.map((v) => v.name).join(", ")}
+                    </div>
+                  )}
+                  {p.notes && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNotesEditFor(p.id);
+                      }}
+                      className="mt-0.5 block w-full truncate text-left text-[11px] font-medium text-warning"
+                      aria-label="Edit catatan"
+                    >
+                      {p.notes}
+                    </button>
+                  )}
+                </div>
               </div>
+              {/* Ikon catatan: hanya muncul setelah produk dipilih (atau
+                  bila sudah ada catatan) — tidak ada tombol di tiap kartu. */}
+              {stockState.kind !== "habis" && (selected || p.notes) && (
+                <button
+                  type="button"
+                  onClick={() => setNotesEditFor(p.id)}
+                  className={`absolute right-0 top-0 grid size-8 place-items-center rounded-lg transition-colors hover:bg-muted ${
+                    p.notes ? "text-warning" : "text-muted-foreground/60"
+                  }`}
+                  aria-label={p.notes ? "Edit catatan" : "Tambah catatan"}
+                >
+                  <StickyNote size={15} />
+                </button>
+              )}
               {showInlinePill && singleKey && (
-                <div className="absolute bottom-2 right-2 flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                <div className="absolute bottom-1 right-1.5 flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
                   <button
                     type="button"
                     aria-label="Kurangi"
@@ -1613,7 +1582,7 @@ export function POSClient({
                       e.stopPropagation();
                       dec(singleKey);
                     }}
-                    className="h-8 w-8 flex items-center justify-center rounded-l-full active:bg-primary/80"
+                    className="h-7 w-8 flex items-center justify-center rounded-l-full active:bg-primary/80"
                   >
                     <Minus size={14} />
                   </button>
@@ -1627,7 +1596,7 @@ export function POSClient({
                       e.stopPropagation();
                       inc(singleKey);
                     }}
-                    className="h-8 w-8 flex items-center justify-center rounded-r-full active:bg-primary/80"
+                    className="h-7 w-8 flex items-center justify-center rounded-r-full active:bg-primary/80"
                   >
                     <Plus size={14} />
                   </button>
@@ -1639,7 +1608,7 @@ export function POSClient({
         <button
           type="button"
           onClick={() => setCustomOpen(true)}
-          className="min-h-[104px] sm:min-h-[120px] rounded-2xl border-2 border-dashed border-border bg-muted/20 p-2.5 sm:p-3 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors active:bg-muted"
+          className="min-h-[64px] rounded-xl border-2 border-dashed border-border bg-muted/20 p-2 flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors active:bg-muted"
         >
           <Sparkles size={18} />
           <span className="text-sm font-semibold">Tambah custom</span>

@@ -39,7 +39,7 @@ export function ReadyCakeTile({
   const ready = summary.items.filter((i) => i.stage === "ready").length;
   const making = summary.items.length - ready;
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <div
         role="button"
         tabIndex={0}
@@ -50,31 +50,29 @@ export function ReadyCakeTile({
             onOpen();
           }
         }}
-        className={`w-full min-h-[104px] sm:min-h-[120px] cursor-pointer rounded-2xl border p-2.5 text-left transition-colors active:bg-muted sm:p-3 ${
+        className={`flex h-full w-full cursor-pointer items-center gap-2 rounded-xl border p-1.5 text-left transition-colors active:bg-muted ${
           inCart > 0 ? "border-primary bg-primary/5" : "border-border bg-card"
         }`}
       >
-        <span
-          aria-hidden
-          className="float-right mb-1 ml-2 grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary sm:size-20"
-        >
-          <Cake className="size-8 sm:size-10" strokeWidth={1.5} />
-        </span>
-        <div className="text-sm font-semibold leading-tight text-foreground sm:text-base">
-          Ready Cake
-          <span className={`ml-1 font-normal tabular-nums ${ready > 0 ? "text-muted-foreground" : "text-destructive"}`}>({ready})</span>
+        <div className="relative size-12 shrink-0 @[560px]:size-14">
+          <div className="grid size-full place-items-center rounded-lg bg-muted/50 text-primary/70">
+            <Cake aria-hidden className="size-6" strokeWidth={1.5} />
+          </div>
+          {inCart > 0 && (
+            <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-bold tabular-nums text-primary-foreground">
+              {inCart}
+            </span>
+          )}
         </div>
-        <div className="mt-1 text-xs text-muted-foreground sm:text-sm">
+        <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold leading-tight text-foreground">Ready Cake</div>
+        <div className={`mt-0.5 text-xs font-medium ${ready > 0 ? "text-muted-foreground" : "text-destructive"}`}>
           {ready > 0 ? `${ready} siap dijual` : "Belum ada yang siap"}
         </div>
         {making > 0 && (
-          <div className="mt-1 rounded-md border border-dashed border-foreground/25 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {making} masih dikerjakan
-          </div>
+          <div className="truncate text-[11px] font-medium text-muted-foreground">{making} masih dikerjakan</div>
         )}
-        {inCart > 0 && (
-          <div className="mt-1 text-[10px] font-semibold tabular-nums text-primary">{inCart} di keranjang</div>
-        )}
+        </div>
       </div>
     </div>
   );
