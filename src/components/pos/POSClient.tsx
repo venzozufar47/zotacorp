@@ -360,7 +360,7 @@ export function POSClient({
       /** Nama tanpa label gula — dipakai struk, yang mencetak gula di
        *  baris terpisah agar tidak kena truncation kolom harga. */
       baseName: string;
-      sugarLabel: string | null;
+      optionsLabel: string | null;
       qty: number;
       subtotal: number;
       custom: boolean;
@@ -379,8 +379,8 @@ export function POSClient({
       const { productId, variantId, sugarLevel } = parseCartKey(key);
       const info = lineByKey.get(cartKey(productId, variantId));
       if (!info) continue;
-      const sugarLabel = sugarLevel ? SUGAR_LEVEL_LABELS[sugarLevel] : null;
-      const name = sugarLabel ? `${info.name} — ${sugarLabel}` : info.name;
+      const optionsLabel = sugarLevel ? SUGAR_LEVEL_LABELS[sugarLevel] : null;
+      const name = optionsLabel ? `${info.name} — ${optionsLabel}` : info.name;
       // Diskon hanya berlaku kalau nilainya benar-benar di bawah harga
       // normal — sama dengan aturan server, supaya total di layar tak
       // pernah beda dengan yang dihitung ulang saat submit.
@@ -395,7 +395,7 @@ export function POSClient({
         productId: info.productId,
         name,
         baseName: info.name,
-        sugarLabel,
+        optionsLabel,
         qty,
         subtotal,
         custom: false,
@@ -417,7 +417,7 @@ export function POSClient({
         productId: null,
         name: c.name,
         baseName: c.name,
-        sugarLabel: null,
+        optionsLabel: null,
         qty: c.qty,
         subtotal,
         custom: true,
@@ -435,7 +435,7 @@ export function POSClient({
         productId: null,
         name: `Ready Cake — ${r.name}${r.isDiy ? " (DIY)" : ""}`,
         baseName: `Ready Cake — ${r.name}`,
-        sugarLabel: null,
+        optionsLabel: null,
         qty: 1,
         subtotal: r.price,
         custom: false,
@@ -788,7 +788,7 @@ export function POSClient({
           name: l.baseName,
           qty: l.qty,
           subtotal: l.subtotal,
-          note: l.sugarLabel,
+          note: l.optionsLabel,
         })),
         grossTotal: total + readyTotal,
         discountAmount,
@@ -1014,9 +1014,17 @@ export function POSClient({
                 className="rounded-xl border border-border bg-background/40 px-3 py-2 flex items-center gap-2"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {line.name}
+                  {/* Nama boleh 2 baris (tidak dipotong "…"); tingkat gula
+                      jadi lencana sendiri supaya selalu terlihat — dulu
+                      ditempel di belakang nama dan ikut terpotong. */}
+                  <p className="text-sm font-medium text-foreground leading-tight line-clamp-2">
+                    {line.baseName}
                   </p>
+                  {line.optionsLabel && (
+                    <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+                      {line.optionsLabel}
+                    </span>
+                  )}
                   <p className="text-[11px] text-muted-foreground tabular-nums">
                     {line.originalPrice != null && (
                       <span className="line-through opacity-60 mr-1">
