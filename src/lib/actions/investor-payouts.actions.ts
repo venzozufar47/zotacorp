@@ -12,7 +12,7 @@ import { isValidMoney } from "./_validate";
 /** Asal tulisan payout (SSOT langkah 1). Koreksi manual atas baris konsol
  *  meng-UPDATE baris yang sama dan ikut mengubah source jadi 'manual', jadi
  *  nilai ini selalu menyebut siapa yang terakhir menulis nominalnya. */
-export type PayoutSource = "distribusi" | "manual";
+export type PayoutSource = "distribusi" | "manual" | "buyback";
 
 export interface InvestorPayout {
   id: string;
@@ -50,7 +50,8 @@ function mapPayout(r: PayoutRow): InvestorPayout {
     paidAt: r.paid_at,
     ref: r.ref,
     notes: r.notes,
-    source: r.source === "distribusi" ? "distribusi" : "manual",
+    source:
+      r.source === "distribusi" || r.source === "buyback" ? r.source : "manual",
     createdAt: r.created_at,
   };
 }

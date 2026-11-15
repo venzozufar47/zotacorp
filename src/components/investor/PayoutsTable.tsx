@@ -99,7 +99,16 @@ export function PayoutsTable({
               last8.map((p) => (
                 <tr key={p.id} className="border-t border-border">
                   <td className="px-4 py-2.5 font-semibold text-foreground">
-                    {ymLabel(p.periodYear, p.periodMonth)}
+                    {p.source === "buyback" ? (
+                      <>
+                        Buyback aset
+                        <span className="ml-1.5 text-[10.5px] font-medium text-muted-foreground">
+                          kontrak selesai
+                        </span>
+                      </>
+                    ) : (
+                      ymLabel(p.periodYear, p.periodMonth)
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
                     {formatRp(p.amountIdr)}

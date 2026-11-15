@@ -65,6 +65,8 @@ export function HeroContract({
     pct: number;
     remainMonths: number | null;
     permanent: boolean;
+    ended?: boolean;
+    lastMonth?: { year: number; month: number } | null;
   };
   bepProgress: { current: number; target: number; pct: number };
   heroPerformance: InvestorHeroPerformance | null;
@@ -163,7 +165,22 @@ export function HeroContract({
                     <span className="font-semibold">
                       {contract.durasiBulan} bulan
                     </span>{" "}
-                    (sisa {contractProgress.remainMonths})
+                    {contractProgress.ended && contractProgress.lastMonth ? (
+                      <>
+                        (selesai{" "}
+                        {new Date(
+                          contractProgress.lastMonth.year,
+                          contractProgress.lastMonth.month - 1,
+                          1
+                        ).toLocaleDateString("id-ID", {
+                          month: "long",
+                          year: "numeric",
+                        })}
+                        )
+                      </>
+                    ) : (
+                      <>(sisa {contractProgress.remainMonths})</>
+                    )}
                   </>
                 )}
                 <span aria-hidden className="opacity-50 mx-1.5">

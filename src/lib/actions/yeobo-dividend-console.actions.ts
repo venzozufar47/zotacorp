@@ -20,6 +20,29 @@ import {
   getDividendBranchConfig,
 } from "./yeobo-dividend.actions";
 import { listInvestorContracts } from "./investor.actions";
+import { isContractEndedFor } from "@/lib/investor/contract-term";
+
+/**
+ * Penerima yang masih ikut dibagi pada (year, month): investor yang kontraknya
+ * sudah berakhir pada periode itu dikeluarkan, sehingga manajemen (owner)
+ * menjadi residual = 100% pool. Periode yang kontraknya masih berlaku tidak
+ * berubah sama sekali.
+ */
+function inTermRecipients<
+  T extends { kind: string; contractId: string | null },
+>(
+  recipients: T[],
+  contracts: Array<{ id: string; startDate: string; durasiBulan: number | null }>,
+  year: number,
+  month: number
+): T[] {
+  const byId = new Map(contracts.map((c) => [c.id, c]));
+  return recipients.filter((r) => {
+    if (r.kind !== "investor" || !r.contractId) return true;
+    const c = byId.get(r.contractId);
+    return !c || !isContractEndedFor(c, year, month);
+  });
+}
 
 /**
  * Konsol Dividen & Payout Yeobo Space — agregat lintas cabang per bulan.
@@ -84,6 +107,9 @@ export interface ConsoleBranch {
   /** Kas akhir bulan sebelumnya. null = sebelum Mei 2026 (Kas belum berlaku). */
   kasLastMonth: number | null;
   afterBep: boolean;
+  /** true = SEMUA kontrak investor cabang ini sudah berakhir pada bulan
+   *  terpilih → pool 100% hak owner (manajemen), tanpa pembagian investor. */
+  investorsEnded: boolean;
   /** % manajemen nominal (sebelum/sesudah BEP) — untuk badge. */
   mgmtPct: number;
   mgmtPctBeforeBep: number;
@@ -340,15 +366,22 @@ export async function getDividendConsoleData(input: {
     amount_idr: number | string;
     paid_at: string | null;
     ref: string | null;
+    source: string | null;
   };
   let payouts: PayoutRow[] = [];
   if (contractIds.length > 0) {
     const { data } = await client
       .from("investor_payouts")
-      .select("contract_id, period_year, period_month, amount_idr, paid_at, ref")
+      .select(
+        "contract_id, period_year, period_month, amount_idr, paid_at, ref, source"
+      )
       .in("contract_id", contractIds);
     payouts = (data ?? []) as PayoutRow[];
   }
+  // Buyback aset (kontrak selesai) tetap menghitung ke total penerimaan &
+  // modal terbalik, tapi BUKAN transfer dividen bulanan: jangan tampil
+  // sebagai payout bulan terpilih maupun di riwayat distribusi.
+  const dividendPayouts = payouts.filter((p) => p.source !== "buyback");
 
   // Profil investor (nama).
   const userIds = new Set<string>();
@@ -371,7 +404,7 @@ export async function getDividendConsoleData(input: {
 
   // Payout bulan ini per kontrak.
   const thisMonthPayoutByContract = new Map<string, PayoutRow>();
-  for (const p of payouts)
+  for (const p of dividendPayouts)
     if (p.period_year === year && p.period_month === month)
       thisMonthPayoutByContract.set(p.contract_id, p);
 
@@ -448,7 +481,11 @@ export async function getDividendConsoleData(input: {
   // ── Build branch DTOs ──
   const branches: ConsoleBranch[] = PHYSICAL_BRANCHES.map((branch, i) => {
     const config = configs[i];
-    const recips = recipientLists[i].filter((r) => r.active);
+    const activeRecips = recipientLists[i].filter((r) => r.active);
+    const recips = inTermRecipients(activeRecips, contracts, year, month);
+    const investorsEnded =
+      activeRecips.some((r) => r.kind === "investor") &&
+      !recips.some((r) => r.kind === "investor");
     const operatingProfit = opProfitOf(branch, year, month);
     const cumBefore = branchRecoupBefore(branch);
     const cumThrough = branchRecoupThrough(branch);
@@ -467,7 +504,11 @@ export async function getDividendConsoleData(input: {
           month,
           cumulativeInvestorRecoupBefore: cumBefore,
         });
-    const mgmtPct = afterBep ? config.mgmtPctAfterBep : config.mgmtPctBeforeBep;
+    const mgmtPct = investorsEnded
+      ? 100
+      : afterBep
+        ? config.mgmtPctAfterBep
+        : config.mgmtPctBeforeBep;
 
     let declaredPool: number | null = null;
     let branchArrearsBefore = 0;
@@ -514,6 +555,7 @@ export async function getDividendConsoleData(input: {
       operatingProfit,
       kasLastMonth: kasLastMonthOf(branch),
       afterBep,
+      investorsEnded,
       mgmtPct,
       mgmtPctBeforeBep: config.mgmtPctBeforeBep,
       mgmtPctAfterBep: config.mgmtPctAfterBep,
@@ -708,7 +750,7 @@ export async function getDividendConsoleData(input: {
 
   // ── History: periode < bulan terpilih, desc, ≤12 ──
   const historyMap = new Map<number, ConsolePeriodHistory>();
-  for (const p of payouts) {
+  for (const p of dividendPayouts) {
     const r = ymRank(p.period_year, p.period_month);
     if (r >= selRank) continue;
     let h = historyMap.get(r);
@@ -819,9 +861,15 @@ export async function saveDividendConsoleMonth(input: {
   let syncedPayouts = 0;
   let skippedRecipients = 0;
 
+  const contractsRes = await listInvestorContracts({ businessUnit: "Yeobo Space" });
+  const contracts = contractsRes.ok ? contractsRes.data ?? [] : [];
+
   for (const b of input.branches) {
-    const recipients = (await listDividendRecipients(b.branch)).filter(
-      (r) => r.active
+    const recipients = inTermRecipients(
+      (await listDividendRecipients(b.branch)).filter((r) => r.active),
+      contracts,
+      year,
+      month
     );
     const recById = new Map(recipients.map((r) => [r.id, r]));
     const config = await getDividendBranchConfig(b.branch);

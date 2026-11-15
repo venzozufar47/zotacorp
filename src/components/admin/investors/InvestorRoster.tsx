@@ -128,6 +128,12 @@ function BepBar({ value }: { value: number }) {
 }
 
 function SrcPill({ source }: { source: InvestorPayout["source"] }) {
+  if (source === "buyback")
+    return (
+      <Pill tone="teal" title="Buyback aset saat kontrak selesai — bukan bagi hasil bulanan">
+        Buyback
+      </Pill>
+    );
   return source === "manual" ? (
     <Pill tone="warn" title="Dicatat / dikoreksi manual per kontrak, di luar konsol Distribusi">
       Manual

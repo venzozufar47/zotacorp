@@ -18,6 +18,10 @@ import {
 } from "@/lib/actions/investor.actions";
 import { getDividendBranchConfig } from "@/lib/actions/yeobo-dividend.actions";
 import { cumulativeInvestorRecoup } from "@/lib/investor/dividend-allocation";
+import {
+  contractLastMonth,
+  isContractEndedFor,
+} from "@/lib/investor/contract-term";
 
 /**
  * Per-month rollup yang menggabungkan PnL admin (revenue/COGS/opex/
@@ -144,6 +148,11 @@ export interface InvestorDashboardData {
     pct: number;
     remainMonths: number | null;
     permanent: boolean;
+    /** true = bulan terakhir kontrak sudah lewat. Bagi hasil periode
+     *  berikutnya menjadi hak owner penuh. */
+    ended?: boolean;
+    /** Bulan terakhir kontrak (untuk label "selesai Sep 2026"). */
+    lastMonth?: { year: number; month: number } | null;
   };
   /** Lifetime-since-contract-start rollup untuk Hero card. Null kalau
    *  tidak ada kontrak. */
@@ -370,6 +379,12 @@ export async function fetchInvestorDashboardData(input: {
         pct: total > 0 ? (run / total) * 100 : 0,
         remainMonths: total - run,
         permanent: false,
+        ended: isContractEndedFor(
+          contract,
+          now.getFullYear(),
+          now.getMonth() + 1
+        ),
+        lastMonth: contractLastMonth(contract),
       };
     }
   }
@@ -651,6 +666,8 @@ function computeContractProgress(
     pct: total > 0 ? (run / total) * 100 : 0,
     remainMonths: total - run,
     permanent: false,
+    ended: isContractEndedFor(contract, now.getFullYear(), now.getMonth() + 1),
+    lastMonth: contractLastMonth(contract),
   };
 }
 

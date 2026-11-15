@@ -361,7 +361,12 @@ export function DividendConsoleClient({
                       : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {b.afterBep ? "Setelah BEP" : "Sebelum BEP"} · Mgmt {b.mgmtPct}%
+                  {b.investorsEnded
+                    ? "Kontrak investor selesai"
+                    : b.afterBep
+                      ? "Setelah BEP"
+                      : "Sebelum BEP"}{" "}
+                  · Mgmt {b.mgmtPct}%
                 </span>
               </div>
               <dl className="mt-3 space-y-1.5 text-[12.5px]">
