@@ -2135,22 +2135,40 @@ function VariantPickerDialog({
   const productOnHand = stockByKey
     ? stockByKey[cartKey(product.id, null)] ?? 0
     : 0;
+  const img = productImageSrc(product.name);
+  let totalQty = 0;
+  for (const v of product.variants) {
+    totalQty += cartQtyForSku(cart, product.id, v.id);
+  }
   return (
     <div
       className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-3 space-y-2.5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div>
-          <h2 className="font-semibold text-foreground">{product.name}</h2>
-          <p className="text-xs text-muted-foreground">
-            Pilih varian — tap +/- untuk qty.
-          </p>
+        <div className="flex items-center gap-2.5">
+          {img && (
+            <div className="relative size-10 shrink-0">
+              <Image
+                src={img}
+                alt=""
+                fill
+                sizes="40px"
+                quality={90}
+                className="object-contain"
+              />
+            </div>
+          )}
+          <h2 className="min-w-0 flex-1 truncate font-semibold text-foreground">
+            {product.name}
+          </h2>
         </div>
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+        {/* Tap baris = tambah 1 (sama dengan kartu produk). Tombol −/qty
+            baru muncul setelah varian dipilih (progressive disclosure). */}
+        <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
           {product.variants.map((v) => {
             // Qty dijumlahkan lintas tingkat gula — satu varian bisa
             // punya beberapa baris cart (No/Less/Normal Sugar).
@@ -2172,80 +2190,108 @@ function VariantPickerDialog({
               }
             }
             const habis = remaining != null && remaining <= 0;
+            const add = () => {
+              if (!habis) onInc(v.id);
+            };
             return (
               <div
                 key={v.id}
-                className={`rounded-xl border p-3 flex items-center gap-3 ${
-                  habis
-                    ? "border-dashed border-border bg-muted/30 opacity-60"
+                role="button"
+                tabIndex={habis ? -1 : 0}
+                aria-disabled={habis}
+                onClick={add}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    add();
+                  }
+                }}
+                className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-1.5 transition-colors ${
+                  habis && qty === 0
+                    ? "border-dashed border-border bg-muted/30 opacity-60 cursor-not-allowed"
                     : qty > 0
-                    ? "border-primary bg-primary/5"
-                    : "border-border bg-card"
+                    ? "border-primary bg-primary/5 cursor-pointer"
+                    : "border-border bg-card cursor-pointer active:bg-muted"
                 }`}
               >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground text-sm truncate flex items-center gap-1.5">
-                    <span className="truncate">
-                      {v.name}
-                      {/* "(N)" — sisa stok varian setelah cart, agar
-                          kasir tahu kapasitas tanpa buka /pos/stok. */}
-                      {remaining != null && (
-                        <span className="ml-1 font-normal text-muted-foreground tabular-nums">
-                          ({remaining})
-                        </span>
-                      )}
-                    </span>
-                    {habis && (
-                      <span className="rounded-full border border-foreground/40 bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Habis
-                      </span>
-                    )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {v.name}
                   </p>
-                  <p className="text-xs text-muted-foreground tabular-nums">
+                  <p className="truncate text-xs tabular-nums text-muted-foreground">
                     {formatRp(v.price)}
+                    {/* Sisa stok varian setelah cart — kasir tahu kapasitas
+                        tanpa buka /pos/stok; menonjol hanya saat menipis. */}
+                    {remaining != null &&
+                      (habis ? (
+                        <span className="ml-1.5 font-semibold">Habis</span>
+                      ) : remaining <= 3 ? (
+                        <span className="ml-1.5 font-semibold text-pop-pink">
+                          Sisa {remaining}
+                        </span>
+                      ) : (
+                        <span className="ml-1.5 opacity-70">· {remaining}</span>
+                      ))}
                   </p>
                 </div>
                 {needsSugar ? (
                   // Minuman: "−" ambigu di sini (tingkat gula yang mana?),
-                  // jadi cukup tombol tambah → buka pemilih gula. Ubah/
-                  // hapus qty dilakukan di daftar keranjang, tempat tiap
-                  // tingkat gula punya barisnya sendiri.
-                  <button
-                    type="button"
-                    onClick={() => onInc(v.id)}
-                    disabled={habis}
-                    className="h-9 px-3 flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground shadow text-sm font-semibold active:bg-primary/80 disabled:opacity-40"
-                  >
-                    <Plus size={14} />
-                    Tambah
+                  // jadi hanya tambah → buka pemilih gula. Ubah/hapus qty
+                  // dilakukan di daftar keranjang, tempat tiap tingkat gula
+                  // punya barisnya sendiri.
+                  <>
                     {qty > 0 && (
-                      <span className="tabular-nums opacity-80">({qty})</span>
+                      <span className="text-sm font-bold tabular-nums text-primary">
+                        ×{qty}
+                      </span>
                     )}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                    {!habis && (
+                      <span
+                        aria-hidden
+                        className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground"
+                      >
+                        <Plus size={16} />
+                      </span>
+                    )}
+                  </>
+                ) : qty > 0 ? (
+                  <div className="flex items-center rounded-full bg-primary text-primary-foreground select-none">
                     <button
                       type="button"
                       aria-label="Kurangi"
-                      onClick={() => onDec(v.id)}
-                      className="h-9 w-9 flex items-center justify-center rounded-l-full active:bg-primary/80 disabled:opacity-40"
-                      disabled={qty === 0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDec(v.id);
+                      }}
+                      className="h-9 w-9 flex items-center justify-center rounded-l-full active:bg-primary/80"
                     >
                       <Minus size={14} />
                     </button>
-                    <span className="min-w-[28px] text-center text-sm font-bold tabular-nums px-1">
+                    <span className="min-w-6 text-center text-sm font-bold tabular-nums">
                       {qty}
                     </span>
                     <button
                       type="button"
                       aria-label="Tambah"
-                      onClick={() => onInc(v.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        add();
+                      }}
                       disabled={habis}
                       className="h-9 w-9 flex items-center justify-center rounded-r-full active:bg-primary/80 disabled:opacity-40"
                     >
                       <Plus size={14} />
                     </button>
                   </div>
+                ) : (
+                  !habis && (
+                    <span
+                      aria-hidden
+                      className="grid size-9 shrink-0 place-items-center rounded-full border border-border text-foreground/70"
+                    >
+                      <Plus size={16} />
+                    </span>
+                  )
                 )}
               </div>
             );
@@ -2254,9 +2300,9 @@ function VariantPickerDialog({
         <button
           type="button"
           onClick={onClose}
-          className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold"
+          className="w-full h-10 rounded-xl bg-primary text-sm text-primary-foreground font-semibold"
         >
-          Selesai
+          Selesai{totalQty > 0 ? ` · ${totalQty} item` : ""}
         </button>
       </div>
     </div>
@@ -2288,22 +2334,27 @@ function SugarPickerDialog({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-3 space-y-2.5"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="font-semibold text-foreground">{title}</h2>
-          <p className="text-xs text-muted-foreground">
-            Pilih tingkat gula — wajib. {formatRp(price)}
+          <h2 className="truncate font-semibold text-foreground">{title}</h2>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {formatRp(price)} · pilih tingkat gula (wajib)
           </p>
         </div>
-        <div className="space-y-2">
+        {/* Tiga pilihan sejajar dalam satu baris: satu tap, tanpa scroll. */}
+        <div
+          className={`grid gap-2 ${
+            SUGAR_LEVELS.length === 3 ? "grid-cols-3" : "grid-cols-1"
+          }`}
+        >
           {SUGAR_LEVELS.map((level) => (
             <button
               key={level}
               type="button"
               onClick={() => onPick(level)}
-              className="w-full h-12 rounded-xl border border-border bg-card font-semibold text-foreground text-left px-4 active:bg-muted hover:border-primary transition-colors"
+              className="h-14 rounded-xl border border-border bg-card px-1 text-sm font-semibold leading-tight text-foreground active:bg-muted hover:border-primary transition-colors"
             >
               {SUGAR_LEVEL_LABELS[level]}
             </button>
@@ -2312,7 +2363,7 @@ function SugarPickerDialog({
         <button
           type="button"
           onClick={onClose}
-          className="w-full h-11 rounded-xl border border-border text-muted-foreground font-semibold"
+          className="w-full h-10 rounded-xl text-sm text-muted-foreground font-semibold hover:bg-muted"
         >
           Batal
         </button>
@@ -2816,33 +2867,28 @@ function OpenPriceVariantPicker({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-3 space-y-2.5"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="font-semibold text-foreground">{product.name}</h2>
+          <h2 className="truncate font-semibold text-foreground">{product.name}</h2>
           <p className="text-xs text-muted-foreground">
-            Pilih varian dulu — harga di-input di langkah berikutnya.
+            Pilih varian, lalu isi harga.
           </p>
         </div>
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
           {product.variants.map((v) => (
             <button
               key={v.id}
               type="button"
               onClick={() => onPick(v.id)}
-              className="w-full rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition p-3 flex items-center justify-between gap-3 text-left"
+              className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-1.5 text-left transition-colors hover:border-primary hover:bg-primary/5 active:bg-muted"
             >
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground text-sm truncate">
-                  {v.name}
-                </p>
-                <p className="text-[10px] text-muted-foreground tabular-nums">
-                  default harga {formatRp(v.price)}
-                </p>
-              </div>
-              <span className="text-xs font-semibold text-primary shrink-0">
-                Pilih →
+              <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                {v.name}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {formatRp(v.price)}
               </span>
             </button>
           ))}
@@ -2850,7 +2896,7 @@ function OpenPriceVariantPicker({
         <button
           type="button"
           onClick={onClose}
-          className="w-full h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted"
+          className="w-full h-10 rounded-xl text-sm text-muted-foreground font-semibold hover:bg-muted"
         >
           Batal
         </button>
