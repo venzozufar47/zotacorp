@@ -319,15 +319,6 @@ export function POSClient({
   const [fulfillmentType, setFulfillmentType] = useState<
     "dine_in" | "take_away"
   >("dine_in");
-  // Per-item override: key = cartKey penuh
-  // ("p:<id>[|v:<vid>][|s:<gula>]") — segmen gula ikut, jadi dua baris
-  // minuman yang sama dengan gula berbeda bisa punya mode berbeda.
-  // Hanya entries yang BEDA dari fulfillmentType yang disimpan;
-  // server akan resolve sisanya ke transaction-level.
-  const [itemFulfillmentOverrides, setItemFulfillmentOverrides] = useState<
-    Record<string, "dine_in" | "take_away">
-  >({});
-
   // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
   const lineByKey = useMemo(() => {
     const m = new Map<string, { name: string; price: number; productId: string }>();
@@ -722,7 +713,6 @@ export function POSClient({
         items,
         customerName: customerName.trim(),
         fulfillmentType,
-        itemFulfillmentOverrides,
         qrisVerification:
           method === "qris" ? qrisVerification ?? undefined : undefined,
         campaignId: chosenCampaignId,
@@ -817,7 +807,6 @@ export function POSClient({
       resetCart();
       setCustomerName("");
       setFulfillmentType("dine_in");
-      setItemFulfillmentOverrides({});
       setQrisReceipt(null);
       setQrisVerification(null);
       setCashReceived(null);
@@ -936,8 +925,8 @@ export function POSClient({
       !qrisVerificationOk(qrisVerification, qrisReceipt));
 
   const cartPanel = (
-    <div className="flex flex-col h-full bg-card min-h-0">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+    <div className="flex flex-col h-full bg-card min-h-0 overflow-y-auto">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
             Cart
@@ -968,7 +957,7 @@ export function POSClient({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-[10rem]">
         {cartLines.length === 0 ? (
           <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-center gap-2 text-muted-foreground">
             <ShoppingCart size={28} className="opacity-40" />
@@ -984,36 +973,14 @@ export function POSClient({
             const isReady = line.ready;
             const isCustom = line.key.startsWith("c:");
             const customId = isCustom ? line.key.slice(2) : null;
-            // Per-item dine/TA override — hanya untuk catalog item
-            // (custom item localId tidak stabil cross-render).
-            const itemMode: "dine_in" | "take_away" =
-              !isCustom && itemFulfillmentOverrides[line.key]
-                ? itemFulfillmentOverrides[line.key]
-                : fulfillmentType;
-            const itemModeOverridden =
-              !isCustom &&
-              itemFulfillmentOverrides[line.key] !== undefined &&
-              itemFulfillmentOverrides[line.key] !== fulfillmentType;
-            const toggleItemMode = () => {
-              if (isCustom) return;
-              setItemFulfillmentOverrides((prev) => {
-                const next = { ...prev };
-                const newMode: "dine_in" | "take_away" =
-                  itemMode === "dine_in" ? "take_away" : "dine_in";
-                if (newMode === fulfillmentType) {
-                  delete next[line.key];
-                } else {
-                  next[line.key] = newMode;
-                }
-                return next;
-              });
-            };
             return (
               <div
                 key={line.key}
-                className="rounded-xl border border-border bg-background/40 px-3 py-2 flex items-center gap-2"
+                className="rounded-xl border border-border bg-background/40 p-2.5 flex items-center gap-2"
               >
-                <div className="flex-1 min-w-0">
+                {/* Satu baris: nama/gula/harga di kiri, tombol % dan qty
+                    sejajar di kanan — kartu tidak tinggi di panel sempit. */}
+                <div className="min-w-0 flex-1">
                   {/* Nama boleh 2 baris (tidak dipotong "…"); tingkat gula
                       jadi lencana sendiri supaya selalu terlihat — dulu
                       ditempel di belakang nama dan ikut terpotong. */}
@@ -1039,36 +1006,19 @@ export function POSClient({
                     )}
                   </p>
                 </div>
+                <div className="flex shrink-0 items-center gap-1.5">
                 {!isCustom && !isReady && (
                   <button
                     type="button"
                     onClick={() => setDiscountFor(line.key)}
-                    className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                    className={`grid size-8 place-items-center text-xs rounded-lg border transition-colors ${
                       line.originalPrice != null
                         ? "border-pop-amber bg-pop-amber/20 text-foreground"
                         : "border-border bg-card text-muted-foreground hover:text-foreground"
                     }`}
-                    title="Atur harga diskon (mis. menjelang expired)"
+                    title="Atur harga akhir setelah diskon (mis. menjelang expired)"
                   >
                     %
-                  </button>
-                )}
-                {!isCustom && !isReady && (
-                  <button
-                    type="button"
-                    onClick={toggleItemMode}
-                    className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                      itemModeOverridden
-                        ? "border-pop-amber bg-pop-amber/20 text-foreground"
-                        : "border-border bg-card text-muted-foreground hover:text-foreground"
-                    }`}
-                    title={
-                      itemModeOverridden
-                        ? "Override per-item — tap untuk reset ke mode transaksi"
-                        : "Mode transaksi — tap untuk override"
-                    }
-                  >
-                    {itemMode === "dine_in" ? "🍽️" : "🥡"}
                   </button>
                 )}
                 {isReady && (
@@ -1090,13 +1040,13 @@ export function POSClient({
                       ? updateCustomQty(customId, -1)
                       : dec(line.key)
                   }
-                  className="size-7 rounded-full border border-border text-foreground inline-flex items-center justify-center hover:bg-muted"
+                  className="size-8 rounded-full border border-border text-foreground inline-flex items-center justify-center hover:bg-muted"
                 >
                   <Minus size={12} />
                 </button>
                 )}
                 {!isReady && (
-                <span className="w-5 text-center text-sm font-semibold tabular-nums">
+                <span className="w-6 text-center text-sm font-semibold tabular-nums">
                   {line.qty}
                 </span>
                 )}
@@ -1109,7 +1059,7 @@ export function POSClient({
                       ? updateCustomQty(customId, 1)
                       : inc(line.key)
                   }
-                  className="size-7 rounded-full border border-border text-foreground inline-flex items-center justify-center hover:bg-muted"
+                  className="size-8 rounded-full border border-border text-foreground inline-flex items-center justify-center hover:bg-muted"
                 >
                   <Plus size={12} />
                 </button>
@@ -1124,13 +1074,14 @@ export function POSClient({
                     <X size={12} />
                   </button>
                 )}
+                </div>
               </div>
             );
           })
         )}
       </div>
 
-      <div className="border-t border-border bg-card px-4 py-3 space-y-3">
+      <div className="border-t border-border bg-card px-3 py-2.5 space-y-2 shrink-0">
         <div className="space-y-1 tabular-nums">
           {picked && discountAmount > 0 && (
             <>
@@ -1173,26 +1124,26 @@ export function POSClient({
           </div>
         </div>
 
-        {/* Atas nama pemesan — wajib + auto-focus saat cart >= 1. */}
+        {/* Atas nama pemesan — wajib. Tanpa label terpisah (hemat tinggi
+            panel di tablet); wajibnya ditandai di placeholder. */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-            Atas nama <span className="text-destructive">*</span>
-          </label>
           <input
             type="text"
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="Nama pemesan…"
+            placeholder="Atas nama pemesan (wajib)…"
+            aria-label="Atas nama pemesan (wajib)"
             className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
         {/* Fulfillment picker — dine-in / take-away per transaksi. */}
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-            Mode
-          </p>
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
+          <div
+            role="group"
+            aria-label="Mode"
+            className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border"
+          >
             {(["dine_in", "take_away"] as const).map((m) => {
               const active = fulfillmentType === m;
               return (
@@ -1925,12 +1876,9 @@ function CashReceivedField({
     Math.ceil(n / step) * step;
 
   return (
-    <div className="mb-3 rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+    <div className="rounded-xl border border-border bg-muted/30 p-2 space-y-1.5">
       <label className="block">
-        <span className="text-xs font-medium text-foreground">
-          Uang diterima
-        </span>
-        <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
           <span className="text-sm font-semibold text-muted-foreground">
             Rp
           </span>
@@ -1939,7 +1887,8 @@ function CashReceivedField({
             inputMode="numeric"
             autoComplete="off"
             value={value == null ? "" : value.toLocaleString("id-ID")}
-            placeholder="0"
+            placeholder="Uang diterima"
+            aria-label="Uang diterima"
             onChange={(e) => {
               const digits = e.target.value.replace(/[^\d]/g, "");
               if (digits === "") {
@@ -2645,32 +2594,32 @@ function DiscountDialog({
       return;
     }
     if (p >= listPrice) {
-      toast.error("Harga diskon harus di bawah harga normal");
+      toast.error("Harga akhir harus di bawah harga normal");
       return;
     }
     onApply(p);
     onClose();
   }
 
-  // Preset cepat — dibulatkan ke 500 supaya nominalnya wajar di kasir.
-  // `keep` = porsi harga yang DIBAYAR; dipakai pecahan (bukan persen
-  // bulat) supaya potongan ⅓ jatuh pas (15.000 → 10.000).
+  // Preset cepat — harga akhir dibulatkan ke 500 supaya nominalnya wajar
+  // di kasir (mis. 15.000 −30% → 10.500).
   //
-  // "Gratis" SENGAJA bukan hasil `keep: 0` yang dilewatkan ke rumus
-  // pembulatan sama seperti −⅓ — kalaupun kebetulan hasilnya sama-sama
-  // Rp0, tombol −⅓ pada produk yang sudah murah (listPrice kecil) harus
-  // tetap disabled (angkanya cuma kebetulan menyentuh 0 akibat
-  // pembulatan, bukan diskon ⅓ yang sungguhan), sementara "Gratis"
-  // adalah 100% off yang memang dimaksud dan harus selalu bisa ditekan.
-  // apply()/server sudah menerima 0 sejak awal (hanya menolak >= harga
-  // normal) — yang hilang cuma jalan pintas satu-tap untuk mencapainya.
-  const oneThirdValue = Math.round((listPrice * (2 / 3)) / 500) * 500;
+  // "Gratis" SENGAJA bukan hasil rumus persen yang dibulatkan: pada produk
+  // yang sudah murah (listPrice kecil) preset persen harus tetap disabled
+  // bila pembulatan membuatnya 0 atau tidak turun dari harga normal
+  // (angkanya cuma kebetulan akibat pembulatan, bukan diskon yang
+  // sungguhan), sementara "Gratis" adalah 100% off yang memang dimaksud
+  // dan harus selalu bisa ditekan. apply()/server menerima 0 (hanya
+  // menolak >= harga normal).
   const presets = [
-    {
-      label: "−⅓",
-      value: oneThirdValue,
-      disabled: oneThirdValue <= 0 || oneThirdValue >= listPrice,
-    },
+    ...[20, 30, 50].map((pct) => {
+      const value = Math.round((listPrice * (1 - pct / 100)) / 500) * 500;
+      return {
+        label: `−${pct}%`,
+        value,
+        disabled: value <= 0 || value >= listPrice,
+      };
+    }),
     {
       label: "Gratis",
       value: 0,
@@ -2690,8 +2639,8 @@ function DiscountDialog({
         <div>
           <h2 className="font-semibold text-foreground">{name}</h2>
           <p className="text-xs text-muted-foreground">
-            Harga normal {formatRp(listPrice)}. Isi harga diskon (boleh sampai
-            Rp0 untuk gratis) — stok tetap berkurang seperti penjualan biasa.
+            Harga normal {formatRp(listPrice)}. Isi harga akhir setelah diskon
+            (boleh sampai Rp0 untuk gratis) — stok tetap berkurang seperti penjualan biasa.
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -2703,13 +2652,14 @@ function DiscountDialog({
               disabled={p.disabled}
               className="h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold hover:border-foreground disabled:opacity-40"
             >
-              {p.label} · {formatRp(p.value)}
+              {/* Persentase saja; nominal hanya untuk Gratis (Rp0). */}
+              {p.value > 0 ? p.label : `${p.label} · ${formatRp(p.value)}`}
             </button>
           ))}
         </div>
         <label className="block">
           <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-            Harga diskon
+            Harga akhir setelah diskon
           </span>
           <input
             autoFocus
