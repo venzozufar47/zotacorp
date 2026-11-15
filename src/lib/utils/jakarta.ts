@@ -12,6 +12,20 @@
  */
 
 /** Date string (YYYY-MM-DD) untuk `d` di timezone Asia/Jakarta. */
+/** Jam (WIB) pergantian "hari kerja" slip produksi. Admin Custom Cake
+ *  sering mengirim slip lewat tengah malam; sebelum jam ini slip tetap
+ *  dihitung sebagai hari sebelumnya supaya tampilannya sama persis
+ *  dengan yang dikirim sebelum jam 12 malam. */
+export const SLIP_DAY_ROLLOVER_HOUR = 6;
+
+/** Tanggal "hari ini" untuk slip produksi (YYYY-MM-DD, WIB): 00:00 s/d
+ *  05:59 masih dihitung hari sebelumnya. */
+export function slipWorkingDateString(d: Date = new Date()): string {
+  return jakartaDateString(
+    new Date(d.getTime() - SLIP_DAY_ROLLOVER_HOUR * 3600_000)
+  );
+}
+
 export function jakartaDateString(d: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",

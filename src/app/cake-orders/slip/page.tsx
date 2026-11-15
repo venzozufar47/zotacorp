@@ -13,7 +13,7 @@ import { SlipPreview } from "@/components/cake/SlipPreview";
 import { parseCakeBranch } from "@/lib/cake-orders/types";
 import {
   jakartaDateMinusDays,
-  jakartaDateString,
+  slipWorkingDateString,
 } from "@/lib/utils/jakarta";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,7 +35,7 @@ export default async function EmployeeSlipPage({
   if (!access.hasOrders) redirect("/dashboard");
 
   const sp = await searchParams;
-  const today = jakartaDateString(new Date());
+  const today = slipWorkingDateString();
   const defaultDate = jakartaDateMinusDays(today, -1);
   const requestedDate =
     sp.date && ISO_DATE.test(sp.date) ? sp.date : defaultDate;

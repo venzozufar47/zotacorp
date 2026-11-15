@@ -14,6 +14,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   jakartaDateMinusDays,
   jakartaDateString,
+  slipWorkingDateString,
 } from "@/lib/utils/jakarta";
 import {
   buildSlipSnapshot,
@@ -64,7 +65,7 @@ const COMPLETED_PRODUCTION_STATUSES_LIST: readonly CakeProductionStatus[] = [
 /** YYYY-MM-DD for tomorrow in Asia/Jakarta. The slip surface is locked
  *  to this date — admin can never schedule a slip for a different day. */
 function tomorrowYmd(): string {
-  return jakartaDateMinusDays(jakartaDateString(new Date()), -1);
+  return jakartaDateMinusDays(slipWorkingDateString(), -1);
 }
 
 /** Inclusive day range [start, end] as a list of YYYY-MM-DD. */
