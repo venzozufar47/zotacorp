@@ -13,6 +13,7 @@ import {
   type CampaignMode,
   type DiscountCampaignLite,
   type DiscountKind,
+  type PromoLine,
   type RoundingMode,
 } from "@/lib/pos/discount";
 
@@ -26,6 +27,10 @@ export interface PosDiscountCampaign {
   kind: DiscountKind;
   percentOff: number;
   amountOff: number;
+  /** Harga promo per pcs (kind = item_price). */
+  promoPrice: number;
+  /** Produk peserta promo (kind = item_price). */
+  productIds: string[];
   roundingUnit: number;
   roundingMode: RoundingMode;
   minPurchase: number;
@@ -49,6 +54,8 @@ interface CampaignRow {
   kind: DiscountKind;
   percent_off: number | string;
   amount_off: number | string | null;
+  promo_price: number | string | null;
+  product_ids: string[] | null;
   rounding_unit: number;
   rounding_mode: RoundingMode;
   min_purchase: number | string;
@@ -75,6 +82,8 @@ function mapCampaign(r: CampaignRow): PosDiscountCampaign {
     kind: r.kind,
     percentOff: percent,
     amountOff: Number(r.amount_off ?? 0),
+    promoPrice: Number(r.promo_price ?? 0),
+    productIds: r.product_ids ?? [],
     roundingUnit: r.rounding_unit,
     roundingMode: r.rounding_mode,
     minPurchase: Number(r.min_purchase ?? 0),
@@ -117,10 +126,11 @@ export async function resolveSaleDiscount(
   bankAccountId: string,
   grossTotal: number,
   chosenId?: string | null,
-  at: Date = new Date()
+  at: Date = new Date(),
+  lines?: PromoLine[]
 ): Promise<{ campaign: PosDiscountCampaign; finalTotal: number; discountAmount: number } | null> {
   const list = await listCampaignsForPos(bankAccountId);
-  const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null);
+  const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines);
   return picked ? { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount } : null;
 }
 
@@ -321,10 +331,12 @@ export async function saveDiscountCampaign(input: CampaignInput): Promise<Action
   const groupId = input.groupId;
   const { data: existing } = await supabase
     .from("pos_discount_campaigns" as never)
-    .select("id, bank_account_id")
+    .select("id, bank_account_id, kind")
     .eq("group_id", groupId);
-  const have = (existing ?? []) as { id: string; bank_account_id: string }[];
+  const have = (existing ?? []) as { id: string; bank_account_id: string; kind: string }[];
   if (have.length === 0) return { ok: false, error: "Kampanye tidak ditemukan" };
+  if (have.some((h) => h.kind === "item_price"))
+    return { ok: false, error: "Promo harga per item hanya bisa dijeda/diaktifkan di sini; ubah lewat developer." };
 
   // Cabang yang dilepas: tolak bila sudah dipakai penjualan (riwayat HPP/omzet harus tetap utuh).
   const removing = have.filter((h) => !accountIds.includes(h.bank_account_id));
@@ -408,6 +420,7 @@ async function planRetro(campaignId: string): Promise<RetroPlan | { error: strin
   const campaign = mapCampaign(campRaw as unknown as CampaignRow);
   if (campaign.mode === "kasir")
     return { error: "Kampanye \"kasir memilih\" tidak bisa diterapkan ulang otomatis: pilihannya ada di kasir." };
+  if (campaign.kind === "item_price") return { error: "Promo harga per item tidak bisa diterapkan ke penjualan lama." };
 
   const { data: salesRaw } = await supabase
     .from("pos_sales")

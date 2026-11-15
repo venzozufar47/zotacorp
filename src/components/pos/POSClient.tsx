@@ -340,6 +340,8 @@ export function POSClient({
     let itemCount = 0;
     const cartLines: Array<{
       key: string;
+      /** Produk katalog; null untuk custom/ready cake. */
+      productId: string | null;
       /** Nama untuk LAYAR (sudah termasuk label gula). */
       name: string;
       /** Nama tanpa label gula — dipakai struk, yang mencetak gula di
@@ -377,6 +379,7 @@ export function POSClient({
       itemCount += qty;
       cartLines.push({
         key,
+        productId: info.productId,
         name,
         baseName: info.name,
         sugarLabel,
@@ -398,6 +401,7 @@ export function POSClient({
       itemCount += c.qty;
       cartLines.push({
         key: `c:${c.localId}`,
+        productId: null,
         name: c.name,
         baseName: c.name,
         sugarLabel: null,
@@ -415,6 +419,7 @@ export function POSClient({
       itemCount += 1;
       cartLines.push({
         key: `r:${r.orderId}`,
+        productId: null,
         name: `Ready Cake — ${r.name}${r.isDiy ? " (DIY)" : ""}`,
         baseName: `Ready Cake — ${r.name}`,
         sugarLabel: null,
@@ -809,9 +814,16 @@ export function POSClient({
 
   // Kampanye terbaik untuk pembeli — pemilihan & math di-share dengan server (pickBestCampaign/applyDiscount),
   // jadi angka di cart == angka tersimpan di pos_sales.total. Dihitung sebelum early-return (rules-of-hooks).
+  const promoLines = useMemo(
+    () =>
+      cartLines
+        .filter((l) => l.productId && !l.custom && !l.ready && l.originalPrice == null)
+        .map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty })),
+    [cartLines]
+  );
   const picked = useMemo(
-    () => pickBestCampaign(campaigns, total, liveNow, chosenCampaignId),
-    [campaigns, total, liveNow, chosenCampaignId]
+    () => pickBestCampaign(campaigns, total, liveNow, chosenCampaignId, promoLines),
+    [campaigns, total, liveNow, chosenCampaignId, promoLines]
   );
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.

@@ -19,10 +19,23 @@
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 
 export type RoundingMode = "floor" | "nearest" | "ceil";
-export type DiscountKind = "percent" | "nominal";
+/** "item_price": produk tertentu dijual di harga promo tetap, maksimal 1 pcs per nota (lihat `promoSaving`). */
+export type DiscountKind = "percent" | "nominal" | "item_price";
 export type CampaignMode = "otomatis" | "kasir";
 
+/** Baris keranjang yang relevan untuk promo harga-per-item. Baris yang sudah didiskon manual / custom / ready cake tak ikut. */
+export interface PromoLine {
+  productId: string | null;
+  /** Harga satuan saat ini. */
+  unitPrice: number;
+  qty: number;
+}
+
 export interface DiscountCampaignLite {
+  /** Harga promo per pcs, dipakai bila kind = "item_price". */
+  promoPrice?: number;
+  /** Produk yang ikut promo, dipakai bila kind = "item_price". */
+  productIds?: string[];
   percentOff: number;
   roundingUnit: number;
   roundingMode: RoundingMode;
@@ -34,13 +47,34 @@ export interface DiscountCampaignLite {
   minPurchase?: number;
 }
 
+/**
+ * Hemat promo harga-per-item: SATU pcs saja per nota (1 nota = 1 orang) — pcs dari baris peserta dengan hemat
+ * terbesar (harga satuan − harga promo). Pcs lain tetap harga normal. 0 bila tak ada baris peserta.
+ */
+export function promoSaving(c: DiscountCampaignLite, lines: PromoLine[] | undefined): number {
+  const price = c.promoPrice ?? 0;
+  const ids = c.productIds;
+  if (!lines || !ids || ids.length === 0) return 0;
+  let best = 0;
+  for (const l of lines) {
+    if (!l.productId || l.qty <= 0 || !ids.includes(l.productId)) continue;
+    best = Math.max(best, l.unitPrice - price);
+  }
+  return Math.max(0, best);
+}
+
 export function applyDiscount(
   grossTotal: number,
-  c: DiscountCampaignLite
+  c: DiscountCampaignLite,
+  lines?: PromoLine[]
 ): { finalTotal: number; discountAmount: number } {
   if (grossTotal <= 0) return { finalTotal: 0, discountAmount: 0 };
   if (c.minPurchase && grossTotal < c.minPurchase) {
     return { finalTotal: grossTotal, discountAmount: 0 };
+  }
+  if (c.kind === "item_price") {
+    const off = Math.min(promoSaving(c, lines), grossTotal);
+    return { finalTotal: grossTotal - off, discountAmount: off };
   }
   if (c.kind === "nominal") {
     const off = Math.min(Math.max(c.amountOff ?? 0, 0), grossTotal);
@@ -135,13 +169,14 @@ export function pickBestCampaign<C extends PickableCampaign>(
   campaigns: C[],
   grossTotal: number,
   now: JakartaNow,
-  chosenId?: string | null
+  chosenId?: string | null,
+  lines?: PromoLine[]
 ): PickedCampaign<C> | null {
   let best: PickedCampaign<C> | null = null;
   for (const c of campaigns) {
     if (!isCampaignLive(c, now)) continue;
     if (c.mode === "kasir" && c.id !== chosenId) continue;
-    const r = applyDiscount(grossTotal, c);
+    const r = applyDiscount(grossTotal, c, lines);
     if (r.discountAmount <= 0) continue;
     if (
       !best ||
@@ -156,6 +191,7 @@ export function pickBestCampaign<C extends PickableCampaign>(
 
 /** "10%" / "Rp 5.000" untuk label. */
 export function describeDiscount(c: DiscountCampaignLite): string {
+  if (c.kind === "item_price") return `Rp ${Math.round(c.promoPrice ?? 0).toLocaleString("id-ID")}/item`;
   if (c.kind === "nominal") return `Rp ${Math.round(c.amountOff ?? 0).toLocaleString("id-ID")}`;
   const p = Number(c.percentOff);
   return `${Number.isInteger(p) ? p : p.toLocaleString("id-ID")}%`;

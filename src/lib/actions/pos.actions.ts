@@ -1005,7 +1005,11 @@ export async function createPosSale(input: {
   //     Kalau ada, hitung final post-diskon — `total` di-overwrite ke
   //     final supaya semua downstream (pos_sales.total, cashflow.credit,
   //     description) konsisten.
-  const resolved = await resolveSaleDiscount(input.bankAccountId, grossTotal, input.campaignId ?? null, now);
+  //     Promo harga-per-item hanya melihat baris katalog tanpa diskon manual (bukan custom/ready cake).
+  const promoLines = itemsResolved
+    .filter((it) => it.productId && !it.readyCakeOrderId && it.originalUnitPrice == null)
+    .map((it) => ({ productId: it.productId, unitPrice: it.unitPrice, qty: it.qty }));
+  const resolved = await resolveSaleDiscount(input.bankAccountId, grossTotal, input.campaignId ?? null, now, promoLines);
   const campaign = resolved?.campaign ?? null;
   let discountAmount = 0;
   if (resolved) {
