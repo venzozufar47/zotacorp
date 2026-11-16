@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { productImageSrc } from "@/lib/pos/product-images";
@@ -87,6 +87,13 @@ import {
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
 import { PosTopbarProvider } from "./pos-topbar-context";
+import {
+  BIG_FREE_ORDER_MIN,
+  looksLikeMamaya,
+  saveMamayaHandoff,
+  takeMamayaHandoff,
+  type HandoffItem,
+} from "@/lib/pos/mamaya-guard";
 
 /** Dipakai sebagai bawaan agar identitas array tidak berganti tiap render. */
 const NO_CAMPAIGNS: PosDiscountCampaign[] = [];
@@ -266,6 +273,24 @@ export function POSClient({
   }, [campaigns.length]);
   const liveNow = useMemo(() => jakartaNowParts(new Date(clock)), [clock]);
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
+  // Pengaman pencampuran Mamaya di POS Semarang (lihat lib/pos/mamaya-guard.ts).
+  const isSemarangPos = branch === "Semarang";
+  // Item bebas berbau Mamaya yang menunggu keputusan kasir; null = tidak ada.
+  const [mamayaPrompt, setMamayaPrompt] = useState<HandoffItem | null>(null);
+  // Pesanan besar berisi item bebas menunggu kasir memilih asal; menyimpan metode bayar yang tertunda.
+  const [originPrompt, setOriginPrompt] = useState<PaymentMethod | "pending" | null>(null);
+  // Kasir sudah menegaskan "Semarang" untuk keranjang ini (di-reset saat keranjang dikosongkan).
+  const originConfirmedRef = useRef(false);
+  // Lanjutan dari POS Semarang: item bebas yang dipindahkan kasir masuk ke keranjang Mamaya.
+  useEffect(() => {
+    if (branch !== "Mamaya") return;
+    const items = takeMamayaHandoff();
+    if (items.length === 0) return;
+    // sessionStorage = sistem eksternal yang hanya terbaca di klien: membaca di initializer useState merusak hidrasi SSR.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCustomItems(items.map((i) => ({ localId: crypto.randomUUID(), ...i })));
+    toast.success(`${items.length} item dipindahkan dari POS Semarang`);
+  }, [branch]);
   const [readyLines, setReadyLines] = useState<ReadyLine[]>([]);
   const [readyPickerOpen, setReadyPickerOpen] = useState(false);
   // QRIS: kasir memilih "ada verifikasi bunyi BukuPay" (tanpa foto) atau "tidak ada bunyi" (foto bukti
@@ -620,6 +645,14 @@ export function POSClient({
   }
 
   function addCustom(name: string, price: number, qty: number) {
+    if (isSemarangPos && looksLikeMamaya(name)) {
+      setMamayaPrompt({ name: name.trim(), price, qty });
+      return;
+    }
+    addCustomLine(name, price, qty);
+  }
+
+  function addCustomLine(name: string, price: number, qty: number) {
     setCustomItems((arr) => [
       ...arr,
       {
@@ -661,6 +694,21 @@ export function POSClient({
     setDiscountByKey({});
     setChosenCampaignId(null);
     setDisabledCampaignIds([]);
+    originConfirmedRef.current = false;
+  }
+
+  /** Keranjang hanya berisi item bebas murni → seluruhnya bisa dipindah ke POS Mamaya tanpa kehilangan item Semarang. */
+  const onlyFreeItems =
+    customItems.length > 0 &&
+    customItems.every((c) => !c.productId) &&
+    Object.values(cart).every((q) => q <= 0) &&
+    readyLines.length === 0;
+
+  function moveToMamaya(items: HandoffItem[]) {
+    if (!saveMamayaHandoff(items)) {
+      toast.error("Browser tidak bisa menyimpan data pindahan — input ulang di POS Mamaya");
+    }
+    router.push("/posmamaya");
   }
 
   function submit(method: PaymentMethod | "pending") {
@@ -708,6 +756,12 @@ export function POSClient({
           ? "Tidak ada bunyi BukuPay — foto bukti pembayaran wajib"
           : "Pilih dulu: sudah ada verifikasi bunyi BukuPay atau tidak"
       );
+      return;
+    }
+    // Pesanan besar berisi item bebas di POS Semarang: kasir wajib menegaskan asalnya (Semarang / Mamaya) dulu.
+    const freeTotal = customItems.reduce((s, c) => (c.productId ? s : s + c.price * c.qty), 0);
+    if (isSemarangPos && !originConfirmedRef.current && freeTotal >= BIG_FREE_ORDER_MIN) {
+      setOriginPrompt(method);
       return;
     }
     startTransition(async () => {
@@ -1774,6 +1828,59 @@ export function POSClient({
 
       {lastSale && (
         <ReceiptSuccessDialog data={lastSale} onClose={() => setLastSale(null)} />
+      )}
+
+      {mamayaPrompt && (
+        <MamayaGuardDialog
+          title="Ini penjualan Mamaya?"
+          body={`"${mamayaPrompt.name}" kelihatannya barang Mamaya House. Penjualan Mamaya dicatat di POS Mamaya supaya insight dan laporannya tidak tercampur dengan Semarang.`}
+          moveLabel="Pindah ke POS Mamaya"
+          stayLabel="Tetap di Semarang"
+          canMove={
+            customItems.length === 0 &&
+            readyLines.length === 0 &&
+            Object.values(cart).every((q) => q <= 0)
+          }
+          cannotMoveHint="Keranjang Semarang sudah berisi item. Selesaikan transaksi ini dulu, lalu input pesanan Mamaya terpisah."
+          onMove={() => {
+            const item = mamayaPrompt;
+            setMamayaPrompt(null);
+            moveToMamaya([item]);
+          }}
+          onStay={() => {
+            const item = mamayaPrompt;
+            setMamayaPrompt(null);
+            addCustomLine(item.name, item.price, item.qty);
+          }}
+          onCancel={() => setMamayaPrompt(null)}
+        />
+      )}
+
+      {originPrompt && (
+        <MamayaGuardDialog
+          title="Pesanan besar — asalnya mana?"
+          body={`Keranjang berisi item bebas senilai ${formatRp(
+            customItems.reduce((s, c) => (c.productId ? s : s + c.price * c.qty), 0)
+          )}. Pesanan Mamaya House harus dicatat di POS Mamaya, bukan di Semarang.`}
+          moveLabel="Mamaya — pindah ke POS Mamaya"
+          stayLabel="Semarang — lanjut bayar"
+          canMove={onlyFreeItems}
+          cannotMoveHint="Keranjang juga berisi produk Semarang, jadi tidak bisa dipindah sekaligus. Pisahkan dulu: bayar produk Semarang, lalu input item Mamaya di POS Mamaya."
+          onMove={() => {
+            const items = customItems
+              .filter((c) => !c.productId)
+              .map((c) => ({ name: c.name, price: c.price, qty: c.qty }));
+            setOriginPrompt(null);
+            moveToMamaya(items);
+          }}
+          onStay={() => {
+            const method = originPrompt;
+            originConfirmedRef.current = true;
+            setOriginPrompt(null);
+            submit(method);
+          }}
+          onCancel={() => setOriginPrompt(null)}
+        />
       )}
 
       {strukSettingsOpen && (
@@ -2913,3 +3020,63 @@ function OpenPriceVariantPicker({
   );
 }
 
+
+/** Dialog pilihan Semarang vs Mamaya (lihat lib/pos/mamaya-guard.ts). Tidak menutup lewat klik latar: kasir harus memilih. */
+function MamayaGuardDialog({
+  title,
+  body,
+  moveLabel,
+  stayLabel,
+  canMove,
+  cannotMoveHint,
+  onMove,
+  onStay,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  moveLabel: string;
+  stayLabel: string;
+  canMove: boolean;
+  cannotMoveHint: string;
+  onMove: () => void;
+  onStay: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-4 backdrop-blur-sm sm:items-center">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-md space-y-4 rounded-2xl border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_0_var(--foreground)]"
+      >
+        <div>
+          <h2 className="text-lg font-bold text-foreground">{title}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+          {!canMove && <p className="mt-2 text-xs text-warning">{cannotMoveHint}</p>}
+        </div>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onMove}
+            disabled={!canMove}
+            className="h-11 w-full rounded-xl bg-primary font-semibold text-primary-foreground disabled:opacity-40"
+          >
+            {moveLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onStay}
+            className="h-11 w-full rounded-xl border-2 border-foreground bg-card font-semibold text-foreground hover:bg-muted"
+          >
+            {stayLabel}
+          </button>
+          <button type="button" onClick={onCancel} className="h-9 text-sm text-muted-foreground hover:text-foreground">
+            Batal
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
