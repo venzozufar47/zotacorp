@@ -117,10 +117,13 @@ export function PurchaseHistory({
   purchases,
   today,
   admin = false,
+  highlightCategory,
 }: {
   purchases: PurchaseView[];
   today: string;
   admin?: boolean;
+  /** Filter kategori aktif: baris berkategori ini ditebalkan supaya mudah dicari di dalam nota. */
+  highlightCategory?: string;
 }) {
   const days = [...new Set(purchases.map((p) => p.purchaseDate))];
   if (purchases.length === 0) {
@@ -144,7 +147,7 @@ export function PurchaseHistory({
               </span>
             </div>
             {list.map((p) => (
-              <PurchaseCard key={p.id} p={p} admin={admin} />
+              <PurchaseCard key={p.id} p={p} admin={admin} highlightCategory={highlightCategory} />
             ))}
           </section>
         );
@@ -153,7 +156,7 @@ export function PurchaseHistory({
   );
 }
 
-function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
+function PurchaseCard({ p, admin, highlightCategory }: { p: PurchaseView; admin: boolean; highlightCategory?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -200,7 +203,10 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
         <div className="space-y-3 border-t border-border px-3.5 py-3">
           <ul className="space-y-2">
             {p.lines.map((l) => (
-              <li key={l.id} className="text-sm">
+              <li
+                key={l.id}
+                className={cn("text-sm", highlightCategory && l.category === highlightCategory && "-mx-1.5 rounded-md bg-primary/10 px-1.5 py-1")}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate font-medium">

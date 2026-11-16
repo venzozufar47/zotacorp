@@ -1302,10 +1302,14 @@ export interface PurchaseView {
   lines: PurchaseLineView[];
 }
 
-/** `businessUnit` null = semua cabang (hanya admin). */
+/**
+ * `businessUnit` null = semua cabang (hanya admin).
+ * `moneySource` menyaring di basis data. `category` menyaring setelah baris nota dimuat (nota yang punya minimal satu
+ * baris berkategori itu), jadi `limit` berlaku pada nota SEBELUM disaring kategori: persempit tanggal untuk rentang panjang.
+ */
 export async function listPurchases(
   businessUnit: string | null,
-  opts: { from?: string; to?: string; limit?: number } = {}
+  opts: { from?: string; to?: string; limit?: number; category?: string; moneySource?: MoneySource } = {}
 ): Promise<ActionResult<PurchaseView[]>> {
   let isAdmin = false;
   let userId = "";
@@ -1330,9 +1334,10 @@ export async function listPurchases(
   if (businessUnit) q = q.eq("business_unit", businessUnit);
   if (opts.from) q = q.gte("purchase_date", opts.from);
   if (opts.to) q = q.lte("purchase_date", opts.to);
+  if (opts.moneySource) q = q.eq("money_source", opts.moneySource);
   const { data, error } = await q;
   if (error) return { ok: false, error: error.message };
-  const heads = (data ?? []) as Record<string, unknown>[];
+  let heads = (data ?? []) as Record<string, unknown>[];
   if (heads.length === 0) return { ok: true, data: [] };
 
   const ids = heads.map((h) => h.id as string);
@@ -1340,8 +1345,16 @@ export async function listPurchases(
     .from("procurement_purchase_lines" as never)
     .select("*")
     .in("purchase_id", ids)
-    .order("sort_order");
+    .order("sort_order")
+    .limit(10000);
   const lines = (lineRows ?? []) as Record<string, unknown>[];
+  if (opts.category) {
+    const withCategory = new Set(
+      lines.filter((l) => l.category === opts.category).map((l) => l.purchase_id as string)
+    );
+    heads = heads.filter((h) => withCategory.has(h.id as string));
+    if (heads.length === 0) return { ok: true, data: [] };
+  }
   const matIds = [...new Set(lines.map((l) => l.material_id as string | null).filter((v): v is string => !!v))];
   const matInfo = new Map<string, { name: string; usageUnit: string; content: number }>();
   if (matIds.length) {

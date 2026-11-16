@@ -31,6 +31,9 @@ import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
 import { PengadaanTabs, BrandPills, type PengadaanTab, type BelanjaSection } from "@/components/procurement/PengadaanTabs";
 import { PengadaanCatat } from "@/components/procurement/PengadaanCatat";
 import { PurchaseHistory, PurchaseSummaryCard } from "@/components/procurement/PurchaseHistory";
+import { PurchaseFilters, hasActiveFilter, type PurchaseFilterValues } from "@/components/procurement/PurchaseFilters";
+import { EXPENSE_CATEGORY_VALUES } from "@/lib/procurement/categories";
+import { formatRp } from "@/lib/cashflow/format";
 import { listOrders } from "@/lib/actions/procurement-orders.actions";
 import { OrdersPanel } from "@/components/procurement/OrdersPanel";
 
@@ -46,7 +49,16 @@ const TAB_KEYS: readonly PengadaanTab[] = ["catat", "belanja", "stok", "bahan"];
 export default async function PengadaanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string; tab?: string; bahan?: string; bagian?: string }>;
+  searchParams: Promise<{
+    bu?: string;
+    tab?: string;
+    bahan?: string;
+    bagian?: string;
+    dari?: string;
+    sampai?: string;
+    kat?: string;
+    sumber?: string;
+  }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -62,7 +74,8 @@ export default async function PengadaanPage({
   const brands = [...new Set([...staffBrands, ...drawerBrands])].sort();
   if (brands.length === 0) redirect("/dashboard");
 
-  const { bu, tab: tabParam, bahan, bagian } = await searchParams;
+  const { bu, tab: tabParam, bahan, bagian, dari, sampai, kat, sumber } = await searchParams;
+  const filters = parseFilters({ dari, sampai, kat, sumber });
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
   // Tanpa ?bu= eksplisit, cabang awal diutamakan di tempat akun ini PETUGAS pengadaan (bukan sekadar kasir),
   // supaya "Uang pengadaan" tidak terkunci hanya karena Pare urut pertama abjad.
@@ -82,8 +95,14 @@ export default async function PengadaanPage({
   const ordersRes = !limited && activeBrand ? await listOrders(activeBrand) : null;
   const inTransitCount = ordersRes && ordersRes.ok ? (ordersRes.data?.inTransit.length ?? 0) : 0;
   const monthStart = `${today.slice(0, 7)}-01`;
+  // Filter riwayat hanya bermakna di bagian Riwayat: URL berfilter selalu membuka bagian itu.
   const section: BelanjaSection =
-    legacySection ?? (bagian === "pesanan" || bagian === "riwayat" ? bagian : inTransitCount > 0 ? "pesanan" : "riwayat");
+    legacySection ??
+    (bagian === "pesanan" || bagian === "riwayat"
+      ? bagian
+      : hasActiveFilter(filters) || inTransitCount === 0
+        ? "riwayat"
+        : "pesanan");
 
   return (
     <div className="space-y-3">
@@ -123,6 +142,7 @@ export default async function PengadaanPage({
               ordersRes={ordersRes}
               today={today}
               monthStart={monthStart}
+              filters={filters}
             />
           )}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
@@ -150,6 +170,7 @@ async function BelanjaTab({
   ordersRes,
   today,
   monthStart,
+  filters,
 }: {
   brand: string;
   section: BelanjaSection;
@@ -157,6 +178,7 @@ async function BelanjaTab({
   ordersRes: OrdersResult;
   today: string;
   monthStart: string;
+  filters: PurchaseFilterValues;
 }) {
   const href = (s: BelanjaSection) => `/pengadaan?tab=belanja&bagian=${s}&bu=${encodeURIComponent(brand)}`;
   const opts: { key: BelanjaSection; label: string; count?: number }[] = [
@@ -188,16 +210,53 @@ async function BelanjaTab({
           <p className="text-sm text-destructive">{ordersRes.ok ? "Gagal memuat pesanan" : ordersRes.error}</p>
         )
       ) : (
-        <RiwayatTab brand={brand} today={today} monthStart={monthStart} />
+        <RiwayatTab brand={brand} today={today} monthStart={monthStart} filters={filters} />
       )}
     </div>
   );
 }
 
-async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: string; monthStart: string }) {
+/** Batas nota yang dipindai bila ada filter (tanpa filter: 60 nota terbaru, seperti semula). */
+const FILTERED_LIMIT = 200;
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Parameter URL -> nilai filter; nilai tak valid diabaikan, tanggal terbalik ditukar. */
+function parseFilters(p: { dari?: string; sampai?: string; kat?: string; sumber?: string }): PurchaseFilterValues {
+  let from = p.dari && YMD.test(p.dari) ? p.dari : "";
+  let to = p.sampai && YMD.test(p.sampai) ? p.sampai : "";
+  if (from && to && from > to) [from, to] = [to, from];
+  const category = p.kat && EXPENSE_CATEGORY_VALUES.includes(p.kat) ? p.kat : "";
+  const source: PurchaseFilterValues["source"] =
+    p.sumber === "pengadaan" || p.sumber === "laci" || p.sumber === "shopee" ? p.sumber : "";
+  return { from, to, category, source };
+}
+
+const dayText = (ymd: string) =>
+  new Date(ymd + "T00:00:00Z").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+async function RiwayatTab({
+  brand,
+  today,
+  monthStart,
+  filters,
+}: {
+  brand: string;
+  today: string;
+  monthStart: string;
+  filters: PurchaseFilterValues;
+}) {
+  const filtered = hasActiveFilter(filters);
+  const from = filters.from || (filtered ? "2000-01-01" : monthStart);
+  const to = filters.to || today;
   const [listRes, sumRes] = await Promise.all([
-    listPurchases(brand, { limit: 60 }),
-    getPurchaseSummary(brand, monthStart, today),
+    listPurchases(brand, {
+      limit: filtered ? FILTERED_LIMIT : 60,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      category: filters.category || undefined,
+      moneySource: filters.source || undefined,
+    }),
+    getPurchaseSummary(brand, from, to),
   ]);
   const purchases = listRes.ok ? (listRes.data ?? []) : [];
   const monthLabel = new Date(monthStart + "T00:00:00Z").toLocaleDateString("id-ID", {
@@ -205,10 +264,38 @@ async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: 
     year: "numeric",
     timeZone: "UTC",
   });
+  const rangeLabel =
+    filters.from || filters.to
+      ? `Pengeluaran ${filters.from ? dayText(filters.from) : "awal"} – ${dayText(to)}`
+      : `Pengeluaran ${monthLabel}`;
+  const sum = sumRes.ok ? sumRes.data : undefined;
+  // Dengan filter kategori, jumlah yang relevan adalah baris berkategori itu saja (satu nota bisa berisi beberapa kategori).
+  const matchTotal = filters.category
+    ? purchases.reduce((s, p) => s + p.lines.filter((l) => l.category === filters.category).reduce((a, l) => a + l.total, 0), 0)
+    : purchases.reduce((s, p) => s + p.total, 0);
+  const truncated = filtered && !!sum && sum.noteCount > FILTERED_LIMIT;
   return (
     <div className="space-y-3">
-      {sumRes.ok && sumRes.data && <PurchaseSummaryCard compact summary={sumRes.data} title={`Pengeluaran ${monthLabel}`} />}
-      <PurchaseHistory purchases={purchases} today={today} />
+      <PurchaseFilters
+        brand={brand}
+        values={filters}
+        resetHref={`/pengadaan?tab=belanja&bagian=riwayat&bu=${encodeURIComponent(brand)}`}
+      />
+      {sum && <PurchaseSummaryCard compact summary={sum} title={rangeLabel} />}
+      {filtered && (
+        <p className="px-1 text-xs text-muted-foreground">
+          <b className="tabular-nums text-foreground">{purchases.length}</b> nota cocok &middot;{" "}
+          <b className="tabular-nums text-foreground">{formatRp(matchTotal)}</b>
+          {filters.category ? " (hanya baris kategori ini)" : ""}
+        </p>
+      )}
+      {truncated && (
+        <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+          Rentang ini berisi {sum?.noteCount} nota, tetapi hanya {FILTERED_LIMIT} nota terbaru yang diperiksa. Persempit tanggal untuk
+          melihat sisanya.
+        </p>
+      )}
+      <PurchaseHistory purchases={purchases} today={today} highlightCategory={filters.category || undefined} />
     </div>
   );
 }
