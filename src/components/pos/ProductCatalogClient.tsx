@@ -40,7 +40,8 @@ import {
   type PosProduct,
   type PosProductVariant,
 } from "@/lib/actions/pos.actions";
-import { setProductStockAggregateVariants } from "@/lib/actions/pos-stock.actions";
+import { setProductStockAggregateVariants, setProductStockGroup } from "@/lib/actions/pos-stock.actions";
+import { STOCK_GROUPS, STOCK_GROUP_OTHER_LABEL } from "@/lib/pos/stock-groups";
 
 interface Props {
   bankAccountId: string;
@@ -117,6 +118,7 @@ export function ProductCatalogClient({
           notes: null,
           requiresSugarLevel: false,
           stockOnly: false,
+          stockGroup: null,
           notForSale: false,
           variants: [],
         },
@@ -510,6 +512,32 @@ export function ProductCatalogClient({
                   />
                   aktif
                 </label>
+                {p.trackStock && (
+                  <select
+                    value={p.stockGroup ?? ""}
+                    onChange={(e) => {
+                      const group = e.target.value === "" ? null : e.target.value;
+                      const prev = p.stockGroup;
+                      setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, stockGroup: group } : x)));
+                      startTransition(async () => {
+                        const res = await setProductStockGroup({ productId: p.id, group });
+                        if (!res.ok) {
+                          toast.error(res.error ?? "Gagal");
+                          setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, stockGroup: prev } : x)));
+                        }
+                      });
+                    }}
+                    title="Kelompok hitung di form opname"
+                    className="h-8 shrink-0 rounded-lg border border-border bg-transparent px-1.5 text-xs"
+                  >
+                    <option value="">{STOCK_GROUP_OTHER_LABEL}</option>
+                    {STOCK_GROUPS.map((g) => (
+                      <option key={g.key} value={g.key}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   type="button"
                   onClick={() => removeProduct(p.id)}

@@ -6904,6 +6904,7 @@ export type Database = {
           sort_order: number
           stock_aggregate_variants: boolean
           stock_only: boolean
+          stock_group: string | null
           not_for_sale: boolean
           track_stock: boolean
           updated_at: string
@@ -6923,6 +6924,7 @@ export type Database = {
           sort_order?: number
           stock_aggregate_variants?: boolean
           stock_only?: boolean
+          stock_group?: string | null
           not_for_sale?: boolean
           track_stock?: boolean
           updated_at?: string
@@ -6942,6 +6944,7 @@ export type Database = {
           sort_order?: number
           stock_aggregate_variants?: boolean
           stock_only?: boolean
+          stock_group?: string | null
           not_for_sale?: boolean
           track_stock?: boolean
           updated_at?: string

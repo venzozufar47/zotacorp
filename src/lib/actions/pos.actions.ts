@@ -53,6 +53,7 @@ type PosProductRow = Pick<
   | "notes"
   | "requires_sugar_level"
   | "stock_only"
+  | "stock_group"
   | "not_for_sale"
 >;
 type PosProductVariantRow = Pick<
@@ -114,6 +115,8 @@ export interface PosProduct {
   notes: string | null;
   /** Produk khusus stok (Ready Cake): ikut stok/penarikan, tidak dijual dari grid. */
   stockOnly: boolean;
+  /** Kelompok hitung di form opname (lihat lib/pos/stock-groups.ts); null = Lainnya. */
+  stockGroup: string | null;
   /** Tidak dijual di kasir (mis. Freebies): tak tampil di grid, ditolak server saat dijual, tetap ikut stok dan dipantau. */
   notForSale: boolean;
   /** Wajib pilih tingkat gula — dipakai untuk produk TANPA varian.
@@ -201,6 +204,7 @@ function mapPosProduct(
     notes: r.notes,
     requiresSugarLevel: r.requires_sugar_level,
     stockOnly: r.stock_only,
+    stockGroup: r.stock_group,
     notForSale: r.not_for_sale,
     variants,
   };
@@ -257,7 +261,7 @@ export async function listActivePosProducts(
   const supabase = await createClient();
   let query = supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, not_for_sale")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, stock_group, not_for_sale")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true);
   // Produk khusus stok (Ready Cake) tidak dijual dari grid keranjang (dijual lewat pemilih kue ready), tetapi HARUS ada
@@ -299,7 +303,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, not_for_sale")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, stock_group, not_for_sale")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })

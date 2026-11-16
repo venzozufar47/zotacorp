@@ -76,13 +76,13 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
   useEffect(() => {
     if (step !== "opname" || skus) return;
     let alive = true;
-    listOpnameFormSkus(bankAccountId)
+    listOpnameFormSkus(bankAccountId, { prefillFromLast: isOpen })
       .then((s) => alive && setSkus(s))
       .catch(() => alive && toast.error("Gagal memuat daftar produk untuk opname"));
     return () => {
       alive = false;
     };
-  }, [step, skus, bankAccountId]);
+  }, [step, skus, bankAccountId, isOpen]);
 
   async function submitPin(entered: string) {
     if (!cashier) return;
@@ -235,6 +235,7 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
               shift={{
                 cashierId: cashier.id,
                 pin,
+                confirm: isOpen,
                 title: isOpen ? "Opname stok — buka shift" : "Opname stok — tutup shift",
                 onDone: (id) => {
                   setOpnameId(id);

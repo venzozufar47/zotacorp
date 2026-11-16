@@ -42,6 +42,7 @@ import {
   type Sku,
   type SkuKey,
 } from "@/lib/pos/stock-engine";
+import { isStockGroupKey, stockGroupRank } from "@/lib/pos/stock-groups";
 
 /**
  * POS stock opname subsystem.
@@ -844,15 +845,76 @@ export interface OpnameFormSku {
   productName: string;
   variantName: string | null;
   unitPrice: number;
+  /** Kelompok hitung (lihat stock-groups.ts); null = Lainnya. */
+  stockGroup: string | null;
+  /**
+   * Hasil hitung opname terakhir (tutup shift sebelumnya) — HANYA terisi bila diminta `prefillFromLast`
+   * (opname buka shift). Null = SKU tidak ada di opname terakhir, kasir mengisi sendiri.
+   */
+  lastCount: number | null;
 }
 
-/** Daftar SKU aktif untuk form opname (blind — tidak expose on-hand). */
+/**
+ * Daftar SKU aktif untuk form opname, urut per kelompok stok.
+ *
+ * Mode tutup shift = blind: `lastCount` selalu null. `prefillFromLast` (opname BUKA shift) mengisi `lastCount` dari
+ * opname terakhir — angka yang dihitung kasir sebelumnya, bukan stok seharusnya sistem — supaya kasir pembuka cukup
+ * mengonfirmasi per produk. Stok seharusnya tidak pernah dikirim ke klien.
+ */
 export async function listOpnameFormSkus(
-  bankAccountId: string
+  bankAccountId: string,
+  opts: { prefillFromLast?: boolean } = {}
 ): Promise<OpnameFormSku[]> {
   const supabase = await createClient();
-  const { skus } = await listActiveSkus(supabase, bankAccountId);
-  return skus;
+  const { skus, aggregateProductIds } = await listActiveSkus(supabase, bankAccountId);
+  const productIds = Array.from(new Set(skus.map((s) => s.productId)));
+  const [{ data: groups }, last] = await Promise.all([
+    productIds.length
+      ? supabase.from("pos_products").select("id, stock_group").in("id", productIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; stock_group: string | null }> }),
+    opts.prefillFromLast ? loadBaseline(supabase, bankAccountId, aggregateProductIds) : null,
+  ]);
+  const groupById = new Map((groups ?? []).map((g) => [g.id, g.stock_group]));
+  return skus
+    .map((s, i) => ({
+      i,
+      sku: {
+        productId: s.productId,
+        variantId: s.variantId,
+        productName: s.productName,
+        variantName: s.variantName,
+        unitPrice: s.unitPrice,
+        stockGroup: groupById.get(s.productId) ?? null,
+        lastCount: last ? (last.baseline.get(skuKey(s.productId, s.variantId)) ?? null) : null,
+      } satisfies OpnameFormSku,
+    }))
+    .sort((a, b) => stockGroupRank(a.sku.stockGroup) - stockGroupRank(b.sku.stockGroup) || a.i - b.i)
+    .map((x) => x.sku);
+}
+
+/** Atur kelompok hitung stok sebuah produk (null = Lainnya). */
+export async function setProductStockGroup(input: {
+  productId: string;
+  group: string | null;
+}): Promise<ActionResult<void>> {
+  if (input.group !== null && !isStockGroupKey(input.group))
+    return { ok: false, error: "Kelompok tidak dikenal" };
+  const supabase = await createClient();
+  const { data: product } = await supabase
+    .from("pos_products")
+    .select("id, bank_account_id")
+    .eq("id", input.productId)
+    .maybeSingle();
+  if (!product) return { ok: false, error: "Produk tidak ditemukan" };
+  const gate = await requireAdminOrPosAssignee(product.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { error } = await supabase
+    .from("pos_products")
+    .update({ stock_group: input.group })
+    .eq("id", input.productId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true, data: undefined };
 }
 
 export interface ExcludedStockProduct {

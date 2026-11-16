@@ -3,7 +3,8 @@
 import { PosNavLink } from "./PosNavLink";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ClipboardCheck, Plus, X } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, Plus, X } from "lucide-react";
+import { stockGroupLabel, stockGroupRank } from "@/lib/pos/stock-groups";
 import { toast } from "sonner";
 import type {
   OpnameDiscrepancySku,
@@ -32,6 +33,11 @@ interface Props {
     pin: string;
     title: string;
     onDone: (opnameId: string) => void;
+    /**
+     * Opname BUKA shift: angka terisi dari hitungan terakhir (`lastCount`) dan kasir mengonfirmasi tiap produk
+     * dengan ✓ (atau mengubah angkanya dulu). Tutup shift = false: blind count penuh.
+     */
+    confirm?: boolean;
   };
 }
 
@@ -53,7 +59,15 @@ export function StockOpnameForm({
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [counts, setCounts] = useState<Record<string, string>>({});
+  const confirmMode = shift?.confirm === true;
+  const [counts, setCounts] = useState<Record<string, string>>(() => {
+    if (!confirmMode) return {};
+    const init: Record<string, string> = {};
+    for (const s of skus) if (s.lastCount !== null) init[skuKey(s)] = String(s.lastCount);
+    return init;
+  });
+  // Mode konfirmasi: SKU yang sudah dicentang kasir. Mengubah angka mencabut centang (angka baru wajib dikonfirmasi ulang).
+  const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set());
   const [notes, setNotes] = useState("");
   // Curasi katalog: default semua SKU aktif disertakan; user bisa keluarkan
   // atau tambahkan lagi via picker.
@@ -82,6 +96,35 @@ export function StockOpnameForm({
   const setCount = (key: string, v: string) => {
     const clean = v.replace(/[^0-9]/g, "");
     setCounts((prev) => ({ ...prev, [key]: clean }));
+    setConfirmed((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const toggleConfirmed = (key: string) => {
+    setConfirmed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Enter = lompat ke kolom angka berikutnya (hitung cepat tanpa mengetuk kolom satu per satu).
+  const focusNext = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const inputs = Array.from(
+      e.currentTarget.form?.querySelectorAll<HTMLInputElement>("input[data-count]") ?? []
+    );
+    const next = inputs[inputs.indexOf(e.currentTarget) + 1];
+    if (next) {
+      next.focus();
+      next.select();
+    } else e.currentTarget.blur();
   };
 
   const removeSku = (key: string) => {
@@ -94,6 +137,11 @@ export function StockOpnameForm({
     setCounts((prev) => {
       const { [key]: _, ...rest } = prev;
       return rest;
+    });
+    setConfirmed((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
     });
   };
 
@@ -168,10 +216,16 @@ export function StockOpnameForm({
     });
   }
 
+  const unconfirmedCount = confirmMode
+    ? includedSkus.filter((s) => !confirmed.has(skuKey(s))).length
+    : 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (includedSkus.length === 0)
       return toast.error("Minimal satu SKU harus disertakan");
+    if (unconfirmedCount > 0)
+      return toast.error(`${unconfirmedCount} produk belum dikonfirmasi`);
     if (!shift && authorizers.length > 0) {
       setPinError(null);
       setPinOpen(true);
@@ -197,14 +251,24 @@ export function StockOpnameForm({
         <p className="text-xs text-muted-foreground">{accountName}</p>
       </header>
 
-      <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-foreground">
-        <p className="font-medium mb-0.5">Blind count</p>
-        <p className="text-muted-foreground">
-          Masukkan jumlah fisik apa adanya — sistem akan menghitung selisih
-          terhadap stok seharusnya setelah submit. SKU yang dikeluarkan tidak
-          akan mempengaruhi baseline opname berikutnya.
-        </p>
-      </div>
+      {confirmMode ? (
+        <div className="rounded-xl border border-primary/30 bg-primary/10 p-3 text-xs text-foreground">
+          <p className="font-medium mb-0.5">Cek stok awal</p>
+          <p className="text-muted-foreground">
+            Angka di bawah adalah hasil hitung shift sebelumnya. Cocokkan dengan fisik, lalu ketuk ✓ tiap produk. Kalau
+            beda, ubah angkanya dulu baru ketuk ✓.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-foreground">
+          <p className="font-medium mb-0.5">Blind count</p>
+          <p className="text-muted-foreground">
+            Masukkan jumlah fisik apa adanya — sistem akan menghitung selisih
+            terhadap stok seharusnya setelah submit. SKU yang dikeluarkan tidak
+            akan mempengaruhi baseline opname berikutnya.
+          </p>
+        </div>
+      )}
 
       {skus.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
@@ -220,33 +284,74 @@ export function StockOpnameForm({
                 Tidak ada SKU disertakan. Tambahkan di bawah.
               </div>
             ) : (
-              includedSkus.map((s) => {
+              includedSkus.map((s, idx) => {
                 const key = skuKey(s);
+                const isConfirmed = confirmed.has(key);
+                const hasValue = (counts[key] ?? "") !== "";
+                const showHeader =
+                  idx === 0 || stockGroupRank(includedSkus[idx - 1].stockGroup) !== stockGroupRank(s.stockGroup);
                 return (
-                  <div
-                    key={key}
-                    className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => removeSku(key)}
-                      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                      aria-label={`Keluarkan ${skuLabel(s)}`}
+                  <div key={key} className="space-y-1.5">
+                    {showHeader && (
+                      <p className="pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {stockGroupLabel(s.stockGroup)}
+                      </p>
+                    )}
+                    <div
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${
+                        isConfirmed ? "border-success/50 bg-success/10" : "border-border bg-card"
+                      }`}
                     >
-                      <X size={14} />
-                    </button>
-                    <span className="flex-1 text-sm text-foreground truncate">
-                      {skuLabel(s)}
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={counts[key] ?? ""}
-                      onChange={(e) => setCount(key, e.target.value)}
-                      placeholder="0"
-                      className="w-20 rounded-lg border border-border bg-background px-2 py-1.5 text-right text-sm tabular-nums"
-                    />
+                      <button
+                        type="button"
+                        onClick={() => removeSku(key)}
+                        className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        aria-label={`Keluarkan ${skuLabel(s)}`}
+                      >
+                        <X size={14} />
+                      </button>
+                      <span className="flex-1 text-sm text-foreground truncate">
+                        {skuLabel(s)}
+                      </span>
+                      {!confirmMode && (
+                        <button
+                          type="button"
+                          onClick={() => setCount(key, "0")}
+                          className="shrink-0 rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                          aria-label={`${skuLabel(s)} kosong (0)`}
+                        >
+                          0
+                        </button>
+                      )}
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        enterKeyHint="next"
+                        data-count
+                        value={counts[key] ?? ""}
+                        onChange={(e) => setCount(key, e.target.value)}
+                        onKeyDown={focusNext}
+                        placeholder="0"
+                        className="w-20 rounded-lg border border-border bg-background px-2 py-1.5 text-right text-sm tabular-nums"
+                      />
+                      {confirmMode && (
+                        <button
+                          type="button"
+                          disabled={!hasValue}
+                          onClick={() => toggleConfirmed(key)}
+                          aria-pressed={isConfirmed}
+                          aria-label={`Konfirmasi ${skuLabel(s)}`}
+                          className={`shrink-0 rounded-lg border p-1.5 disabled:opacity-40 ${
+                            isConfirmed
+                              ? "border-success bg-success text-white"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <Check size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -277,12 +382,14 @@ export function StockOpnameForm({
 
           <button
             type="submit"
-            disabled={pending || includedSkus.length === 0}
+            disabled={pending || includedSkus.length === 0 || unconfirmedCount > 0}
             className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {pending
               ? "Menyimpan..."
-              : `Submit Opname (${includedSkus.length} SKU)`}
+              : unconfirmedCount > 0
+                ? `${unconfirmedCount} produk belum dikonfirmasi`
+                : `Submit Opname (${includedSkus.length} SKU)`}
           </button>
         </form>
       )}
