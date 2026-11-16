@@ -132,7 +132,7 @@ export async function resolveSaleDiscount(
   disabledIds?: string[]
 ): Promise<{ campaign: PosDiscountCampaign; finalTotal: number; discountAmount: number } | null> {
   // Kasir boleh mematikan promo tertentu untuk transaksi ini (cashierCanDisable); kampanye lain tak bisa dimatikan.
-  const off = new Set(disabledIds ?? []);
+  const off = new Set(Array.isArray(disabledIds) ? disabledIds.filter((x) => typeof x === "string") : []);
   const list = (await listCampaignsForPos(bankAccountId)).filter((c) => !(off.has(c.id) && cashierCanDisable(c)));
   const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines);
   return picked ? { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount } : null;
