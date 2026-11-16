@@ -51,7 +51,7 @@ import {
 import { useRouter } from "next/navigation";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
-import { describeDiscount, jakartaNowParts, pickBestCampaign, type JakartaNow, type PickedCampaign } from "@/lib/pos/discount";
+import { cashierCanDisable, describeDiscount, jakartaNowParts, pickBestCampaign, type JakartaNow, type PickedCampaign } from "@/lib/pos/discount";
 import type { PosDiscountCampaign } from "@/lib/actions/pos-discount.actions";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
 import {
@@ -254,6 +254,9 @@ export function POSClient({
   const [discountFor, setDiscountFor] = useState<string | null>(null);
   // Kampanye bermode "kasir memilih" yang sedang diterapkan kasir.
   const [chosenCampaignId, setChosenCampaignId] = useState<string | null>(null);
+  // Promo otomatis (mis. soft opening) yang dimatikan kasir untuk transaksi ini. Bawaan kosong = semua promo menyala;
+  // kembali kosong setelah transaksi selesai/keranjang dikosongkan.
+  const [disabledCampaignIds, setDisabledCampaignIds] = useState<string[]>([]);
   // Jam berjalan (tiap 30 dtk) supaya kampanye berjam (happy hour) mulai/berhenti sendiri tanpa muat ulang.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -657,6 +660,7 @@ export function POSClient({
     setReadyLines([]);
     setDiscountByKey({});
     setChosenCampaignId(null);
+    setDisabledCampaignIds([]);
   }
 
   function submit(method: PaymentMethod | "pending") {
@@ -716,6 +720,7 @@ export function POSClient({
         qrisVerification:
           method === "qris" ? qrisVerification ?? undefined : undefined,
         campaignId: chosenCampaignId,
+        disabledCampaignIds: disabledCampaignIds.length > 0 ? disabledCampaignIds : undefined,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan penjualan");
@@ -824,8 +829,15 @@ export function POSClient({
     [cartLines]
   );
   const picked = useMemo(
-    () => pickBestCampaign(campaigns, total, liveNow, chosenCampaignId, promoLines),
-    [campaigns, total, liveNow, chosenCampaignId, promoLines]
+    () =>
+      pickBestCampaign(
+        campaigns.filter((c) => !(disabledCampaignIds.includes(c.id) && cashierCanDisable(c))),
+        total,
+        liveNow,
+        chosenCampaignId,
+        promoLines
+      ),
+    [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds]
   );
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
@@ -1330,7 +1342,17 @@ export function POSClient({
             )}
           </div>
         )}
-        <DiscountBanner campaigns={campaigns} now={liveNow} picked={picked} chosenId={chosenCampaignId} onChoose={setChosenCampaignId} />
+        <DiscountBanner
+          campaigns={campaigns}
+          now={liveNow}
+          picked={picked}
+          chosenId={chosenCampaignId}
+          onChoose={setChosenCampaignId}
+          disabledIds={disabledCampaignIds}
+          onToggleDisabled={(id) =>
+            setDisabledCampaignIds((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]))
+          }
+        />
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
           <div className="relative">
             <Search
@@ -1780,12 +1802,17 @@ function DiscountBanner({
   picked,
   chosenId,
   onChoose,
+  disabledIds,
+  onToggleDisabled,
 }: {
   campaigns: PosDiscountCampaign[];
   now: JakartaNow;
   picked: PickedCampaign<PosDiscountCampaign> | null;
   chosenId: string | null;
   onChoose: (id: string | null) => void;
+  /** Promo yang dimatikan kasir untuk transaksi ini. */
+  disabledIds: string[];
+  onToggleDisabled: (id: string) => void;
 }) {
   const live = campaigns.filter((c) => {
     if (!c.isActive || now.date < c.startDate || now.date > c.endDate) return false;
@@ -1806,21 +1833,44 @@ function DiscountBanner({
       .join(" · ");
   return (
     <div className="space-y-1.5 px-3 pt-3">
-      {auto.map((c) => (
-        <div
-          key={c.id}
-          className="flex items-center gap-2 rounded-xl border-2 border-success/40 bg-success/10 px-3 py-2 text-xs text-foreground"
-        >
-          <Sparkles size={14} className="shrink-0 text-success" />
-          <span>
-            <strong className="font-semibold">
-              {c.name} · {describeDiscount(c)}
-            </strong>
-            {rule(c) ? <> — {rule(c)}</> : null}
-            {picked?.campaign.id === c.id && <span className="ml-1 font-semibold text-success">· dipakai</span>}
-          </span>
-        </div>
-      ))}
+      {auto.map((c) => {
+        const canOff = cashierCanDisable(c);
+        const off = canOff && disabledIds.includes(c.id);
+        return (
+          <div
+            key={c.id}
+            className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-xs text-foreground ${
+              off ? "border-border bg-muted/50" : "border-success/40 bg-success/10"
+            }`}
+          >
+            <Sparkles size={14} className={`shrink-0 ${off ? "text-muted-foreground" : "text-success"}`} />
+            <span className={`min-w-0 flex-1 ${off ? "text-muted-foreground" : ""}`}>
+              <strong className={`font-semibold ${off ? "line-through" : ""}`}>
+                {c.name} · {describeDiscount(c)}
+              </strong>
+              {rule(c) ? <> — {rule(c)}</> : null}
+              {off ? (
+                <span className="ml-1 font-semibold">· dimatikan untuk transaksi ini</span>
+              ) : (
+                picked?.campaign.id === c.id && <span className="ml-1 font-semibold text-success">· dipakai</span>
+              )}
+            </span>
+            {canOff && (
+              <button
+                type="button"
+                onClick={() => onToggleDisabled(c.id)}
+                className={`shrink-0 rounded-full border-2 px-2.5 py-1 font-semibold transition ${
+                  off
+                    ? "border-foreground bg-primary text-primary-foreground"
+                    : "border-border bg-card text-foreground hover:border-foreground"
+                }`}
+              >
+                {off ? "Nyalakan" : "Matikan"}
+              </button>
+            )}
+          </div>
+        );
+      })}
       {manual.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs">
           <span className="font-semibold text-muted-foreground">Promo (pilih):</span>

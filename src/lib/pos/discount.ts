@@ -189,6 +189,15 @@ export function pickBestCampaign<C extends PickableCampaign>(
   return best;
 }
 
+/**
+ * Promo yang boleh dimatikan kasir untuk SATU transaksi (bawaan tetap menyala). Saat ini: promo harga per item
+ * (mis. soft opening Semarang). Dipakai layar kasir dan server supaya aturannya sama; server mengabaikan permintaan
+ * mematikan kampanye lain.
+ */
+export function cashierCanDisable(c: Pick<DiscountCampaignLite, "kind">): boolean {
+  return c.kind === "item_price";
+}
+
 /** "10%" / "Rp 5.000" untuk label. */
 export function describeDiscount(c: DiscountCampaignLite): string {
   if (c.kind === "item_price") return `Rp ${Math.round(c.promoPrice ?? 0).toLocaleString("id-ID")}/item`;

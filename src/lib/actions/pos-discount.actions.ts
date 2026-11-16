@@ -7,6 +7,7 @@ import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import {
   applyDiscount,
+  cashierCanDisable,
   isCampaignLive,
   jakartaNowParts,
   pickBestCampaign,
@@ -127,9 +128,12 @@ export async function resolveSaleDiscount(
   grossTotal: number,
   chosenId?: string | null,
   at: Date = new Date(),
-  lines?: PromoLine[]
+  lines?: PromoLine[],
+  disabledIds?: string[]
 ): Promise<{ campaign: PosDiscountCampaign; finalTotal: number; discountAmount: number } | null> {
-  const list = await listCampaignsForPos(bankAccountId);
+  // Kasir boleh mematikan promo tertentu untuk transaksi ini (cashierCanDisable); kampanye lain tak bisa dimatikan.
+  const off = new Set(disabledIds ?? []);
+  const list = (await listCampaignsForPos(bankAccountId)).filter((c) => !(off.has(c.id) && cashierCanDisable(c)));
   const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines);
   return picked ? { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount } : null;
 }

@@ -708,6 +708,8 @@ export async function createPosSale(input: {
   qrisVerification?: "audio" | "photo";
   /** Kampanye bermode "kasir memilih" yang dipilih kasir; diabaikan bila tak berlaku. Server tetap yang menentukan. */
   campaignId?: string | null;
+  /** Promo otomatis yang dimatikan kasir untuk transaksi ini (hanya yang boleh dimatikan; sisanya diabaikan). */
+  disabledCampaignIds?: string[];
 }): Promise<
   ActionResult<{ saleId: string; total: number; branch: string | null }>
 > {
@@ -1009,7 +1011,14 @@ export async function createPosSale(input: {
   const promoLines = itemsResolved
     .filter((it) => it.productId && !it.readyCakeOrderId && it.originalUnitPrice == null)
     .map((it) => ({ productId: it.productId, unitPrice: it.unitPrice, qty: it.qty }));
-  const resolved = await resolveSaleDiscount(input.bankAccountId, grossTotal, input.campaignId ?? null, now, promoLines);
+  const resolved = await resolveSaleDiscount(
+    input.bankAccountId,
+    grossTotal,
+    input.campaignId ?? null,
+    now,
+    promoLines,
+    input.disabledCampaignIds
+  );
   const campaign = resolved?.campaign ?? null;
   let discountAmount = 0;
   if (resolved) {
