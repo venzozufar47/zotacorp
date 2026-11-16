@@ -27,7 +27,8 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface CountMeta {
-  cls: AbcClass;
+  /** Kosong di opname awal (belum ada kelas ABC). */
+  cls?: AbcClass;
   /** Kelas sementara (bahan baru belum punya data pemakaian). */
   provisional?: boolean;
   reasons: CountReason[];
@@ -200,7 +201,7 @@ export function MaterialOpnameForm({
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[15px] font-semibold leading-tight">
               <span className="min-w-0 break-words">{r.material.name}</span>
-              {m && (
+              {m?.cls && (
                 <span
                   className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground"
                   title={m.provisional ? "Kelas sementara: bahan baru, belum ada data pemakaian" : "Kelas otomatis dari biaya pemakaian"}

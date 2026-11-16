@@ -25,7 +25,8 @@ type DB = SupabaseClient<Database>;
 
 export interface CountPlanItem {
   row: ProcurementRow;
-  cls: AbcClass;
+  /** null di tahap 1 (opname awal): belum ada kelas ABC. */
+  cls: AbcClass | null;
   /** Kelas sementara: bahan baru yang belum punya data pemakaian. */
   provisional: boolean;
   reasons: CountReason[];
@@ -42,9 +43,9 @@ export interface CountPlan {
   minutesLeft: number;
   /** Hari ini bukan hari kerja petugas yang meminta: opname dimatikan (daftar kosong). */
   offDay?: boolean;
-  /** 1 = pendataan awal (masih ada bahan di resep yang belum pernah dihitung), 2 = siklus ABC rutin. */
+  /** 1 = opname awal (masih ada bahan aktif yang belum pernah dihitung; daftar harian ditahan), 2 = siklus ABC rutin. */
   phase: 1 | 2;
-  /** Kemajuan pendataan awal: bahan di resep yang sudah pernah dihitung dari seluruhnya. */
+  /** Kemajuan opname awal: bahan aktif yang sudah pernah dihitung dari seluruhnya. */
   onboarding: { counted: number; total: number };
 }
 
@@ -116,6 +117,43 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
   }
   const countedToday = (id: string) => (hits.get(id) ?? []).some((x) => x.date === today);
 
+  // Tahap 1 (opname awal) mencakup SEMUA bahan aktif (setengah jadi sudah disaring loader). Selama masih ada bahan
+  // yang belum pernah dihitung, daftar harian ABC ditahan: yang tampil hanya bahan yang belum pernah dihitung.
+  const onboardingCounted = rows.filter((r) => hits.has(r.material.id)).length;
+  const phase: 1 | 2 = onboardingCounted < rows.length ? 1 : 2;
+  const onboarding = { counted: onboardingCounted, total: rows.length };
+
+  if (phase === 1) {
+    const cost = (r: ProcurementRow) => usage.byMaterial.get(r.material.id)?.cost ?? 0;
+    const todo = rows
+      .filter((r) => !hits.has(r.material.id) || countedToday(r.material.id))
+      .sort(
+        (a, b) =>
+          Number(countedToday(a.material.id)) - Number(countedToday(b.material.id)) ||
+          cost(b) - cost(a) ||
+          (a.material.category ?? "").localeCompare(b.material.category ?? "", "id") ||
+          a.material.name.localeCompare(b.material.name, "id")
+      );
+    const items: CountPlanItem[] = todo.map((row) => ({
+      row,
+      cls: null,
+      provisional: false,
+      reasons: [],
+      done: countedToday(row.material.id),
+      tolerance: toleranceFor(row.material.category),
+    }));
+    const doneCount = items.filter((i) => i.done).length;
+    return {
+      enabled: true,
+      items,
+      doneCount,
+      total: items.length,
+      minutesLeft: estimateMinutes(items.length - doneCount),
+      phase,
+      onboarding,
+    };
+  }
+
   // Bahan di resep (perlu diopname). Bahan di luar resep baru ikut bila sudah punya riwayat hitung.
   const recipeIds = new Set<string>();
   {
@@ -128,10 +166,6 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
       for (const r of (data ?? []) as { material_id: string | null }[]) if (r.material_id) recipeIds.add(r.material_id);
     }
   }
-  const eligible = rows.filter((r) => recipeIds.has(r.material.id) || hits.has(r.material.id));
-  const onboardingCounted = eligible.filter((r) => hits.has(r.material.id)).length;
-  const phase: 1 | 2 = onboardingCounted < eligible.length ? 1 : 2;
-  const onboarding = { counted: onboardingCounted, total: eligible.length };
 
   const byId = new Map(rows.map((r) => [r.material.id, r]));
   let frozen = await readFrozenPlan(supabase, businessUnit, today);

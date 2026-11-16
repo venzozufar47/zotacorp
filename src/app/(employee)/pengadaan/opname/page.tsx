@@ -56,7 +56,7 @@ export default async function OpnameBahanPage({
   const res = plan ? null : await startMaterialOpname(activeBrand);
   const rows = plan ? plan.items.map((i) => i.row) : res && res.ok ? res.data ?? [] : [];
   const meta: Record<string, CountMeta> | undefined = plan
-    ? Object.fromEntries(plan.items.map((i) => [i.row.material.id, { cls: i.cls, provisional: i.provisional, reasons: i.reasons, done: i.done }]))
+    ? Object.fromEntries(plan.items.map((i) => [i.row.material.id, { cls: i.cls ?? undefined, provisional: i.provisional, reasons: i.reasons, done: i.done }]))
     : undefined;
   const allHref = `/pengadaan/opname?bu=${encodeURIComponent(activeBrand)}&semua=1`;
   const todayHref = `/pengadaan/opname?bu=${encodeURIComponent(activeBrand)}`;
@@ -75,7 +75,12 @@ export default async function OpnameBahanPage({
             Opname bahan<span className="text-primary">.</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {activeBrand} — {plan ? `hari ini ${plan.total} bahan · ±${plan.minutesLeft} menit lagi` : "hitung fisik jadi patokan stok berikutnya."}
+            {activeBrand} —{" "}
+            {plan
+              ? plan.phase === 1
+                ? `opname awal, ${plan.total - plan.doneCount} bahan belum dihitung · ±${plan.minutesLeft} menit`
+                : `hari ini ${plan.total} bahan · ±${plan.minutesLeft} menit lagi`
+              : "hitung fisik jadi patokan stok berikutnya."}
           </p>
         </div>
       </div>
@@ -103,10 +108,14 @@ export default async function OpnameBahanPage({
           businessUnit={activeBrand}
           rows={rows}
           meta={meta}
-          progressNote={plan && plan.phase === 1 ? `Pendataan awal ${plan.onboarding.counted}/${plan.onboarding.total} bahan` : undefined}
+          progressNote={
+            plan && plan.phase === 1
+              ? `Opname awal ${plan.onboarding.counted}/${plan.onboarding.total} bahan · daftar harian aktif setelah semua bahan pernah dihitung`
+              : undefined
+          }
         />
       )}
-      {plan && rows.length > 0 && (
+      {plan && plan.phase === 2 && rows.length > 0 && (
         <p className="text-center text-xs">
           <Link href={allHref} className="font-semibold text-primary hover:underline">
             Pilih sendiri dari semua bahan →

@@ -24,7 +24,7 @@ export function OpnameBanner({ plan, brand }: { plan: CountPlan; brand: string }
   const started = plan.doneCount > 0;
   const detail =
     plan.phase === 1
-      ? `Pendataan awal ${plan.onboarding.counted}/${plan.onboarding.total}`
+      ? `Opname awal ${plan.onboarding.counted}/${plan.onboarding.total} bahan`
       : started
         ? `${plan.doneCount}/${plan.total} bahan`
         : `${plan.total} bahan`;
