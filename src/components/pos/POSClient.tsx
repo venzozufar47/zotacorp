@@ -58,6 +58,7 @@ import {
   jakartaNowParts,
   MAX_PROMO_VOUCHERS,
   pickBestCampaign,
+  promoShortName,
   type JakartaNow,
   type PickedCampaign,
   type PromoLine,
@@ -893,7 +894,7 @@ export function POSClient({
     () =>
       cartLines
         .filter((l) => l.productId && !l.custom && !l.ready && l.originalPrice == null)
-        .map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty })),
+        .map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty, key: l.key })),
     [cartLines]
   );
   const picked = useMemo(
@@ -908,6 +909,7 @@ export function POSClient({
       ),
     [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds, promoVouchers]
   );
+  const promoNameById = useMemo(() => new Map(campaigns.map((c) => [c.id, c.name])), [campaigns]);
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
   const finalTotal = picked ? picked.finalTotal : total;
@@ -1086,6 +1088,18 @@ export function POSClient({
                       </span>
                     )}
                   </p>
+                  {/* Rincian potongan promo per-item pada baris ini: berapa pcs, dari promo apa, berapa potongannya. */}
+                  {picked?.itemPromo?.byLine[line.key]?.map((r) => {
+                    const name = promoNameById.get(r.campaignId) ?? "Promo";
+                    return (
+                      <p key={r.campaignId} className="mt-0.5 text-[11px] font-semibold leading-tight text-success tabular-nums">
+                        {promoShortName(name)}: {r.pcs} pcs × −{formatRp(r.unitSaving)} = −{formatRp(r.saving)}
+                        {r.pcs < line.qty && (
+                          <span className="font-normal text-muted-foreground"> · {line.qty - r.pcs} pcs harga normal</span>
+                        )}
+                      </p>
+                    );
+                  })}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                 {!isCustom && !isReady && (
@@ -1170,17 +1184,29 @@ export function POSClient({
                 <span>Subtotal</span>
                 <span>{formatRp(grossTotal)}</span>
               </div>
-              <div className="flex items-center justify-between text-sm text-success">
-                <span>
-                  {picked.campaign.name} · {describeDiscount(picked.campaign)}
-                  {picked.campaign.kind === "percent" && (
-                    <span className="ml-1 text-[11px] opacity-70">
-                      (bulat ke {formatRp(picked.campaign.roundingUnit)} ke bawah)
+              {picked.itemPromo ? (
+                // Promo per-item: satu baris per promo (voucher / tebus), pcs dan jumlahnya.
+                picked.itemPromo.parts.map((p) => (
+                  <div key={p.campaignId} className="flex items-center justify-between gap-2 text-sm text-success">
+                    <span>
+                      {promoShortName(promoNameById.get(p.campaignId) ?? "Promo")} · {p.pcs} pcs
                     </span>
-                  )}
-                </span>
-                <span>−{formatRp(discountAmount)}</span>
-              </div>
+                    <span className="shrink-0">−{formatRp(p.saving)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-between text-sm text-success">
+                  <span>
+                    {picked.campaign.name} · {describeDiscount(picked.campaign)}
+                    {picked.campaign.kind === "percent" && (
+                      <span className="ml-1 text-[11px] opacity-70">
+                        (bulat ke {formatRp(picked.campaign.roundingUnit)} ke bawah)
+                      </span>
+                    )}
+                  </span>
+                  <span>−{formatRp(discountAmount)}</span>
+                </div>
+              )}
             </>
           )}
           {readyTotal > 0 && finalTotal > 0 && (
@@ -2007,7 +2033,7 @@ function DiscountBanner({
         const itemPromo = isVoucher || c.kind === "tebus_murah";
         // Promo per-item: judul pendek (tanpa catatan panjang); catatan lengkap lewat tooltip.
         const title = itemPromo
-          ? `${c.name.split(" — ")[0].replace(/ Semarang$/, "")} · ${formatRp(c.promoPrice)}`
+          ? `${promoShortName(c.name)} · ${formatRp(c.promoPrice)}`
           : `${c.name} · ${describeDiscount(c)}`;
         return (
           <div

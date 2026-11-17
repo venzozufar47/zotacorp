@@ -32,6 +32,8 @@ export interface PromoLine {
   /** Harga satuan saat ini. */
   unitPrice: number;
   qty: number;
+  /** Kunci baris keranjang (opsional) — dipakai untuk merinci potongan per baris (`ItemPromoResult.byLine`). */
+  key?: string;
 }
 
 export interface DiscountCampaignLite {
@@ -50,6 +52,11 @@ export interface DiscountCampaignLite {
   amountOff?: number;
   /** Belanja di bawah ini tidak kena diskon. */
   minPurchase?: number;
+}
+
+/** Nama pendek promo untuk label sempit: "Soft Opening Semarang — Rp2.000" → "Soft Opening". */
+export function promoShortName(name: string): string {
+  return name.split(" — ")[0].replace(/ Semarang$/, "");
 }
 
 /** Batas wajar voucher soft opening per nota (cegah salah ketik). */
@@ -74,6 +81,8 @@ export interface ItemPromoResult {
   promoPcsAtFullPrice: number;
   /** tebus_murah: berapa pcs produk tebus lagi yang masih bisa ditambah dan ikut dapat harga tebus. */
   tebusRoom: number;
+  /** Rincian potongan per baris keranjang (kunci = `PromoLine.key`): pcs yang dipotong, jumlah potongan, dari promo mana. */
+  byLine: Record<string, { campaignId: string; kind: "item_price" | "tebus_murah"; pcs: number; saving: number; unitSaving: number }[]>;
 }
 
 type ItemPromoCampaign = Pick<DiscountCampaignLite, "kind" | "promoPrice" | "productIds" | "excludedProductIds" | "minPurchase"> & {
@@ -81,18 +90,36 @@ type ItemPromoCampaign = Pick<DiscountCampaignLite, "kind" | "promoPrice" | "pro
 };
 
 /** Harga satuan tiap pcs (qty dibentang), dari yang termahal. */
-function pcsPrices(lines: PromoLine[], ids: ReadonlySet<string>): number[] {
-  const out: number[] = [];
+function pcsPrices(lines: PromoLine[], ids: ReadonlySet<string>): { price: number; key?: string }[] {
+  const out: { price: number; key?: string }[] = [];
   for (const l of lines) {
     if (!l.productId || l.qty <= 0 || !ids.has(l.productId)) continue;
-    for (let i = 0; i < l.qty; i++) out.push(l.unitPrice);
+    for (let i = 0; i < l.qty; i++) out.push({ price: l.unitPrice, key: l.key });
   }
-  return out.sort((a, b) => b - a);
+  return out.sort((a, b) => b.price - a.price);
 }
 
-function sumSaving(prices: number[], n: number, promoPrice: number): number {
+/** Hemat dari `n` pcs termahal; sekaligus merinci per baris ke `result.byLine`. */
+function takeSaving(
+  pcs: { price: number; key?: string }[],
+  n: number,
+  c: { id: string; kind: "item_price" | "tebus_murah" },
+  promoPrice: number,
+  result: ItemPromoResult
+): number {
   let s = 0;
-  for (let i = 0; i < n && i < prices.length; i++) s += Math.max(0, prices[i] - promoPrice);
+  for (let i = 0; i < n && i < pcs.length; i++) {
+    const unitSaving = Math.max(0, pcs[i].price - promoPrice);
+    s += unitSaving;
+    const key = pcs[i].key;
+    if (!key) continue;
+    const rows = (result.byLine[key] ??= []);
+    const row = rows.find((r) => r.campaignId === c.id);
+    if (row) {
+      row.pcs += 1;
+      row.saving += unitSaving;
+    } else rows.push({ campaignId: c.id, kind: c.kind, pcs: 1, saving: unitSaving, unitSaving });
+  }
   return s;
 }
 
@@ -115,7 +142,7 @@ export function computeItemPromos(
   lines: PromoLine[] | undefined,
   vouchers: number
 ): ItemPromoResult {
-  const result: ItemPromoResult = { saving: 0, parts: [], voucherUnused: 0, promoPcsAtFullPrice: 0, tebusRoom: 0 };
+  const result: ItemPromoResult = { saving: 0, parts: [], voucherUnused: 0, promoPcsAtFullPrice: 0, tebusRoom: 0, byLine: {} };
   if (!lines || grossTotal <= 0) return result;
   let voucherLeft = Math.max(0, Math.floor(vouchers) || 0);
 
@@ -130,7 +157,7 @@ export function computeItemPromos(
       const claimed = Math.min(voucherLeft, prices.length);
       voucherLeft -= claimed;
       result.promoPcsAtFullPrice += prices.length - claimed;
-      const saving = sumSaving(prices, claimed, price);
+      const saving = takeSaving(prices, claimed, { id: c.id, kind: "item_price" }, price, result);
       if (saving > 0) {
         result.parts.push({ campaignId: c.id, kind: "item_price", pcs: claimed, saving });
         result.saving += saving;
@@ -145,7 +172,7 @@ export function computeItemPromos(
       }
       const e = eligiblePrices.length;
       const t = tebusCount(others, e);
-      const saving = sumSaving(eligiblePrices, t, price);
+      const saving = takeSaving(eligiblePrices, t, { id: c.id, kind: "tebus_murah" }, price, result);
       if (saving > 0) {
         result.parts.push({ campaignId: c.id, kind: "tebus_murah", pcs: t, saving });
         result.saving += saving;
