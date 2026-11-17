@@ -714,6 +714,8 @@ export async function createPosSale(input: {
   campaignId?: string | null;
   /** Promo otomatis yang dimatikan kasir untuk transaksi ini (hanya yang boleh dimatikan; sisanya diabaikan). */
   disabledCampaignIds?: string[];
+  /** Jumlah voucher promo soft opening yang berhak diklaim di nota ini (diisi kasir; server membatasi). */
+  promoVouchers?: number;
 }): Promise<
   ActionResult<{ saleId: string; total: number; branch: string | null }>
 > {
@@ -1021,7 +1023,8 @@ export async function createPosSale(input: {
     input.campaignId ?? null,
     now,
     promoLines,
-    input.disabledCampaignIds
+    input.disabledCampaignIds,
+    input.promoVouchers ?? 0
   );
   const campaign = resolved?.campaign ?? null;
   let discountAmount = 0;
@@ -1058,6 +1061,7 @@ export async function createPosSale(input: {
       ready_cake_total: readyCakeTotal,
       discount_amount: discountAmount,
       discount_campaign_id: campaign?.id ?? null,
+      promo_voucher_count: resolved?.vouchersUsed ?? 0,
       created_by: gate.userId,
       shift_id: shiftCtx.shiftId,
       cashier_id: shiftCtx.cashierId,

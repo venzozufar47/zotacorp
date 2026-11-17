@@ -9,7 +9,9 @@ import {
   applyDiscount,
   cashierCanDisable,
   isCampaignLive,
+  isItemPromoKind,
   jakartaNowParts,
+  MAX_PROMO_VOUCHERS,
   pickBestCampaign,
   type CampaignMode,
   type DiscountCampaignLite,
@@ -30,8 +32,10 @@ export interface PosDiscountCampaign {
   amountOff: number;
   /** Harga promo per pcs (kind = item_price). */
   promoPrice: number;
-  /** Produk peserta promo (kind = item_price). */
+  /** Produk peserta promo (item_price) / produk yang boleh ditebus (tebus_murah). */
   productIds: string[];
+  /** tebus_murah: produk yang tidak dihitung sebagai syarat. */
+  excludedProductIds: string[];
   roundingUnit: number;
   roundingMode: RoundingMode;
   minPurchase: number;
@@ -57,6 +61,7 @@ interface CampaignRow {
   amount_off: number | string | null;
   promo_price: number | string | null;
   product_ids: string[] | null;
+  excluded_product_ids: string[] | null;
   rounding_unit: number;
   rounding_mode: RoundingMode;
   min_purchase: number | string;
@@ -85,6 +90,7 @@ function mapCampaign(r: CampaignRow): PosDiscountCampaign {
     amountOff: Number(r.amount_off ?? 0),
     promoPrice: Number(r.promo_price ?? 0),
     productIds: r.product_ids ?? [],
+    excludedProductIds: r.excluded_product_ids ?? [],
     roundingUnit: r.rounding_unit,
     roundingMode: r.rounding_mode,
     minPurchase: Number(r.min_purchase ?? 0),
@@ -129,15 +135,24 @@ export async function resolveSaleDiscount(
   chosenId?: string | null,
   at: Date = new Date(),
   lines?: PromoLine[],
-  disabledIds?: string[]
-): Promise<{ campaign: PosDiscountCampaign; finalTotal: number; discountAmount: number } | null> {
+  disabledIds?: string[],
+  vouchers = 0
+): Promise<{
+  campaign: PosDiscountCampaign;
+  finalTotal: number;
+  discountAmount: number;
+  /** Voucher soft opening yang benar-benar dipakai (pcs). */
+  vouchersUsed: number;
+} | null> {
   // Kasir boleh mematikan promo tertentu untuk transaksi ini (cashierCanDisable); kampanye lain tak bisa dimatikan.
   const off = new Set(Array.isArray(disabledIds) ? disabledIds.filter((x) => typeof x === "string") : []);
   const list = (await listCampaignsForPos(bankAccountId)).filter((c) => !(off.has(c.id) && cashierCanDisable(c)));
-  const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines);
-  return picked ? { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount } : null;
+  const v = Number.isFinite(vouchers) ? Math.min(MAX_PROMO_VOUCHERS, Math.max(0, Math.floor(vouchers))) : 0;
+  const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines, v);
+  if (!picked) return null;
+  const vouchersUsed = picked.itemPromo?.parts.find((p) => p.kind === "item_price")?.pcs ?? 0;
+  return { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount, vouchersUsed };
 }
-
 // ───────────────────────────── Admin ─────────────────────────────
 
 export interface CampaignAccount {
@@ -339,8 +354,8 @@ export async function saveDiscountCampaign(input: CampaignInput): Promise<Action
     .eq("group_id", groupId);
   const have = (existing ?? []) as { id: string; bank_account_id: string; kind: string }[];
   if (have.length === 0) return { ok: false, error: "Kampanye tidak ditemukan" };
-  if (have.some((h) => h.kind === "item_price"))
-    return { ok: false, error: "Promo harga per item hanya bisa dijeda/diaktifkan di sini; ubah lewat developer." };
+  if (have.some((h) => isItemPromoKind(h.kind as DiscountKind)))
+    return { ok: false, error: "Promo per item hanya bisa dijeda/diaktifkan di sini; ubah lewat developer." };
 
   // Cabang yang dilepas: tolak bila sudah dipakai penjualan (riwayat HPP/omzet harus tetap utuh).
   const removing = have.filter((h) => !accountIds.includes(h.bank_account_id));
@@ -424,7 +439,7 @@ async function planRetro(campaignId: string): Promise<RetroPlan | { error: strin
   const campaign = mapCampaign(campRaw as unknown as CampaignRow);
   if (campaign.mode === "kasir")
     return { error: "Kampanye \"kasir memilih\" tidak bisa diterapkan ulang otomatis: pilihannya ada di kasir." };
-  if (campaign.kind === "item_price") return { error: "Promo harga per item tidak bisa diterapkan ke penjualan lama." };
+  if (isItemPromoKind(campaign.kind)) return { error: "Promo per item tidak bisa diterapkan ke penjualan lama." };
 
   const { data: salesRaw } = await supabase
     .from("pos_sales")

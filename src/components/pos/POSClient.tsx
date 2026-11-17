@@ -51,7 +51,17 @@ import {
 import { useRouter } from "next/navigation";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
-import { cashierCanDisable, describeDiscount, jakartaNowParts, pickBestCampaign, type JakartaNow, type PickedCampaign } from "@/lib/pos/discount";
+import {
+  cashierCanDisable,
+  computeItemPromos,
+  describeDiscount,
+  jakartaNowParts,
+  MAX_PROMO_VOUCHERS,
+  pickBestCampaign,
+  type JakartaNow,
+  type PickedCampaign,
+  type PromoLine,
+} from "@/lib/pos/discount";
 import type { PosDiscountCampaign } from "@/lib/actions/pos-discount.actions";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
 import {
@@ -264,6 +274,8 @@ export function POSClient({
   // Promo otomatis (mis. soft opening) yang dimatikan kasir untuk transaksi ini. Bawaan kosong = semua promo menyala;
   // kembali kosong setelah transaksi selesai/keranjang dikosongkan.
   const [disabledCampaignIds, setDisabledCampaignIds] = useState<string[]>([]);
+  // Voucher promo soft opening yang berhak diklaim di nota ini (kasir yang mengisi; antrean sudah memilah pembeli).
+  const [promoVouchers, setPromoVouchers] = useState(0);
   // Jam berjalan (tiap 30 dtk) supaya kampanye berjam (happy hour) mulai/berhenti sendiri tanpa muat ulang.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -694,6 +706,7 @@ export function POSClient({
     setDiscountByKey({});
     setChosenCampaignId(null);
     setDisabledCampaignIds([]);
+    setPromoVouchers(0);
     originConfirmedRef.current = false;
   }
 
@@ -775,6 +788,7 @@ export function POSClient({
           method === "qris" ? qrisVerification ?? undefined : undefined,
         campaignId: chosenCampaignId,
         disabledCampaignIds: disabledCampaignIds.length > 0 ? disabledCampaignIds : undefined,
+        promoVouchers: promoVouchers > 0 ? promoVouchers : undefined,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan penjualan");
@@ -889,9 +903,10 @@ export function POSClient({
         total,
         liveNow,
         chosenCampaignId,
-        promoLines
+        promoLines,
+        promoVouchers
       ),
-    [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds]
+    [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds, promoVouchers]
   );
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
@@ -1402,6 +1417,10 @@ export function POSClient({
           picked={picked}
           chosenId={chosenCampaignId}
           onChoose={setChosenCampaignId}
+          promoLines={promoLines}
+          grossTotal={total}
+          vouchers={promoVouchers}
+          onVouchers={setPromoVouchers}
           disabledIds={disabledCampaignIds}
           onToggleDisabled={(id) =>
             setDisabledCampaignIds((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]))
@@ -1909,6 +1928,10 @@ function DiscountBanner({
   picked,
   chosenId,
   onChoose,
+  promoLines,
+  grossTotal,
+  vouchers,
+  onVouchers,
   disabledIds,
   onToggleDisabled,
 }: {
@@ -1917,6 +1940,11 @@ function DiscountBanner({
   picked: PickedCampaign<PosDiscountCampaign> | null;
   chosenId: string | null;
   onChoose: (id: string | null) => void;
+  promoLines: PromoLine[];
+  grossTotal: number;
+  /** Voucher soft opening yang diklaim di nota ini. */
+  vouchers: number;
+  onVouchers: (n: number) => void;
   /** Promo yang dimatikan kasir untuk transaksi ini. */
   disabledIds: string[];
   onToggleDisabled: (id: string) => void;
@@ -1929,6 +1957,29 @@ function DiscountBanner({
   });
   if (live.length === 0) return null;
   const auto = live.filter((c) => c.mode === "otomatis");
+  // Status promo per-item untuk keranjang sekarang (voucher terpakai, hak tebus). Promo yang dimatikan tak ikut.
+  const info = computeItemPromos(
+    auto.filter((c) => (c.kind === "item_price" || c.kind === "tebus_murah") && !disabledIds.includes(c.id)),
+    grossTotal,
+    promoLines,
+    vouchers
+  );
+  const claimedPcs = info.parts.find((p) => p.kind === "item_price")?.pcs ?? 0;
+  const tebusPcs = info.parts.find((p) => p.kind === "tebus_murah")?.pcs ?? 0;
+  const itemStatus = (c: PosDiscountCampaign): { text: string; warn: boolean } | null => {
+    if (c.kind === "item_price") {
+      if (vouchers === 0) return { text: "Isi jumlah voucher yang berhak klaim", warn: false };
+      if (info.voucherUnused > 0) return { text: `${claimedPcs} diklaim · ${info.voucherUnused} voucher belum dipakai (tambah produk promo)`, warn: true };
+      if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} diklaim · ${info.promoPcsAtFullPrice} pcs promo lain harga normal`, warn: true };
+      return { text: `${claimedPcs} diklaim`, warn: false };
+    }
+    if (c.kind === "tebus_murah") {
+      const room = info.tebusRoom > 0 ? ` · bisa tebus ${info.tebusRoom} pcs lagi` : "";
+      if (tebusPcs > 0) return { text: `${tebusPcs} pcs ditebus${room}`, warn: false };
+      return { text: `Belum ada tebus${room || " — beli produk non-promo, lalu tambah produk tebus"}`, warn: false };
+    }
+    return null;
+  };
   const manual = live.filter((c) => c.mode === "kasir");
   const rule = (c: PosDiscountCampaign) =>
     [
@@ -1941,8 +1992,11 @@ function DiscountBanner({
   return (
     <div className="space-y-1.5 px-3 pt-3">
       {auto.map((c) => {
-        const canOff = cashierCanDisable(c);
+        const isVoucher = c.kind === "item_price";
+        // Voucher: kasir cukup isi jumlah (0 = tidak ada klaim), tak perlu tombol matikan.
+        const canOff = cashierCanDisable(c) && !isVoucher;
         const off = canOff && disabledIds.includes(c.id);
+        const status = off ? null : itemStatus(c);
         return (
           <div
             key={c.id}
@@ -1956,12 +2010,38 @@ function DiscountBanner({
                 {c.name} · {describeDiscount(c)}
               </strong>
               {rule(c) ? <> — {rule(c)}</> : null}
-              {off ? (
-                <span className="ml-1 font-semibold">· dimatikan untuk transaksi ini</span>
-              ) : (
-                picked?.campaign.id === c.id && <span className="ml-1 font-semibold text-success">· dipakai</span>
+              {off && <span className="ml-1 font-semibold">· dimatikan untuk transaksi ini</span>}
+              {status && (
+                <span className={`mt-0.5 block font-semibold ${status.warn ? "text-warning" : "text-success"}`}>
+                  {status.text}
+                </span>
               )}
             </span>
+            {isVoucher && (
+              <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Jumlah voucher klaim">
+                <button
+                  type="button"
+                  aria-label="Kurangi voucher"
+                  disabled={vouchers <= 0}
+                  onClick={() => onVouchers(Math.max(0, vouchers - 1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-border bg-card text-foreground transition hover:border-foreground disabled:opacity-40"
+                >
+                  <Minus size={16} />
+                </button>
+                <span className="min-w-6 text-center text-base font-bold tabular-nums" aria-live="polite">
+                  {vouchers}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Tambah voucher"
+                  disabled={vouchers >= MAX_PROMO_VOUCHERS}
+                  onClick={() => onVouchers(Math.min(MAX_PROMO_VOUCHERS, vouchers + 1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-foreground bg-primary text-primary-foreground transition disabled:opacity-40"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            )}
             {canOff && (
               <button
                 type="button"

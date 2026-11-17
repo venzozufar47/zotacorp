@@ -19,6 +19,7 @@ import {
   applyDiscount,
   campaignPhase,
   describeDiscount,
+  isItemPromoKind,
   type CampaignMode,
   type CampaignPhase,
   type DiscountKind,
@@ -269,7 +270,7 @@ export function DiscountCampaignManager({
                 )}
               </p>
               <div className="flex flex-wrap items-center gap-1.5">
-                {g.kind !== "item_price" && (
+                {!isItemPromoKind(g.kind) && (
                   <button type="button" onClick={() => setDraft(draftFromGroup(g))} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted">
                     <Pencil size={13} /> Ubah
                   </button>
@@ -284,7 +285,7 @@ export function DiscountCampaignManager({
                     {g.isActive ? <Pause size={13} /> : <Play size={13} />} {g.isActive ? "Jeda" : "Aktifkan"}
                   </button>
                 )}
-                {g.mode === "otomatis" && g.kind !== "item_price" && g.startDate <= now.date && (
+                {g.mode === "otomatis" && !isItemPromoKind(g.kind) && g.startDate <= now.date && (
                   <button
                     type="button"
                     disabled={pending}
