@@ -1418,6 +1418,7 @@ export function POSClient({
           chosenId={chosenCampaignId}
           onChoose={setChosenCampaignId}
           promoLines={promoLines}
+          productNames={Object.fromEntries(products.map((p) => [p.id, p.name]))}
           grossTotal={total}
           vouchers={promoVouchers}
           onVouchers={setPromoVouchers}
@@ -1929,12 +1930,15 @@ function DiscountBanner({
   chosenId,
   onChoose,
   promoLines,
+  productNames,
   grossTotal,
   vouchers,
   onVouchers,
   disabledIds,
   onToggleDisabled,
 }: {
+  /** id produk → nama, untuk menampilkan item yang ikut promo. */
+  productNames: Record<string, string>;
   campaigns: PosDiscountCampaign[];
   now: JakartaNow;
   picked: PickedCampaign<PosDiscountCampaign> | null;
@@ -2021,6 +2025,15 @@ function DiscountBanner({
               {status && (
                 <span className={`block text-[11px] font-medium ${status.warn ? "text-warning" : "text-muted-foreground"}`}>
                   {status.text}
+                </span>
+              )}
+              {c.kind === "tebus_murah" && !off && (
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                  Pilih salah satu:{" "}
+                  {c.productIds
+                    .map((id) => productNames[id])
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               )}
             </span>
