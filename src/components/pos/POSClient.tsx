@@ -1093,9 +1093,9 @@ export function POSClient({
                     const name = promoNameById.get(r.campaignId) ?? "Promo";
                     return (
                       <p key={r.campaignId} className="mt-0.5 text-[11px] font-semibold leading-tight text-success tabular-nums">
-                        {promoShortName(name)}: {r.pcs} pcs × −{formatRp(r.unitSaving)} = −{formatRp(r.saving)}
+                        {promoShortName(name)} −{formatRp(r.saving)} · {r.pcs} pcs
                         {r.pcs < line.qty && (
-                          <span className="font-normal text-muted-foreground"> · {line.qty - r.pcs} pcs harga normal</span>
+                          <span className="font-normal text-muted-foreground"> · {line.qty - r.pcs} normal</span>
                         )}
                       </p>
                     );
@@ -1189,7 +1189,7 @@ export function POSClient({
                 picked.itemPromo.parts.map((p) => (
                   <div key={p.campaignId} className="flex items-center justify-between gap-2 text-sm text-success">
                     <span>
-                      {promoShortName(promoNameById.get(p.campaignId) ?? "Promo")} · {p.pcs} pcs
+                      {promoShortName(promoNameById.get(p.campaignId) ?? "Promo")} ×{p.pcs}
                     </span>
                     <span className="shrink-0">−{formatRp(p.saving)}</span>
                   </div>
@@ -2000,14 +2000,14 @@ function DiscountBanner({
   const tebusPcs = info.parts.find((p) => p.kind === "tebus_murah")?.pcs ?? 0;
   const itemStatus = (c: PosDiscountCampaign): { text: string; warn: boolean } | null => {
     if (c.kind === "item_price") {
-      if (vouchers === 0) return { text: "Isi voucher yang berhak", warn: false };
-      if (info.voucherUnused > 0) return { text: `${claimedPcs} klaim · ${info.voucherUnused} voucher sisa`, warn: true };
-      if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} klaim · ${info.promoPcsAtFullPrice} pcs harga normal`, warn: true };
+      if (vouchers === 0) return { text: "Isi voucher", warn: false };
+      if (info.voucherUnused > 0) return { text: `${claimedPcs} klaim · sisa ${info.voucherUnused}`, warn: true };
+      if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} klaim · ${info.promoPcsAtFullPrice} normal`, warn: true };
       return { text: `${claimedPcs} klaim`, warn: false };
     }
     if (c.kind === "tebus_murah") {
       if (tebusPcs > 0) return { text: `${tebusPcs} ditebus${info.tebusRoom > 0 ? ` · +${info.tebusRoom} lagi` : ""}`, warn: false };
-      return { text: info.tebusRoom > 0 ? `Bisa tebus ${info.tebusRoom} pcs` : "Belum ada hak tebus", warn: false };
+      return { text: info.tebusRoom > 0 ? `Bisa tebus ${info.tebusRoom}` : "Belum ada hak", warn: false };
     }
     return null;
   };
@@ -2055,7 +2055,7 @@ function DiscountBanner({
               )}
               {c.kind === "tebus_murah" && !off && (
                 <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                  Pilih salah satu:{" "}
+                  Pilih 1:{" "}
                   {c.productIds
                     .map((id) => productNames[id])
                     .filter(Boolean)
