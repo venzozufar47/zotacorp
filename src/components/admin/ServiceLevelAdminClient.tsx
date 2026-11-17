@@ -36,6 +36,7 @@ import {
 } from "@/lib/pos/withdrawal-reasons";
 import { formatRp } from "@/lib/cashflow/format";
 import { cn } from "@/lib/utils";
+import { ServiceLevelCauses } from "@/components/pos/ServiceLevelCauses";
 
 interface Outlet {
   id: string;
@@ -304,34 +305,17 @@ function WorstSkusSection({
         <TrendingDown size={12} /> Penyebab terbesar ({rangeLabel})
       </h3>
       <p className="text-[11px] text-muted-foreground">
-        Produk yang paling sering kosong. 100% artinya selalu kosong dalam
-        rentang {rangeLabel} kebelakang.
+        Seberapa besar tiap produk menurunkan service level ({rangeLabel}).
+        Jika dijumlah = 100% − service level.
       </p>
-      <ul className="space-y-1.5">
-        {outlet.live.worstSkus.slice(0, 10).map((w) => (
-          <li
-            key={`${w.productId}|${w.variantId ?? ""}`}
-            className="flex items-center gap-3 text-xs"
-          >
-            <span className="min-w-0 flex-1 truncate" title={w.label}>
-              {w.label}
-            </span>
-            <span
-              className="h-2 w-24 shrink-0 overflow-hidden rounded-full bg-muted sm:w-40"
-              role="img"
-              aria-label={`${w.label} kosong ${(w.percentOut * 100).toFixed(0)} persen waktu`}
-            >
-              <span
-                className="block h-full rounded-full bg-destructive"
-                style={{ width: `${Math.max(2, w.percentOut * 100)}%` }}
-              />
-            </span>
-            <span className="w-10 shrink-0 text-right font-bold tabular-nums text-destructive">
-              {(w.percentOut * 100).toFixed(0)}%
-            </span>
-          </li>
-        ))}
-      </ul>
+      <ServiceLevelCauses
+        skus={outlet.live.worstSkus}
+        lostShare={
+          outlet.live.totalSkuSamples > 0 ? outlet.live.lostSkuHours / outlet.live.totalSkuSamples : 0
+        }
+        limit={10}
+        slim
+      />
     </section>
   );
 }

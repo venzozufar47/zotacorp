@@ -106,6 +106,11 @@ export interface ServiceLevelWorstSku {
   unavailableSamples: number;
   /** Persen waktu SKU ini habis, dari sampel di mana ia dihitung. */
   percentOut: number;
+  /**
+   * Kontribusi SKU ini terhadap angka yang hilang: sampel habis ÷ penyebut penuh (Σ trackedSkus × sampleCount).
+   * Dijumlahkan untuk semua SKU = 1 − service level (`ServiceLevelResult.percent`).
+   */
+  share: number;
 }
 
 export interface ServiceLevelResult {
@@ -405,6 +410,7 @@ export async function computeServiceLevel(
       label: u.label,
       unavailableSamples: outByUnit[i],
       percentOut: countedByUnit[i] > 0 ? outByUnit[i] / countedByUnit[i] : 0,
+      share: totalSkuSamples > 0 ? outByUnit[i] / totalSkuSamples : 0,
     }))
     .filter((w) => w.unavailableSamples > 0)
     .sort((a, b) => b.unavailableSamples - a.unavailableSamples);
