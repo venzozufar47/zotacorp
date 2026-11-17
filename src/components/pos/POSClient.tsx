@@ -1956,7 +1956,9 @@ function DiscountBanner({
     return true;
   });
   if (live.length === 0) return null;
-  const auto = live.filter((c) => c.mode === "otomatis");
+  // Soft opening (voucher) lebih dulu, lalu tebus murah, lalu promo otomatis lain.
+  const order = (c: PosDiscountCampaign) => (c.kind === "item_price" ? 0 : c.kind === "tebus_murah" ? 1 : 2);
+  const auto = live.filter((c) => c.mode === "otomatis").sort((a, b) => order(a) - order(b));
   // Status promo per-item untuk keranjang sekarang (voucher terpakai, hak tebus). Promo yang dimatikan tak ikut.
   const info = computeItemPromos(
     auto.filter((c) => (c.kind === "item_price" || c.kind === "tebus_murah") && !disabledIds.includes(c.id)),
@@ -1968,15 +1970,14 @@ function DiscountBanner({
   const tebusPcs = info.parts.find((p) => p.kind === "tebus_murah")?.pcs ?? 0;
   const itemStatus = (c: PosDiscountCampaign): { text: string; warn: boolean } | null => {
     if (c.kind === "item_price") {
-      if (vouchers === 0) return { text: "Isi jumlah voucher yang berhak klaim", warn: false };
-      if (info.voucherUnused > 0) return { text: `${claimedPcs} diklaim · ${info.voucherUnused} voucher belum dipakai (tambah produk promo)`, warn: true };
-      if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} diklaim · ${info.promoPcsAtFullPrice} pcs promo lain harga normal`, warn: true };
-      return { text: `${claimedPcs} diklaim`, warn: false };
+      if (vouchers === 0) return { text: "Isi voucher yang berhak", warn: false };
+      if (info.voucherUnused > 0) return { text: `${claimedPcs} klaim · ${info.voucherUnused} voucher sisa`, warn: true };
+      if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} klaim · ${info.promoPcsAtFullPrice} pcs harga normal`, warn: true };
+      return { text: `${claimedPcs} klaim`, warn: false };
     }
     if (c.kind === "tebus_murah") {
-      const room = info.tebusRoom > 0 ? ` · bisa tebus ${info.tebusRoom} pcs lagi` : "";
-      if (tebusPcs > 0) return { text: `${tebusPcs} pcs ditebus${room}`, warn: false };
-      return { text: `Belum ada tebus${room || " — beli produk non-promo, lalu tambah produk tebus"}`, warn: false };
+      if (tebusPcs > 0) return { text: `${tebusPcs} ditebus${info.tebusRoom > 0 ? ` · +${info.tebusRoom} lagi` : ""}`, warn: false };
+      return { text: info.tebusRoom > 0 ? `Bisa tebus ${info.tebusRoom} pcs` : "Belum ada hak tebus", warn: false };
     }
     return null;
   };
@@ -1990,29 +1991,35 @@ function DiscountBanner({
       .filter(Boolean)
       .join(" · ");
   return (
-    <div className="space-y-1.5 px-3 pt-3">
+    <div className="space-y-1 px-3 pt-2">
+      {/* Tablet landscape (≥ md): promo berdampingan supaya hemat tinggi layar. */}
+      <div className="grid gap-1 md:grid-cols-2">
       {auto.map((c) => {
         const isVoucher = c.kind === "item_price";
         // Voucher: kasir cukup isi jumlah (0 = tidak ada klaim), tak perlu tombol matikan.
         const canOff = cashierCanDisable(c) && !isVoucher;
         const off = canOff && disabledIds.includes(c.id);
         const status = off ? null : itemStatus(c);
+        const itemPromo = isVoucher || c.kind === "tebus_murah";
+        // Promo per-item: judul pendek (tanpa catatan panjang); catatan lengkap lewat tooltip.
+        const title = itemPromo
+          ? `${c.name.split(" — ")[0].replace(/ Semarang$/, "")} · ${formatRp(c.promoPrice)}`
+          : `${c.name} · ${describeDiscount(c)}`;
         return (
           <div
             key={c.id}
-            className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-xs text-foreground ${
+            title={rule(c) || undefined}
+            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs text-foreground ${
               off ? "border-border bg-muted/50" : "border-success/40 bg-success/10"
-            }`}
+            } ${itemPromo ? "" : "md:col-span-2"}`}
           >
-            <Sparkles size={14} className={`shrink-0 ${off ? "text-muted-foreground" : "text-success"}`} />
-            <span className={`min-w-0 flex-1 ${off ? "text-muted-foreground" : ""}`}>
-              <strong className={`font-semibold ${off ? "line-through" : ""}`}>
-                {c.name} · {describeDiscount(c)}
-              </strong>
-              {rule(c) ? <> — {rule(c)}</> : null}
-              {off && <span className="ml-1 font-semibold">· dimatikan untuk transaksi ini</span>}
+            <Sparkles size={13} className={`shrink-0 ${off ? "text-muted-foreground" : "text-success"}`} />
+            <span className={`min-w-0 flex-1 leading-tight ${off ? "text-muted-foreground" : ""}`}>
+              <strong className={`font-semibold ${off ? "line-through" : ""}`}>{title}</strong>
+              {!itemPromo && rule(c) ? <> — {rule(c)}</> : null}
+              {off && <span className="ml-1 font-semibold">· mati</span>}
               {status && (
-                <span className={`mt-0.5 block font-semibold ${status.warn ? "text-warning" : "text-success"}`}>
+                <span className={`block text-[11px] font-medium ${status.warn ? "text-warning" : "text-muted-foreground"}`}>
                   {status.text}
                 </span>
               )}
@@ -2024,11 +2031,11 @@ function DiscountBanner({
                   aria-label="Kurangi voucher"
                   disabled={vouchers <= 0}
                   onClick={() => onVouchers(Math.max(0, vouchers - 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-border bg-card text-foreground transition hover:border-foreground disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-foreground transition hover:border-foreground disabled:opacity-40"
                 >
-                  <Minus size={16} />
+                  <Minus size={14} />
                 </button>
-                <span className="min-w-6 text-center text-base font-bold tabular-nums" aria-live="polite">
+                <span className="min-w-5 text-center text-sm font-bold tabular-nums" aria-live="polite">
                   {vouchers}
                 </span>
                 <button
@@ -2036,9 +2043,9 @@ function DiscountBanner({
                   aria-label="Tambah voucher"
                   disabled={vouchers >= MAX_PROMO_VOUCHERS}
                   onClick={() => onVouchers(Math.min(MAX_PROMO_VOUCHERS, vouchers + 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-foreground bg-primary text-primary-foreground transition disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition disabled:opacity-40"
                 >
-                  <Plus size={16} />
+                  <Plus size={14} />
                 </button>
               </div>
             )}
@@ -2046,10 +2053,10 @@ function DiscountBanner({
               <button
                 type="button"
                 onClick={() => onToggleDisabled(c.id)}
-                className={`shrink-0 rounded-full border-2 px-2.5 py-1 font-semibold transition ${
+                className={`shrink-0 rounded-full border px-2.5 py-1 font-semibold transition ${
                   off
                     ? "border-foreground bg-primary text-primary-foreground"
-                    : "border-border bg-card text-foreground hover:border-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
                 }`}
               >
                 {off ? "Nyalakan" : "Matikan"}
@@ -2058,6 +2065,7 @@ function DiscountBanner({
           </div>
         );
       })}
+      </div>
       {manual.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs">
           <span className="font-semibold text-muted-foreground">Promo (pilih):</span>
