@@ -351,7 +351,7 @@ export async function submitMaterialOpname(input: {
   /** Alasan selisih per bahan; WAJIB untuk bahan yang selisihnya melewati toleransi kategorinya. */
   reasons?: Record<string, string>;
 }): Promise<
-  ActionResult<{ opnameId: string; totalDiffQty: number; diffItems: number; outOfTolerance: number }>
+  ActionResult<{ opnameId: string; totalDiffQty: number; diffItems: number; outOfTolerance: number; droppedCount: number }>
 > {
   const gate = await requireProcurementForBu(input.businessUnit);
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -371,16 +371,30 @@ export async function submitMaterialOpname(input: {
     includeUntracked: true,
   });
   const byId = new Map(rows.map((r) => [r.material.id, r]));
-  for (const it of input.items) {
-    if (!byId.has(it.materialId))
-      return { ok: false, error: "Ada bahan di luar brand ini" };
+  // Bahan yang SUDAH DIHAPUS dari master sejak form dibuka (halaman terbuka lama) dibuang otomatis dan dilaporkan ke
+  // klien. Bahan yang masih ada tapi bukan milik brand ini tetap menolak seluruh batch — itu bukan basi, itu salah.
+  const unknownIds = Array.from(new Set(input.items.filter((it) => !byId.has(it.materialId)).map((it) => it.materialId)));
+  let items = input.items;
+  let droppedCount = 0;
+  if (unknownIds.length > 0) {
+    const { data: stillThere, error: lookupErr } = await supabase
+      .from("costing_materials" as never)
+      .select("id")
+      .in("id", unknownIds);
+    if (lookupErr) return { ok: false, error: lookupErr.message };
+    const existing = new Set(((stillThere ?? []) as { id: string }[]).map((m) => m.id));
+    if (unknownIds.some((id) => existing.has(id))) return { ok: false, error: "Ada bahan di luar brand ini" };
+    items = input.items.filter((it) => byId.has(it.materialId));
+    droppedCount = input.items.length - items.length;
+    if (items.length === 0)
+      return { ok: false, error: "Semua bahan di form ini sudah dihapus dari master. Muat ulang halaman lalu hitung lagi." };
   }
 
   // Selisih di atas toleransi kategori: alasan dipilih di form (UI mewajibkan). Bahan tanpa baseline (hitungan pertama) tak punya
   // pembanding, jadi tidak dinilai.
   const outOfTol: { name: string; value: number; reason: string }[] = [];
   const reasonOf = new Map<string, string>();
-  for (const it of input.items) {
+  for (const it of items) {
     const r = byId.get(it.materialId)!;
     if (r.metrics.onHandRaw == null) continue;
     const vc = varianceCheck({
@@ -414,7 +428,7 @@ export async function submitMaterialOpname(input: {
 
   let totalDiffQty = 0;
   let diffItems = 0;
-  const itemRows = input.items.map((it) => {
+  const itemRows = items.map((it) => {
     const r = byId.get(it.materialId)!;
     const expected = r.metrics.onHandRaw ?? 0;
     const diff = it.physicalQty - expected;
@@ -461,7 +475,7 @@ export async function submitMaterialOpname(input: {
       // Notifikasi gagal tak boleh membatalkan opname yang sudah tersimpan.
     }
   }
-  return { ok: true, data: { opnameId, totalDiffQty, diffItems, outOfTolerance: outOfTol.length } };
+  return { ok: true, data: { opnameId, totalDiffQty, diffItems, outOfTolerance: outOfTol.length, droppedCount } };
 }
 
 export async function listMaterialOpnames(

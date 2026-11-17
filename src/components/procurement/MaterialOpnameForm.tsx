@@ -148,6 +148,8 @@ export function MaterialOpnameForm({
       }
       const out = res.data?.outOfTolerance ?? 0;
       toast.success(out > 0 ? `Opname tersimpan, ${out} bahan di atas toleransi` : "Opname tersimpan");
+      const dropped = res.data?.droppedCount ?? 0;
+      if (dropped > 0) toast.info(`${dropped} bahan sudah dihapus dari master, dilewati`);
       setConfirmOpen(false);
       router.push(`/pengadaan?tab=stok&bu=${encodeURIComponent(businessUnit)}`);
       router.refresh();
