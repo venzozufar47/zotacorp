@@ -341,8 +341,9 @@ export async function startMaterialOpname(
  * selisih besar BUKAN error; klien yang memutuskan menampilkan konfirmasi
  * (pola submitStockOpname di pos-stock.actions.ts).
  *
- * Seluruh batch ditolak kalau ada satu material_id di luar brand ini —
- * jangan menyaring diam-diam.
+ * Seluruh batch ditolak kalau ada satu material_id yang MASIH ADA tapi di luar brand ini —
+ * jangan menyaring diam-diam. Pengecualian: id yang sudah tidak ada sama sekali (bahan dihapus dari master sejak form
+ * dibuka) dibuang dan dilaporkan lewat `droppedCount`.
  */
 export async function submitMaterialOpname(input: {
   businessUnit: string;
@@ -377,6 +378,9 @@ export async function submitMaterialOpname(input: {
   let items = input.items;
   let droppedCount = 0;
   if (unknownIds.length > 0) {
+    // Bukan UUID = bukan bahan yang pernah ada: tolak, jangan kirim ke query (error DB mentah bocor ke kasir).
+    if (unknownIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))
+      return { ok: false, error: "Ada bahan di luar brand ini" };
     const { data: stillThere, error: lookupErr } = await supabase
       .from("costing_materials" as never)
       .select("id")
