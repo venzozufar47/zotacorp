@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 /** `pesanan` dan `riwayat` adalah nama lama: keduanya kini bagian dari tab `belanja`. */
-export type PengadaanTab = "catat" | "belanja" | "stok" | "bahan";
+export type PengadaanTab = "catat" | "belanja" | "stok" | "bahan" | "audit";
 export type BelanjaSection = "pesanan" | "riwayat";
 
 const TABS: { key: PengadaanTab; label: string }[] = [
@@ -10,10 +10,11 @@ const TABS: { key: PengadaanTab; label: string }[] = [
   { key: "belanja", label: "Belanja" },
   { key: "stok", label: "Stok" },
   { key: "bahan", label: "Bahan" },
+  { key: "audit", label: "Audit" },
 ];
 
 /**
- * Tab halaman Pengadaan (4 tab, muat di layar 360px tanpa menyempit). Lencana angka
+ * Tab halaman Pengadaan (5 tab, muat di layar 360px tanpa menyempit). Lencana angka
  * menunjukkan pesanan yang belum tiba dan ikut mengisi lebar tab, bukan menimpa tetangga.
  */
 export function PengadaanTabs({
@@ -29,7 +30,7 @@ export function PengadaanTabs({
   const href = (tab: PengadaanTab) =>
     `/pengadaan?tab=${tab}${activeBrand ? `&bu=${encodeURIComponent(activeBrand)}` : ""}`;
   return (
-    <nav aria-label="Bagian Pengadaan" className="grid grid-cols-4 gap-0.5 rounded-xl bg-muted p-1">
+    <nav aria-label="Bagian Pengadaan" className="grid grid-cols-5 gap-0.5 rounded-xl bg-muted p-1">
       {TABS.map((t) => (
         <Link
           key={t.key}
@@ -37,13 +38,13 @@ export function PengadaanTabs({
           prefetch={false}
           aria-current={active === t.key ? "page" : undefined}
           className={cn(
-            "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 text-[13px] font-semibold transition-colors",
+            "relative flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg px-0.5 text-[13px] font-semibold transition-colors",
             active === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
           )}
         >
           <span className="truncate">{t.label}</span>
           {t.key === "belanja" && inTransitCount > 0 && (
-            <span className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground tabular-nums">
+            <span className="absolute right-0 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground tabular-nums">
               {inTransitCount}
               <span className="sr-only"> pesanan belum tiba</span>
             </span>

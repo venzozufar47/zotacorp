@@ -11,7 +11,16 @@ import {
 import { PurchaseForm } from "./PurchaseForm";
 
 /** Edit nota di Riwayat: membuka form nota yang sama (terisi data lama) dalam lapisan layar penuh. */
-export function PurchaseEditDialog({ purchase, onClose }: { purchase: PurchaseView; onClose: () => void }) {
+export function PurchaseEditDialog({
+  purchase,
+  onClose,
+  viaAudit,
+}: {
+  purchase: PurchaseView;
+  onClose: () => void;
+  /** Dibuka dari halaman Audit (hak edit petugas pengadaan dilonggarkan di server). */
+  viaAudit?: boolean;
+}) {
   const router = useRouter();
   const [data, setData] = useState<PurchaseFormData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +57,7 @@ export function PurchaseEditDialog({ purchase, onClose }: { purchase: PurchaseVi
         <PurchaseForm
           data={data}
           editing={purchase}
+          viaAudit={viaAudit}
           onSaved={() => {
             router.refresh();
             onClose();

@@ -30,6 +30,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
 import { PengadaanTabs, BrandPills, type PengadaanTab, type BelanjaSection } from "@/components/procurement/PengadaanTabs";
 import { PengadaanCatat } from "@/components/procurement/PengadaanCatat";
+import { AuditNota, type AuditStatus } from "@/components/procurement/AuditNota";
 import { PurchaseHistory, PurchaseSummaryCard } from "@/components/procurement/PurchaseHistory";
 import { PurchaseFilters, hasActiveFilter, type PurchaseFilterValues } from "@/components/procurement/PurchaseFilters";
 import { EXPENSE_CATEGORY_VALUES } from "@/lib/procurement/categories";
@@ -37,7 +38,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { listOrders } from "@/lib/actions/procurement-orders.actions";
 import { OrdersPanel } from "@/components/procurement/OrdersPanel";
 
-const TAB_KEYS: readonly PengadaanTab[] = ["catat", "belanja", "stok", "bahan"];
+const TAB_KEYS: readonly PengadaanTab[] = ["catat", "belanja", "stok", "bahan", "audit"];
 
 /**
  * Pengadaan & Pengeluaran untuk petugas cabang: catat nota belanja (bahan baku + pengeluaran lain), lihat
@@ -58,6 +59,7 @@ export default async function PengadaanPage({
     sampai?: string;
     kat?: string;
     sumber?: string;
+    st?: string;
   }>;
 }) {
   const user = await getCurrentUser();
@@ -74,7 +76,7 @@ export default async function PengadaanPage({
   const brands = [...new Set([...staffBrands, ...drawerBrands])].sort();
   if (brands.length === 0) redirect("/dashboard");
 
-  const { bu, tab: tabParam, bahan, bagian, dari, sampai, kat, sumber } = await searchParams;
+  const { bu, tab: tabParam, bahan, bagian, dari, sampai, kat, sumber, st } = await searchParams;
   const filters = parseFilters({ dari, sampai, kat, sumber });
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
   // Tanpa ?bu= eksplisit, cabang awal diutamakan di tempat akun ini PETUGAS pengadaan (bukan sekadar kasir),
@@ -147,6 +149,7 @@ export default async function PengadaanPage({
           )}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
           {tab === "bahan" && <BahanTab brand={activeBrand} />}
+          {tab === "audit" && <AuditTab brand={activeBrand} today={today} dari={dari} sampai={sampai} st={st} />}
         </>
       )}
     </div>
@@ -317,6 +320,46 @@ async function PositionBar({ brand }: { brand: string }) {
     </div>
   );
 }
+
+const AUDIT_LIMIT = 200;
+
+/** Audit nota: rentang bawaan 7 hari terakhir, status bawaan "belum dicek". */
+async function AuditTab({
+  brand,
+  today,
+  dari,
+  sampai,
+  st,
+}: {
+  brand: string;
+  today: string;
+  dari?: string;
+  sampai?: string;
+  st?: string;
+}) {
+  let from = dari && YMD.test(dari) ? dari : addDaysYmd(today, -6);
+  let to = sampai && YMD.test(sampai) ? sampai : today;
+  if (from > to) [from, to] = [to, from];
+  const status: AuditStatus = st === "masalah" || st === "sesuai" || st === "semua" ? st : "belum";
+  const res = await listPurchases(brand, { from, to, limit: AUDIT_LIMIT });
+  if (!res.ok) return <p className="text-sm text-destructive">{res.error}</p>;
+  const purchases = res.data ?? [];
+  return (
+    <AuditNota
+      key={`${brand}|${from}|${to}`}
+      purchases={purchases}
+      today={today}
+      brand={brand}
+      from={from}
+      to={to}
+      initialStatus={status}
+      truncated={purchases.length >= AUDIT_LIMIT}
+    />
+  );
+}
+
+const addDaysYmd = (ymd: string, n: number) =>
+  new Date(new Date(ymd + "T00:00:00Z").getTime() + n * 86_400_000).toISOString().slice(0, 10);
 
 async function BahanTab({ brand }: { brand: string }) {
   const [res, queue] = await Promise.all([listMaterialDetails(brand), listBrandsNeedingInfo(brand)]);

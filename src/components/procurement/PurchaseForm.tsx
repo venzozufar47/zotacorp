@@ -135,7 +135,10 @@ export function PurchaseForm({
   initialMaterialId,
   onSaved,
   editing,
+  viaAudit,
 }: {
+  /** Edit dari halaman Audit: server melonggarkan hak edit untuk petugas pengadaan cabang. */
+  viaAudit?: boolean;
   /** Mode edit: nota yang diubah. Semua isinya bisa diganti (seperti input ulang); disimpan menggantikan nota ini. */
   editing?: PurchaseView;
   data: PurchaseFormData;
@@ -284,6 +287,7 @@ export function PurchaseForm({
         clientId: editing ? undefined : clientIdRef.current,
         replaceId: editing?.id,
         keepReceipt: editing ? keepReceipt : undefined,
+        viaAudit: editing && viaAudit ? true : undefined,
         moneySource: source,
         receiptPath: receiptPath ?? "",
         purchaseDate: date,

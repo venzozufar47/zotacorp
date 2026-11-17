@@ -531,6 +531,11 @@ export interface CreatePurchaseInput {
   /** Mode edit: pakai foto nota yang sudah tersimpan (tanpa unggah baru). */
   keepReceipt?: boolean;
   /**
+   * Edit dari halaman Audit: petugas pengadaan cabang ini boleh mengoreksi nota siapa pun (bukan hanya pencatatnya di hari
+   * yang sama), kecuali nota uang laci. Tanpa flag ini aturan lama berlaku.
+   */
+  viaAudit?: boolean;
+  /**
    * "langsung" (bawaan): barang sudah di tangan, langsung menambah stok. "dipesan": sudah dibayar/dipesan tetapi belum
    * tiba, stok baru bertambah saat dikonfirmasi tiba (lead time terukur dari sini). Mode edit tanpa nilai ini
    * mempertahankan status pesanan lama.
@@ -627,7 +632,9 @@ async function createPurchaseImpl(
   if (replaceId) {
     old = await loadOldSnapshot(admin, replaceId);
     if (!old || old.head.business_unit !== input.businessUnit) return { ok: false, error: "Nota tidak ditemukan" };
-    if (!auth.isAdmin) {
+    const auditEdit =
+      input.viaAudit === true && auth.isStaff && old.head.money_source !== "laci" && input.moneySource !== "laci";
+    if (!auth.isAdmin && !auditEdit) {
       const createdAt = old.head.created_at as string;
       if (old.head.created_by !== gate.userId) return { ok: false, error: "Hanya pencatatnya yang bisa mengubah nota" };
       if (jakartaDateString(new Date(createdAt)) !== jakartaDateString(new Date()))
@@ -1298,6 +1305,11 @@ export interface PurchaseView {
   canEdit: boolean;
   /** Sama aturan dengan canDelete: admin kapan saja, pencatatnya sendiri hanya di hari yang sama. */
   canChangeSource: boolean;
+  /** Boleh diedit dari halaman Audit (petugas/admin cabang ini, selain nota uang laci). */
+  canAuditEdit: boolean;
+  /** Kapan nota ditandai "Sesuai" oleh auditor (null = belum diaudit). */
+  auditedAt: string | null;
+  auditedByName: string | null;
   moneySource: MoneySource;
   lines: PurchaseLineView[];
 }
@@ -1327,7 +1339,7 @@ export async function listPurchases(
   const admin = createAdminClient();
   let q = admin
     .from("procurement_purchases" as never)
-    .select("id, business_unit, purchase_date, purchase_time, vendor, total, notes, receipt_path, created_by, created_at, money_source")
+    .select("id, business_unit, purchase_date, purchase_time, vendor, total, notes, receipt_path, created_by, created_at, money_source, audited_at, audited_by")
     .order("purchase_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(Math.min(opts.limit ?? 40, 200));
@@ -1371,7 +1383,11 @@ export async function listPurchases(
     const { data: bs } = await admin.from("costing_material_brands" as never).select("id, name").in("id", brandIds);
     for (const b of (bs ?? []) as { id: string; name: string }[]) brandNames.set(b.id, b.name);
   }
-  const userIds = [...new Set(heads.map((h) => h.created_by as string | null).filter((v): v is string => !!v))];
+  const userIds = [
+    ...new Set(
+      heads.flatMap((h) => [h.created_by as string | null, h.audited_by as string | null]).filter((v): v is string => !!v)
+    ),
+  ];
   const names = new Map<string, string>();
   if (userIds.length) {
     const { data: ps } = await admin.from("profiles").select("id, full_name, nickname").in("id", userIds);
@@ -1437,6 +1453,9 @@ export async function listPurchases(
         canEdit: isAdmin || (createdBy === userId && sameDay),
         // Nota Saldo Shopee tidak punya baris buku kas yang bisa dibalik: koreksinya hapus lalu catat ulang.
         canChangeSource: h.money_source !== "shopee" && (isAdmin || (createdBy === userId && sameDay)),
+        canAuditEdit: h.money_source !== "laci",
+        auditedAt: (h.audited_at as string | null) ?? null,
+        auditedByName: h.audited_by ? names.get(h.audited_by as string) ?? null : null,
         moneySource: h.money_source === "laci" ? "laci" : h.money_source === "shopee" ? "shopee" : "pengadaan",
         lines: byPurchase.get(h.id as string) ?? [],
       };
@@ -1500,6 +1519,31 @@ export async function getPurchaseSummary(
       flaggedLines: flagged,
     },
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Audit nota
+// ─────────────────────────────────────────────────────────────────────
+
+/** Tandai nota "Sesuai" (audited=true) atau batalkan tandanya. Petugas pengadaan cabang itu atau admin. */
+export async function setPurchaseAudited(id: string, audited: boolean): Promise<ActionResult<{ auditedAt: string | null }>> {
+  const admin = createAdminClient();
+  const { data: head } = await admin
+    .from("procurement_purchases" as never)
+    .select("business_unit")
+    .eq("id", id)
+    .maybeSingle();
+  const bu = (head as { business_unit: string } | null)?.business_unit;
+  if (!bu) return { ok: false, error: "Nota tidak ditemukan" };
+  const gate = await requireProcurementForBu(bu);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const auditedAt = audited ? new Date().toISOString() : null;
+  const { error } = await admin
+    .from("procurement_purchases" as never)
+    .update({ audited_at: auditedAt, audited_by: audited ? gate.userId : null } as never)
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: { auditedAt } };
 }
 
 // ─────────────────────────────────────────────────────────────────────
