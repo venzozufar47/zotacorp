@@ -273,9 +273,7 @@ export function TicketCard({
       )}
 
       {reportPhotos.length > 0 && (
-        <Fold title={`Foto laporan (${reportPhotos.length})`}>
-          <TicketPhotos attachments={reportPhotos} />
-        </Fold>
+        <TicketPhotos inline attachments={reportPhotos} label="foto laporan" />
       )}
 
       {/* Catatan alur */}
@@ -302,9 +300,8 @@ export function TicketCard({
             </span>
           </p>
           {(resolutionPhotos.length > 0 || (ticket.verification && ticket.verification.length > 0)) && (
-            <Fold title="Bukti dan verifikasi">
-              <div className="space-y-2">
-              {resolutionPhotos.length > 0 && <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />}
+            <div className="space-y-2">
+              {resolutionPhotos.length > 0 && <TicketPhotos inline attachments={resolutionPhotos} label="foto bukti selesai" />}
               {ticket.verification && ticket.verification.length > 0 && (
                 <p className="flex items-start gap-1.5 text-foreground/80">
                   <ShieldCheck size={14} className="mt-px shrink-0" aria-hidden />
@@ -316,8 +313,7 @@ export function TicketCard({
                   </span>
                 </p>
               )}
-              </div>
-            </Fold>
+            </div>
           )}
           {ticket.confirmedAt ? (
             <p className="flex items-center gap-1.5 text-success/80">
@@ -521,19 +517,6 @@ export function TicketCard({
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-/** Bagian detail yang jarang dibaca: dilipat, terbuka saat diketuk. */
-function Fold({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <details className="group">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
-        <ChevronDown size={14} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden />
-        {title}
-      </summary>
-      <div className="pt-1">{children}</div>
-    </details>
   );
 }
 
