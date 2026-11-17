@@ -496,7 +496,14 @@ export async function loadStockEventStream(
       );
       for (const it of rows) {
         const m = itemsByOpname.get(it.opname_id) ?? new Map<SkuKey, number>();
-        m.set(skuKey(it.product_id, it.variant_id), it.physical_count);
+        if (aggregateProductIds.has(it.product_id)) {
+          // Produk mode agregat: opname lama masih per-varian (sebelum toggle) → gabungkan (jumlahkan) ke SKU produk,
+          // sama seperti delta di bawah dan `loadBaselineAt`. Tanpa ini baseline-nya jadi 0 dan SKU terbaca habis.
+          const k = skuKey(it.product_id, null);
+          m.set(k, (m.get(k) ?? 0) + it.physical_count);
+        } else {
+          m.set(skuKey(it.product_id, it.variant_id), it.physical_count);
+        }
         itemsByOpname.set(it.opname_id, m);
         countByOpname.set(it.opname_id, (countByOpname.get(it.opname_id) ?? 0) + 1);
       }
