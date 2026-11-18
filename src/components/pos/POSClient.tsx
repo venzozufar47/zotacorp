@@ -278,6 +278,8 @@ export function POSClient({
   const [disabledCampaignIds, setDisabledCampaignIds] = useState<string[]>([]);
   // Voucher promo soft opening yang berhak diklaim di nota ini (kasir yang mengisi; antrean sudah memilah pembeli).
   const [promoVouchers, setPromoVouchers] = useState(0);
+  // Kasir melepas kunci "hanya voucher" untuk nota ini; kembali terkunci setelah transaksi selesai.
+  const [voucherLockOff, setVoucherLockOff] = useState(false);
   // Jam berjalan (tiap 30 dtk) supaya kampanye berjam (happy hour) mulai/berhenti sendiri tanpa muat ulang.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -709,6 +711,7 @@ export function POSClient({
     setChosenCampaignId(null);
     setDisabledCampaignIds([]);
     setPromoVouchers(0);
+    setVoucherLockOff(false);
     originConfirmedRef.current = false;
   }
 
@@ -791,6 +794,7 @@ export function POSClient({
         campaignId: chosenCampaignId,
         disabledCampaignIds: disabledCampaignIds.length > 0 ? disabledCampaignIds : undefined,
         promoVouchers: promoVouchers > 0 ? promoVouchers : undefined,
+        voucherLockOff: voucherLockOff || undefined,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan penjualan");
@@ -913,6 +917,7 @@ export function POSClient({
   // Kebijakan hanya-voucher (mis. Matcha Strawberry / Black Forest Semarang): pcs di keranjang tak boleh melebihi voucher,
   // dan mematikan promo tak membuka kuncinya. Server menegakkan hal yang sama saat bayar.
   const voucherLockText = useMemo(() => {
+    if (voucherLockOff) return null;
     const lines = [
       ...cartLines.filter((l) => l.productId).map((l) => ({ productId: l.productId, qty: l.qty })),
       ...customItems.filter((c) => c.productId).map((c) => ({ productId: c.productId ?? null, qty: c.qty })),
@@ -921,7 +926,7 @@ export function POSClient({
     if (!bad) return null;
     const names = bad.productIds.map((id) => products.find((p) => p.id === id)?.name).filter(Boolean).join(", ");
     return `${names} hanya bisa dibeli dengan voucher: ${bad.pcs} pcs di keranjang, voucher ${bad.allowed}. Isi voucher atau hapus dari keranjang.`;
-  }, [campaigns, liveNow, cartLines, customItems, promoVouchers, disabledCampaignIds, products]);
+  }, [campaigns, liveNow, cartLines, customItems, promoVouchers, disabledCampaignIds, products, voucherLockOff]);
   const promoNameById = useMemo(() => new Map(campaigns.map((c) => [c.id, c.name])), [campaigns]);
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
@@ -1463,6 +1468,8 @@ export function POSClient({
           vouchers={promoVouchers}
           onVouchers={setPromoVouchers}
           voucherLockText={voucherLockText}
+          voucherLockOff={voucherLockOff}
+          onToggleVoucherLock={() => setVoucherLockOff((v) => !v)}
           disabledIds={disabledCampaignIds}
           onToggleDisabled={(id) =>
             setDisabledCampaignIds((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]))
@@ -1976,6 +1983,8 @@ function DiscountBanner({
   vouchers,
   onVouchers,
   voucherLockText,
+  voucherLockOff,
+  onToggleVoucherLock,
   disabledIds,
   onToggleDisabled,
 }: {
@@ -1993,6 +2002,9 @@ function DiscountBanner({
   onVouchers: (n: number) => void;
   /** Pesan bila produk hanya-voucher di keranjang melebihi voucher; null = aman. */
   voucherLockText: string | null;
+  /** Kasir melepas kunci hanya-voucher untuk nota ini. */
+  voucherLockOff: boolean;
+  onToggleVoucherLock: () => void;
   /** Promo yang dimatikan kasir untuk transaksi ini. */
   disabledIds: string[];
   onToggleDisabled: (id: string) => void;
@@ -2019,6 +2031,7 @@ function DiscountBanner({
   const itemStatus = (c: PosDiscountCampaign): { text: string; warn: boolean } | null => {
     if (c.kind === "item_price") {
       if (voucherLockText) return { text: voucherLockText, warn: true };
+      if (voucherLockOff) return { text: "Kunci hanya-voucher dilepas untuk nota ini", warn: true };
       if (vouchers === 0) return { text: "Isi voucher", warn: false };
       if (info.voucherUnused > 0) return { text: `${claimedPcs} klaim · sisa ${info.voucherUnused}`, warn: true };
       if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} klaim · ${info.promoPcsAtFullPrice} normal`, warn: true };
@@ -2057,23 +2070,23 @@ function DiscountBanner({
         return (
           <div
             key={c.id}
-            title={rule(c) || undefined}
-            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs text-foreground ${
+            title={[rule(c), status?.text].filter(Boolean).join(" · ") || undefined}
+            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs text-foreground ${
               off ? "border-border bg-muted/50" : "border-success/40 bg-success/10"
             } ${itemPromo ? "" : "md:col-span-2"}`}
           >
             <Sparkles size={13} className={`shrink-0 ${off ? "text-muted-foreground" : "text-success"}`} />
-            <span className={`min-w-0 flex-1 leading-tight ${off ? "text-muted-foreground" : ""}`}>
+            <span className={`min-w-0 flex-1 truncate whitespace-nowrap leading-tight ${off ? "text-muted-foreground" : ""}`}>
               <strong className={`font-semibold ${off ? "line-through" : ""}`}>{title}</strong>
               {!itemPromo && rule(c) ? <> — {rule(c)}</> : null}
               {off && <span className="ml-1 font-semibold">· mati</span>}
               {status && (
-                <span className={`block text-[11px] font-medium ${status.warn ? "text-warning" : "text-muted-foreground"}`}>
+                <span className={`ml-1.5 text-[11px] font-medium ${status.warn ? "text-warning" : "text-muted-foreground"}`}>
                   {status.text}
                 </span>
               )}
               {c.kind === "tebus_murah" && !off && (
-                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                <span className="ml-1.5 text-[11px] text-muted-foreground">
                   Pilih 1:{" "}
                   {c.productIds
                     .map((id) => productNames[id])
@@ -2106,6 +2119,19 @@ function DiscountBanner({
                   <Plus size={14} />
                 </button>
               </div>
+            )}
+            {isVoucher && c.voucherOnlyProductIds.length > 0 && (
+              <button
+                type="button"
+                onClick={onToggleVoucherLock}
+                className={`shrink-0 rounded-full border px-2.5 py-1 font-semibold transition ${
+                  voucherLockOff
+                    ? "border-foreground bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
+                }`}
+              >
+                {voucherLockOff ? "Kunci lagi" : "Lepas kunci"}
+              </button>
             )}
             {canOff && (
               <button

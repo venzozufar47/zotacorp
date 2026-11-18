@@ -716,6 +716,8 @@ export async function createPosSale(input: {
   disabledCampaignIds?: string[];
   /** Jumlah voucher promo soft opening yang berhak diklaim di nota ini (diisi kasir; server membatasi). */
   promoVouchers?: number;
+  /** Kasir melepas kunci "hanya voucher" untuk nota ini (tombol di tab POS). */
+  voucherLockOff?: boolean;
 }): Promise<
   ActionResult<{ saleId: string; total: number; branch: string | null }>
 > {
@@ -1015,13 +1017,15 @@ export async function createPosSale(input: {
   //     description) konsisten.
   //     Promo harga-per-item hanya melihat baris katalog tanpa diskon manual (bukan custom/ready cake).
   // Kebijakan hanya-voucher: Matcha Strawberry / Black Forest hanya lewat voucher soft opening, bukan harga normal.
-  const voucherOnlyErr = await checkVoucherOnly(
-    input.bankAccountId,
-    itemsResolved.filter((it) => !it.readyCakeOrderId).map((it) => ({ productId: it.productId, productName: it.productName, qty: it.qty })),
-    input.promoVouchers ?? 0,
-    input.disabledCampaignIds,
-    now
-  );
+  const voucherOnlyErr = input.voucherLockOff
+    ? null
+    : await checkVoucherOnly(
+        input.bankAccountId,
+        itemsResolved.filter((it) => !it.readyCakeOrderId).map((it) => ({ productId: it.productId, productName: it.productName, qty: it.qty })),
+        input.promoVouchers ?? 0,
+        input.disabledCampaignIds,
+        now
+      );
   if (voucherOnlyErr) return { ok: false, error: voucherOnlyErr };
   const promoLines = itemsResolved
     .filter((it) => it.productId && !it.readyCakeOrderId && it.originalUnitPrice == null)
