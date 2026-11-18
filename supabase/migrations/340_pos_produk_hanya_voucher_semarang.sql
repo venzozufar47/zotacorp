@@ -1,5 +1,5 @@
--- Kebijakan POS Semarang: Matcha Strawberry Cake dan Black Forest HANYA bisa dibeli dengan voucher promo soft opening.
--- Tidak bisa dibeli lewat mode normal maupun Tebus Murah, sekalipun dengan harga non-promo. Salt Bread tetap boleh dibeli biasa.
+-- Kebijakan POS Semarang: Matcha Strawberry Cake, Black Forest, dan Salt Bread HANYA bisa dibeli dengan voucher promo soft opening.
+-- Tidak bisa dibeli lewat mode normal maupun Tebus Murah, sekalipun dengan harga non-promo.
 -- Aturan melekat di kampanye soft opening (item_price): berlaku selama kampanye berlaku, dan ditegakkan di createPosSale.
 -- Tak ada tabel baru, jadi tak perlu GRANT tambahan.
 
@@ -15,9 +15,9 @@ begin
   select array_agg(id) into v_locked
   from public.pos_products
   where bank_account_id = v_account
-    and name in ('Black Forest', 'Matcha Strawberry Cake');
+    and name in ('Black Forest', 'Matcha Strawberry Cake', 'Salt Bread');
 
-  if v_locked is null or cardinality(v_locked) <> 2 then
+  if v_locked is null or cardinality(v_locked) <> 3 then
     raise exception 'Produk hanya-voucher Semarang tidak lengkap (ditemukan %)', coalesce(cardinality(v_locked), 0);
   end if;
 
