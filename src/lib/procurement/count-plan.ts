@@ -119,14 +119,16 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
 
   // Tahap 1 (opname awal) mencakup SEMUA bahan aktif (setengah jadi sudah disaring loader). Selama masih ada bahan
   // yang belum pernah dihitung, daftar harian ABC ditahan: yang tampil hanya bahan yang belum pernah dihitung.
-  const onboardingCounted = rows.filter((r) => hits.has(r.material.id)).length;
+  // Bahan yang sudah punya barang masuk dianggap terdata (pembelian pertama = opname awal): langsung masuk siklus ABC.
+  const hasBaseline = (r: ProcurementRow) => hits.has(r.material.id) || r.impliedBaselineAt != null;
+  const onboardingCounted = rows.filter(hasBaseline).length;
   const phase: 1 | 2 = onboardingCounted < rows.length ? 1 : 2;
   const onboarding = { counted: onboardingCounted, total: rows.length };
 
   if (phase === 1) {
     const cost = (r: ProcurementRow) => usage.byMaterial.get(r.material.id)?.cost ?? 0;
     const todo = rows
-      .filter((r) => !hits.has(r.material.id) || countedToday(r.material.id))
+      .filter((r) => !hasBaseline(r) || countedToday(r.material.id))
       .sort(
         (a, b) =>
           Number(countedToday(a.material.id)) - Number(countedToday(b.material.id)) ||
@@ -187,6 +189,8 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
       const h = (hits.get(id) ?? []).sort((a, b) => a.atMs - b.atMs);
       const before = h.filter((x) => x.date < today);
       const last = h[h.length - 1];
+      // Tanpa opname sungguhan, pembelian pertama jadi titik awal jadwal ABC (bukan "belum pernah").
+      const impliedAt = r.impliedBaselineAt && jakartaDateString(new Date(r.impliedBaselineAt)) < today ? r.impliedBaselineAt : null;
       // Hitungan PERTAMA bahan tak punya pembanding (expected tak bermakna) → tak bisa dinilai melewati toleransi.
       const lastOut =
         h.length >= 2 && last
@@ -202,14 +206,14 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
         category: r.material.category,
         cls: classes.get(id) ?? "B",
         usageCost: costs.get(id) ?? 0,
-        lastCountBeforeToday: before.length ? before[before.length - 1].at : null,
+        lastCountBeforeToday: before.length ? before[before.length - 1].at : impliedAt,
         countedToday: h.some((x) => x.date === today),
         status: r.metrics.status,
         // Sudah dihitung ulang hari ini → tak perlu didahulukan lagi.
         lastOutOfTolerance: lastOut && !(last && last.date === today),
         provisional: provisional.has(id),
         inRecipe: recipeIds.has(id),
-        everCounted: hits.has(id),
+        everCounted: hasBaseline(r),
       };
     });
 

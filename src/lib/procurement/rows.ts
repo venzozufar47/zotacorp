@@ -92,6 +92,12 @@ export interface ProcurementRow {
   metrics: ProcurementMetrics;
   /** ISO opname terakhir yang memuat bahan ini. */
   lastOpnameAt: string | null;
+  /**
+   * Bahan belum pernah diopname tetapi sudah ada barang masuk: pembelian pertama dipakai sebagai opname awal
+   * (baseline 0 tepat sebelum barang tiba pertama). Berisi ISO baseline itu; null = baseline dari opname sungguhan
+   * atau tidak ada sama sekali.
+   */
+  impliedBaselineAt: string | null;
   /** Lead time yang dipakai (hari kerja, Minggu libur) beserta asalnya. */
   lead: { days: number; source: "manual" | "nyata" | "bawaan"; samples: number };
   /** Pesanan yang belum tiba untuk bahan ini. */
@@ -229,6 +235,35 @@ export async function loadBrandProcurement(
       const prev = baseline.get(mid);
       if (!prev || atMs > prev.atMs)
         baseline.set(mid, { qty: num(it.physical_qty), atIso: at, atMs });
+    }
+  }
+
+  // Bahan tanpa opname tetapi sudah ada barang masuk: pembelian pertama = opname awal. Baseline 0 sedetik sebelum
+  // barang tiba pertama, sehingga seluruh barang masuk sesudahnya terhitung sebagai stok.
+  const implied = new Set<string>();
+  {
+    const noBaseline = ids.filter((id) => !baseline.has(id));
+    const earliest = new Map<string, number>();
+    for (let i = 0; i < noBaseline.length; i += 100) {
+      const { data } = await supabase
+        .from("costing_material_receipts" as never)
+        .select("material_id, arrived_at")
+        .eq("business_unit", opts.businessUnit)
+        .in("material_id", noBaseline.slice(i, i + 100))
+        .not("arrived_at", "is", null)
+        .limit(5000);
+      for (const r of (data ?? []) as Record<string, unknown>[]) {
+        const ms = Date.parse(r.arrived_at as string);
+        if (!Number.isFinite(ms)) continue;
+        const mid = r.material_id as string;
+        const prev = earliest.get(mid);
+        if (prev == null || ms < prev) earliest.set(mid, ms);
+      }
+    }
+    for (const [mid, ms] of earliest) {
+      const atMs = ms - 1000;
+      baseline.set(mid, { qty: 0, atIso: new Date(atMs).toISOString(), atMs });
+      implied.add(mid);
     }
   }
 
@@ -370,7 +405,8 @@ export async function loadBrandProcurement(
       },
       params,
       metrics,
-      lastOpnameAt: b ? b.atIso : null,
+      lastOpnameAt: b && !implied.has(id) ? b.atIso : null,
+      impliedBaselineAt: b && implied.has(id) ? b.atIso : null,
       lead: { days: lt.days, source: lt.source, samples: leadByMaterial.get(id)?.samples ?? 0 },
       inTransit: transit,
       autoDailyUsage,
