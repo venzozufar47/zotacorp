@@ -6,7 +6,7 @@
  */
 
 /** Nama produk (tanpa membedakan huruf besar/kecil) yang semua variannya saling menggantikan. */
-export const SL_SUBSTITUTE_PRODUCTS: readonly string[] = ["Dubai Chewy Cookies"];
+export const SL_SUBSTITUTE_PRODUCTS: readonly string[] = ["Dubai Chewy Cookies", "Mille Crepes"];
 
 export interface SlSkuInfo {
   key: string;

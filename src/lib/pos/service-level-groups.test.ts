@@ -33,6 +33,19 @@ test("nama produk dicocokkan tanpa membedakan huruf besar/kecil dan spasi", () =
   assert.deepEqual(units[0].members, ["b", "c"]);
 });
 
+test("varian Mille Crepes digabung jadi satu unit, termasuk varian nonaktif (disaring per tanggal di service-level.ts)", () => {
+  const units = buildServiceLevelUnits([
+    sku("t", "m1", "Mille Crepes", "v1", "Tiramisu"),
+    sku("c", "m1", "Mille Crepes", "v2", "Cookies & Cream"),
+    sku("x", "m1", "Mille Crepes", "v3", "Lotus"),
+    sku("z", "p9", "Tiramisu", null, null),
+  ]);
+  assert.deepEqual(units.map((u) => u.members), [["t", "c", "x"], ["z"]]);
+  assert.equal(units[0].label, "Mille Crepes (Tiramisu / Cookies & Cream / Lotus)");
+  // Mode agregat (Pare): satu SKU tanpa varian → tidak berubah.
+  assert.equal(buildServiceLevelUnits([sku("m", "m2", "Mille Crepes", null, null)]).length, 1);
+});
+
 test("satu varian saja tidak digabung; produk tanpa varian dan daftar kosong tidak berubah", () => {
   assert.deepEqual(
     buildServiceLevelUnits([sku("b", "p2", "Dubai Chewy Cookies", "v1", "Grade A")]).map((u) => u.members),
