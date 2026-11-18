@@ -52,8 +52,6 @@ const RECEIPT_BUCKET = "cashflow-receipts";
 const RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const RECEIPT_MAX = 5 * 1024 * 1024;
 const MAX_LINES = 40;
-/** Boleh mencatat nota susulan paling lama sekian hari ke belakang. */
-const MAX_BACKDATE_DAYS = 7;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function revalidateAll() {
@@ -668,8 +666,6 @@ async function createPurchaseImpl(
   const sameAsOldLaci = !!old && old.head.money_source === "laci" && date === oldDate;
   if (input.moneySource === "laci" && date !== today && !sameAsOldLaci)
     return { ok: false, error: "Pengeluaran uang laci hanya bisa dicatat untuk hari ini" };
-  const oldest = jakartaDateString(new Date(now.getTime() - MAX_BACKDATE_DAYS * 86_400_000));
-  if (date < oldest && date !== oldDate) return { ok: false, error: `Nota susulan maksimal ${MAX_BACKDATE_DAYS} hari ke belakang` };
 
   // Validasi + hitung ulang tiap baris di server.
   const units = await fetchUnitsMap(admin);

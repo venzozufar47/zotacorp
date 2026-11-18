@@ -149,7 +149,6 @@ export function PurchaseForm({
 }) {
   const businessUnit = data.businessUnit;
   const today = jakartaDateString(new Date());
-  const oldest = jakartaDateString(new Date(Date.now() - 7 * 86_400_000));
 
   const [materials, setMaterials] = useState<PurchaseMaterialOption[]>(data.materials);
   const [receiptPath, setReceiptPath] = useState<string | null>(null);
@@ -567,7 +566,6 @@ export function PurchaseForm({
             <input
               type="date"
               value={date}
-              min={oldest}
               max={today}
               onChange={(e) => setDate(e.target.value || today)}
               className="h-10 rounded-lg border border-border bg-background px-2 text-sm"
