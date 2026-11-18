@@ -14,7 +14,7 @@ import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories"
 import { computeLatestBalance } from "@/lib/cashflow/balance";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
-import { resolveSaleDiscount } from "./pos-discount.actions";
+import { checkVoucherOnly, resolveSaleDiscount } from "./pos-discount.actions";
 import { describeDiscount } from "@/lib/pos/discount";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
@@ -1014,6 +1014,15 @@ export async function createPosSale(input: {
   //     final supaya semua downstream (pos_sales.total, cashflow.credit,
   //     description) konsisten.
   //     Promo harga-per-item hanya melihat baris katalog tanpa diskon manual (bukan custom/ready cake).
+  // Kebijakan hanya-voucher: Matcha Strawberry / Black Forest hanya lewat voucher soft opening, bukan harga normal.
+  const voucherOnlyErr = await checkVoucherOnly(
+    input.bankAccountId,
+    itemsResolved.filter((it) => !it.readyCakeOrderId).map((it) => ({ productId: it.productId, productName: it.productName, qty: it.qty })),
+    input.promoVouchers ?? 0,
+    input.disabledCampaignIds,
+    now
+  );
+  if (voucherOnlyErr) return { ok: false, error: voucherOnlyErr };
   const promoLines = itemsResolved
     .filter((it) => it.productId && !it.readyCakeOrderId && it.originalUnitPrice == null)
     .map((it) => ({ productId: it.productId, unitPrice: it.unitPrice, qty: it.qty }));

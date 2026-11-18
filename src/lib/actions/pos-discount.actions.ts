@@ -13,6 +13,7 @@ import {
   jakartaNowParts,
   MAX_PROMO_VOUCHERS,
   pickBestCampaign,
+  voucherOnlyShortfall,
   type CampaignMode,
   type DiscountCampaignLite,
   type DiscountKind,
@@ -36,6 +37,8 @@ export interface PosDiscountCampaign {
   productIds: string[];
   /** tebus_murah: produk yang tidak dihitung sebagai syarat. */
   excludedProductIds: string[];
+  /** item_price: produk yang hanya bisa dibeli dengan voucher kampanye ini. */
+  voucherOnlyProductIds: string[];
   roundingUnit: number;
   roundingMode: RoundingMode;
   minPurchase: number;
@@ -62,6 +65,7 @@ interface CampaignRow {
   promo_price: number | string | null;
   product_ids: string[] | null;
   excluded_product_ids: string[] | null;
+  voucher_only_product_ids: string[] | null;
   rounding_unit: number;
   rounding_mode: RoundingMode;
   min_purchase: number | string;
@@ -91,6 +95,7 @@ function mapCampaign(r: CampaignRow): PosDiscountCampaign {
     promoPrice: Number(r.promo_price ?? 0),
     productIds: r.product_ids ?? [],
     excludedProductIds: r.excluded_product_ids ?? [],
+    voucherOnlyProductIds: r.voucher_only_product_ids ?? [],
     roundingUnit: r.rounding_unit,
     roundingMode: r.rounding_mode,
     minPurchase: Number(r.min_purchase ?? 0),
@@ -153,6 +158,38 @@ export async function resolveSaleDiscount(
   const vouchersUsed = picked.itemPromo?.parts.find((p) => p.kind === "item_price")?.pcs ?? 0;
   return { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount, vouchersUsed };
 }
+
+/**
+ * Kebijakan produk hanya-voucher, OTORITATIF (dipanggil createPosSale): pcs produk terkunci tak boleh melebihi voucher.
+ * `lines` = semua baris katalog (juga yang didiskon manual). Mengembalikan pesan galat, atau null bila aman.
+ */
+export async function checkVoucherOnly(
+  bankAccountId: string,
+  lines: { productId: string | null; productName?: string; qty: number }[],
+  vouchers = 0,
+  disabledIds?: string[],
+  at: Date = new Date()
+): Promise<string | null> {
+  const off = Array.isArray(disabledIds) ? disabledIds.filter((x) => typeof x === "string") : [];
+  const bad = voucherOnlyShortfall(await listCampaignsForPos(bankAccountId), jakartaNowParts(at), lines, vouchers, off);
+  if (!bad) return null;
+  const names = [...new Set(lines.filter((l) => l.productId && bad.productIds.includes(l.productId)).map((l) => l.productName).filter(Boolean))];
+  const label = names.length > 0 ? names.join(", ") : "Produk ini";
+  return bad.allowed === 0
+    ? `${label} hanya bisa dibeli dengan voucher promo soft opening. Isi voucher dulu (jangan matikan promo).`
+    : `${label} hanya bisa dibeli dengan voucher: ${bad.pcs} pcs di keranjang, voucher cuma ${bad.allowed}.`;
+}
+
+/** Produk hanya-voucher yang sedang terkunci untuk satu rekening (kampanye berlaku sekarang). */
+export async function listVoucherOnlyProductIds(bankAccountId: string, at: Date = new Date()): Promise<Set<string>> {
+  const now = jakartaNowParts(at);
+  const ids = new Set<string>();
+  for (const c of await listCampaignsForPos(bankAccountId)) {
+    if (c.kind === "item_price" && isCampaignLive(c, now)) for (const id of c.voucherOnlyProductIds) ids.add(id);
+  }
+  return ids;
+}
+
 // ───────────────────────────── Admin ─────────────────────────────
 
 export interface CampaignAccount {

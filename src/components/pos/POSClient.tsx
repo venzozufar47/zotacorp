@@ -59,6 +59,7 @@ import {
   MAX_PROMO_VOUCHERS,
   pickBestCampaign,
   promoShortName,
+  voucherOnlyShortfall,
   type JakartaNow,
   type PickedCampaign,
   type PromoLine,
@@ -909,6 +910,18 @@ export function POSClient({
       ),
     [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds, promoVouchers]
   );
+  // Kebijakan hanya-voucher (mis. Matcha Strawberry / Black Forest Semarang): pcs di keranjang tak boleh melebihi voucher,
+  // dan mematikan promo tak membuka kuncinya. Server menegakkan hal yang sama saat bayar.
+  const voucherLockText = useMemo(() => {
+    const lines = [
+      ...cartLines.filter((l) => l.productId).map((l) => ({ productId: l.productId, qty: l.qty })),
+      ...customItems.filter((c) => c.productId).map((c) => ({ productId: c.productId ?? null, qty: c.qty })),
+    ];
+    const bad = voucherOnlyShortfall(campaigns, liveNow, lines, promoVouchers, disabledCampaignIds);
+    if (!bad) return null;
+    const names = bad.productIds.map((id) => products.find((p) => p.id === id)?.name).filter(Boolean).join(", ");
+    return `${names} hanya bisa dibeli dengan voucher: ${bad.pcs} pcs di keranjang, voucher ${bad.allowed}. Isi voucher atau hapus dari keranjang.`;
+  }, [campaigns, liveNow, cartLines, customItems, promoVouchers, disabledCampaignIds, products]);
   const promoNameById = useMemo(() => new Map(campaigns.map((c) => [c.id, c.name])), [campaigns]);
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
@@ -1001,6 +1014,7 @@ export function POSClient({
   const payDisabled =
     itemCount === 0 ||
     pending ||
+    voucherLockText != null ||
     !customerName.trim() ||
     (payMode === "cash" && (cashReceived == null || cashReceived < payTotal)) ||
     (QRIS_RECEIPT_AT_CHECKOUT &&
@@ -1448,6 +1462,7 @@ export function POSClient({
           grossTotal={total}
           vouchers={promoVouchers}
           onVouchers={setPromoVouchers}
+          voucherLockText={voucherLockText}
           disabledIds={disabledCampaignIds}
           onToggleDisabled={(id) =>
             setDisabledCampaignIds((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]))
@@ -1960,6 +1975,7 @@ function DiscountBanner({
   grossTotal,
   vouchers,
   onVouchers,
+  voucherLockText,
   disabledIds,
   onToggleDisabled,
 }: {
@@ -1975,6 +1991,8 @@ function DiscountBanner({
   /** Voucher soft opening yang diklaim di nota ini. */
   vouchers: number;
   onVouchers: (n: number) => void;
+  /** Pesan bila produk hanya-voucher di keranjang melebihi voucher; null = aman. */
+  voucherLockText: string | null;
   /** Promo yang dimatikan kasir untuk transaksi ini. */
   disabledIds: string[];
   onToggleDisabled: (id: string) => void;
@@ -2000,6 +2018,7 @@ function DiscountBanner({
   const tebusPcs = info.parts.find((p) => p.kind === "tebus_murah")?.pcs ?? 0;
   const itemStatus = (c: PosDiscountCampaign): { text: string; warn: boolean } | null => {
     if (c.kind === "item_price") {
+      if (voucherLockText) return { text: voucherLockText, warn: true };
       if (vouchers === 0) return { text: "Isi voucher", warn: false };
       if (info.voucherUnused > 0) return { text: `${claimedPcs} klaim · sisa ${info.voucherUnused}`, warn: true };
       if (info.promoPcsAtFullPrice > 0) return { text: `${claimedPcs} klaim · ${info.promoPcsAtFullPrice} normal`, warn: true };

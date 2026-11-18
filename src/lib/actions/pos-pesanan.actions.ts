@@ -25,6 +25,7 @@ import {
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { settleLeaseFreeFilter } from "@/lib/pos/settle-lease";
 import type { FulfillmentType, SettleVia } from "./pos.actions";
+import { listVoucherOnlyProductIds } from "./pos-discount.actions";
 
 export interface PendingPesanan {
   id: string;
@@ -310,10 +311,16 @@ export async function updatePesananItems(input: {
             .in("id", variantIds)
         : { data: [] };
     const variants = new Map((variantsRaw ?? []).map((v) => [v.id, v]));
+    const voucherOnly = await listVoucherOnlyProductIds(sale.bank_account_id);
 
     for (const it of input.newItems) {
       const p = products.get(it.productId);
       if (!p) return { ok: false, error: "Produk tidak ditemukan." };
+      if (voucherOnly.has(it.productId))
+        return {
+          ok: false,
+          error: `"${p.name}" hanya bisa dibeli dengan voucher soft opening — buat pesanan baru dengan voucher.`,
+        };
       if (p.bank_account_id !== sale.bank_account_id)
         return { ok: false, error: "Produk tidak cocok dengan rekening." };
       if (!p.active) return { ok: false, error: `Produk "${p.name}" tidak aktif.` };

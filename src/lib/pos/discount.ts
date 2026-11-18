@@ -43,6 +43,11 @@ export interface DiscountCampaignLite {
   productIds?: string[];
   /** tebus_murah: produk yang TIDAK dihitung sebagai syarat (mis. produk promo soft opening). */
   excludedProductIds?: string[];
+  /**
+   * item_price: produk yang HANYA boleh dibeli dengan voucher kampanye ini (tak bisa dibeli normal / lewat tebus murah,
+   * juga tidak dengan harga normal). Berlaku selama kampanye berlaku, lihat `voucherOnlyShortfall`.
+   */
+  voucherOnlyProductIds?: string[];
   percentOff: number;
   roundingUnit: number;
   roundingMode: RoundingMode;
@@ -85,18 +90,66 @@ export interface ItemPromoResult {
   byLine: Record<string, { campaignId: string; kind: "item_price" | "tebus_murah"; pcs: number; saving: number; unitSaving: number }[]>;
 }
 
-type ItemPromoCampaign = Pick<DiscountCampaignLite, "kind" | "promoPrice" | "productIds" | "excludedProductIds" | "minPurchase"> & {
+type ItemPromoCampaign = Pick<DiscountCampaignLite, "kind" | "promoPrice" | "productIds" | "excludedProductIds" | "voucherOnlyProductIds" | "minPurchase"> & {
   id: string;
 };
 
 /** Harga satuan tiap pcs (qty dibentang), dari yang termahal. */
-function pcsPrices(lines: PromoLine[], ids: ReadonlySet<string>): { price: number; key?: string }[] {
-  const out: { price: number; key?: string }[] = [];
+function pcsPrices(
+  lines: PromoLine[],
+  ids: ReadonlySet<string>,
+  firstIds?: ReadonlySet<string>
+): { price: number; key?: string; first: boolean }[] {
+  const out: { price: number; key?: string; first: boolean }[] = [];
   for (const l of lines) {
     if (!l.productId || l.qty <= 0 || !ids.has(l.productId)) continue;
-    for (let i = 0; i < l.qty; i++) out.push({ price: l.unitPrice, key: l.key });
+    const first = firstIds?.has(l.productId) ?? false;
+    for (let i = 0; i < l.qty; i++) out.push({ price: l.unitPrice, key: l.key, first });
   }
-  return out.sort((a, b) => b.price - a.price);
+  // `firstIds` (produk hanya-voucher) mengambil voucher lebih dulu, baru yang termahal.
+  return out.sort((a, b) => Number(b.first) - Number(a.first) || b.price - a.price);
+}
+
+/** Ada produk hanya-voucher di keranjang yang jumlahnya melebihi voucher yang tersedia. */
+export interface VoucherOnlyShortfall {
+  /** Produk terkunci yang ada di keranjang. */
+  productIds: string[];
+  /** Pcs produk terkunci di keranjang. */
+  pcs: number;
+  /** Voucher yang boleh dipakai (0 bila promo soft opening dimatikan kasir). */
+  allowed: number;
+}
+
+/**
+ * Kebijakan: produk `voucherOnlyProductIds` hanya bisa dibeli dengan voucher kampanye item_price yang SEDANG berlaku.
+ * Pcs-nya tak boleh melebihi jumlah voucher; mematikan promo di kasir TIDAK membuka kuncinya (voucher jadi 0).
+ * `lines` = semua baris katalog (termasuk yang didiskon manual / harga custom). Null = aman.
+ */
+export function voucherOnlyShortfall(
+  campaigns: (Pick<DiscountCampaignLite, "kind" | "voucherOnlyProductIds"> & CampaignSchedule & { id: string })[],
+  now: JakartaNow,
+  lines: { productId: string | null; qty: number }[],
+  vouchers: number,
+  disabledIds: readonly string[] = []
+): VoucherOnlyShortfall | null {
+  const locked = new Set<string>();
+  let usable = false;
+  for (const c of campaigns) {
+    if (c.kind !== "item_price" || !c.voucherOnlyProductIds?.length || !isCampaignLive(c, now)) continue;
+    for (const id of c.voucherOnlyProductIds) locked.add(id);
+    if (!disabledIds.includes(c.id)) usable = true;
+  }
+  if (locked.size === 0) return null;
+  const inCart = new Set<string>();
+  let pcs = 0;
+  for (const l of lines) {
+    if (!l.productId || l.qty <= 0 || !locked.has(l.productId)) continue;
+    inCart.add(l.productId);
+    pcs += l.qty;
+  }
+  const v = Number.isFinite(vouchers) ? Math.min(MAX_PROMO_VOUCHERS, Math.max(0, Math.floor(vouchers))) : 0;
+  const allowed = usable ? v : 0;
+  return pcs > allowed ? { productIds: [...inCart], pcs, allowed } : null;
 }
 
 /** Hemat dari `n` pcs termahal; sekaligus merinci per baris ke `result.byLine`. */
@@ -153,7 +206,7 @@ export function computeItemPromos(
     const idSet = new Set(ids);
 
     if (c.kind === "item_price") {
-      const prices = pcsPrices(lines, idSet);
+      const prices = pcsPrices(lines, idSet, new Set(c.voucherOnlyProductIds ?? []));
       const claimed = Math.min(voucherLeft, prices.length);
       voucherLeft -= claimed;
       result.promoPcsAtFullPrice += prices.length - claimed;
