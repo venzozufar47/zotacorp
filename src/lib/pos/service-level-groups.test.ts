@@ -46,6 +46,16 @@ test("varian Mille Crepes digabung jadi satu unit, termasuk varian nonaktif (dis
   assert.equal(buildServiceLevelUnits([sku("m", "m2", "Mille Crepes", null, null)]).length, 1);
 });
 
+test("varian Salt Bread (Choco/Ori) digabung; Salt Bread tanpa varian (Pare) tetap satu SKU", () => {
+  const units = buildServiceLevelUnits([
+    sku("c", "s1", "Salt Bread", "v1", "Choco"),
+    sku("o", "s1", "Salt Bread", "v2", "Ori"),
+    sku("p", "s2", "Salt Bread", null, null),
+  ]);
+  assert.deepEqual(units.map((u) => u.members), [["c", "o"], ["p"]]);
+  assert.equal(units[0].label, "Salt Bread (Choco / Ori)");
+});
+
 test("satu varian saja tidak digabung; produk tanpa varian dan daftar kosong tidak berubah", () => {
   assert.deepEqual(
     buildServiceLevelUnits([sku("b", "p2", "Dubai Chewy Cookies", "v1", "Grade A")]).map((u) => u.members),
