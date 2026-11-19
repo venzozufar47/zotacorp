@@ -74,8 +74,8 @@ export const POS_SUBPAGES = [
   "service-level",
   "shift",
   "stok",
+  "voucher",
 ] as const;
-
 /** Segmen pertama setelah `/pos/` yang sebenarnya sub-halaman, bukan cabang. */
 export function posSubpageFromParam(param: string): string | null {
   return (POS_SUBPAGES as readonly string[]).includes(param) ? param : null;
