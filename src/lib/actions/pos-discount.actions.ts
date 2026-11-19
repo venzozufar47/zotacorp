@@ -191,9 +191,10 @@ export async function checkVoucherMixed(
   bankAccountId: string,
   lines: { productId: string | null; qty: number }[],
   vouchers = 0,
-  at: Date = new Date()
+  at: Date = new Date(),
+  lockOff = false
 ): Promise<string | null> {
-  const bad = voucherMixedProblem(await listCampaignsForPos(bankAccountId), jakartaNowParts(at), lines, vouchers);
+  const bad = voucherMixedProblem(await listCampaignsForPos(bankAccountId), jakartaNowParts(at), lines, vouchers, lockOff);
   if (!bad) return null;
   return "Nota voucher tidak bisa digabung dengan produk lain. Pisahkan nota: produk promo voucher sendiri, produk lain di nota terpisah.";
 }

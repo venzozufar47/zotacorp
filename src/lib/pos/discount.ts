@@ -200,7 +200,9 @@ export function voucherMixedProblem(
   campaigns: (Pick<DiscountCampaignLite, "kind" | "voucherOnlyProductIds"> & CampaignSchedule)[],
   now: JakartaNow,
   lines: { productId: string | null; qty: number }[],
-  vouchers: number
+  vouchers: number,
+  /** Kasir melepas kunci hanya-voucher: produk promo boleh dibeli normal, tapi nota yang memakai voucher TETAP tak boleh campur. */
+  lockOff = false
 ): VoucherMixed | null {
   const locked = new Set<string>();
   for (const c of campaigns) {
@@ -216,7 +218,8 @@ export function voucherMixedProblem(
     else otherPcs += l.qty;
   }
   const hasVoucher = Number.isFinite(vouchers) && Math.floor(vouchers) > 0;
-  return otherPcs > 0 && (lockedPcs > 0 || hasVoucher) ? { lockedPcs, otherPcs } : null;
+  const voucherNota = hasVoucher || (!lockOff && lockedPcs > 0);
+  return otherPcs > 0 && voucherNota ? { lockedPcs, otherPcs } : null;
 }
 
 /**
