@@ -238,7 +238,9 @@ export function computeItemPromos(
   if (!lines || grossTotal <= 0) return result;
   let voucherLeft = Math.max(0, Math.floor(vouchers) || 0);
 
-  for (const c of campaigns) {
+  // item_price (voucher) diproses dulu: pcs produk promo yang dibayar harga normal (tanpa voucher) jadi syarat tebus.
+  const ordered = [...campaigns].sort((a, b) => Number(b.kind === "item_price") - Number(a.kind === "item_price"));
+  for (const c of ordered) {
     const ids = c.productIds ?? [];
     if (ids.length === 0 || (c.minPurchase && grossTotal < c.minPurchase)) continue;
     const price = c.promoPrice ?? 0;
@@ -262,6 +264,8 @@ export function computeItemPromos(
         if (!l.productId || l.qty <= 0 || idSet.has(l.productId) || excluded.has(l.productId)) continue;
         others += l.qty;
       }
+      // Produk promo (mis. Salt Bread) yang dibeli harga normal (voucher tak dipakai) sah jadi syarat; yang diklaim voucher tidak.
+      others += result.promoPcsAtFullPrice;
       const e = eligiblePrices.length;
       // Hak tebus = min(orang, produk syarat). Pcs produk tebus sendiri TIDAK jadi syarat.
       const cap = Math.min(clampPeople(people), others);
