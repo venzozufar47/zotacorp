@@ -8,11 +8,13 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import {
   applyDiscount,
   cashierCanDisable,
+  clampPeople,
   isCampaignLive,
   isItemPromoKind,
   jakartaNowParts,
   MAX_PROMO_VOUCHERS,
   pickBestCampaign,
+  voucherMixedProblem,
   voucherOnlyShortfall,
   type CampaignMode,
   type DiscountCampaignLite,
@@ -141,7 +143,8 @@ export async function resolveSaleDiscount(
   at: Date = new Date(),
   lines?: PromoLine[],
   disabledIds?: string[],
-  vouchers = 0
+  vouchers = 0,
+  people = 1
 ): Promise<{
   campaign: PosDiscountCampaign;
   finalTotal: number;
@@ -153,7 +156,7 @@ export async function resolveSaleDiscount(
   const off = new Set(Array.isArray(disabledIds) ? disabledIds.filter((x) => typeof x === "string") : []);
   const list = (await listCampaignsForPos(bankAccountId)).filter((c) => !(off.has(c.id) && cashierCanDisable(c)));
   const v = Number.isFinite(vouchers) ? Math.min(MAX_PROMO_VOUCHERS, Math.max(0, Math.floor(vouchers))) : 0;
-  const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines, v);
+  const picked = pickBestCampaign(list, grossTotal, jakartaNowParts(at), chosenId ?? null, lines, v, clampPeople(people));
   if (!picked) return null;
   const vouchersUsed = picked.itemPromo?.parts.find((p) => p.kind === "item_price")?.pcs ?? 0;
   return { campaign: picked.campaign, finalTotal: picked.finalTotal, discountAmount: picked.discountAmount, vouchersUsed };
@@ -178,6 +181,21 @@ export async function checkVoucherOnly(
   return bad.allowed === 0
     ? `${label} hanya bisa dibeli dengan voucher promo soft opening. Isi voucher dulu (jangan matikan promo).`
     : `${label} hanya bisa dibeli dengan voucher: ${bad.pcs} pcs di keranjang, voucher cuma ${bad.allowed}.`;
+}
+
+/**
+ * Nota voucher tak boleh digabung dengan produk lain, OTORITATIF (dipanggil createPosSale).
+ * `lines` = SEMUA baris nota. Mengembalikan pesan galat, atau null bila aman.
+ */
+export async function checkVoucherMixed(
+  bankAccountId: string,
+  lines: { productId: string | null; qty: number }[],
+  vouchers = 0,
+  at: Date = new Date()
+): Promise<string | null> {
+  const bad = voucherMixedProblem(await listCampaignsForPos(bankAccountId), jakartaNowParts(at), lines, vouchers);
+  if (!bad) return null;
+  return "Nota voucher tidak bisa digabung dengan produk lain. Pisahkan nota: produk promo voucher sendiri, produk lain di nota terpisah.";
 }
 
 /** Produk hanya-voucher yang sedang terkunci untuk satu rekening (kampanye berlaku sekarang). */

@@ -60,6 +60,8 @@ import {
   pickBestCampaign,
   promoShortName,
   voucherOnlyShortfall,
+  voucherMixedProblem,
+  MAX_PROMO_PEOPLE,
   type JakartaNow,
   type PickedCampaign,
   type PromoLine,
@@ -278,6 +280,7 @@ export function POSClient({
   const [disabledCampaignIds, setDisabledCampaignIds] = useState<string[]>([]);
   // Voucher promo soft opening yang berhak diklaim di nota ini (kasir yang mengisi; antrean sudah memilah pembeli).
   const [promoVouchers, setPromoVouchers] = useState(0);
+  const [promoPeople, setPromoPeople] = useState(1);
   // Kasir melepas kunci "hanya voucher" untuk nota ini; kembali terkunci setelah transaksi selesai.
   const [voucherLockOff, setVoucherLockOff] = useState(false);
   // Jam berjalan (tiap 30 dtk) supaya kampanye berjam (happy hour) mulai/berhenti sendiri tanpa muat ulang.
@@ -711,6 +714,7 @@ export function POSClient({
     setChosenCampaignId(null);
     setDisabledCampaignIds([]);
     setPromoVouchers(0);
+    setPromoPeople(1);
     setVoucherLockOff(false);
     originConfirmedRef.current = false;
   }
@@ -794,6 +798,7 @@ export function POSClient({
         campaignId: chosenCampaignId,
         disabledCampaignIds: disabledCampaignIds.length > 0 ? disabledCampaignIds : undefined,
         promoVouchers: promoVouchers > 0 ? promoVouchers : undefined,
+        promoPeople: promoPeople > 1 ? promoPeople : undefined,
         voucherLockOff: voucherLockOff || undefined,
       });
       if (!res.ok) {
@@ -910,10 +915,23 @@ export function POSClient({
         liveNow,
         chosenCampaignId,
         promoLines,
-        promoVouchers
+        promoVouchers,
+        promoPeople
       ),
-    [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds, promoVouchers]
+    [campaigns, total, liveNow, chosenCampaignId, promoLines, disabledCampaignIds, promoVouchers, promoPeople]
   );
+  // Nota voucher tak boleh dicampur produk lain (semua baris: katalog, custom, ready cake). Server menegakkan hal yang sama.
+  const voucherMixedText = useMemo(() => {
+    if (voucherLockOff) return null;
+    const lines = [
+      ...cartLines.map((l) => ({ productId: l.productId, qty: l.qty })),
+      ...customItems.map((c) => ({ productId: c.productId ?? null, qty: c.qty })),
+      ...readyLines.map(() => ({ productId: null, qty: 1 })),
+    ];
+    return voucherMixedProblem(campaigns, liveNow, lines, promoVouchers)
+      ? "Nota voucher tak bisa digabung produk lain. Pisahkan nota."
+      : null;
+  }, [campaigns, liveNow, cartLines, customItems, readyLines, promoVouchers, voucherLockOff]);
   // Kebijakan hanya-voucher (mis. Matcha Strawberry / Black Forest Semarang): pcs di keranjang tak boleh melebihi voucher,
   // dan mematikan promo tak membuka kuncinya. Server menegakkan hal yang sama saat bayar.
   const voucherLockText = useMemo(() => {
@@ -927,6 +945,7 @@ export function POSClient({
     const names = bad.productIds.map((id) => products.find((p) => p.id === id)?.name).filter(Boolean).join(", ");
     return `${names} hanya bisa dibeli dengan voucher: ${bad.pcs} pcs di keranjang, voucher ${bad.allowed}. Isi voucher atau hapus dari keranjang.`;
   }, [campaigns, liveNow, cartLines, customItems, promoVouchers, disabledCampaignIds, products, voucherLockOff]);
+  const voucherBlockText = voucherLockText ?? voucherMixedText;
   const promoNameById = useMemo(() => new Map(campaigns.map((c) => [c.id, c.name])), [campaigns]);
   // `finalTotal` = bagian POS setelah diskon (== pos_sales.total). `payTotal` = yang harus dibayar pembeli,
   // termasuk ready cake yang dibukukan terpisah sebagai omset kue.
@@ -1019,7 +1038,7 @@ export function POSClient({
   const payDisabled =
     itemCount === 0 ||
     pending ||
-    voucherLockText != null ||
+    voucherBlockText != null ||
     !customerName.trim() ||
     (payMode === "cash" && (cashReceived == null || cashReceived < payTotal)) ||
     (QRIS_RECEIPT_AT_CHECKOUT &&
@@ -1467,7 +1486,9 @@ export function POSClient({
           grossTotal={total}
           vouchers={promoVouchers}
           onVouchers={setPromoVouchers}
-          voucherLockText={voucherLockText}
+          voucherLockText={voucherBlockText}
+          people={promoPeople}
+          onPeople={setPromoPeople}
           voucherLockOff={voucherLockOff}
           onToggleVoucherLock={() => setVoucherLockOff((v) => !v)}
           disabledIds={disabledCampaignIds}
@@ -1983,6 +2004,8 @@ function DiscountBanner({
   vouchers,
   onVouchers,
   voucherLockText,
+  people,
+  onPeople,
   voucherLockOff,
   onToggleVoucherLock,
   disabledIds,
@@ -2002,6 +2025,9 @@ function DiscountBanner({
   onVouchers: (n: number) => void;
   /** Pesan bila produk hanya-voucher di keranjang melebihi voucher; null = aman. */
   voucherLockText: string | null;
+  /** Jumlah orang di nota (batas Tebus Murah: 1 pcs per orang). */
+  people: number;
+  onPeople: (n: number) => void;
   /** Kasir melepas kunci hanya-voucher untuk nota ini. */
   voucherLockOff: boolean;
   onToggleVoucherLock: () => void;
@@ -2024,7 +2050,8 @@ function DiscountBanner({
     auto.filter((c) => (c.kind === "item_price" || c.kind === "tebus_murah") && !disabledIds.includes(c.id)),
     grossTotal,
     promoLines,
-    vouchers
+    vouchers,
+    people
   );
   const claimedPcs = info.parts.find((p) => p.kind === "item_price")?.pcs ?? 0;
   const tebusPcs = info.parts.find((p) => p.kind === "tebus_murah")?.pcs ?? 0;
@@ -2114,6 +2141,32 @@ function DiscountBanner({
                   aria-label="Tambah voucher"
                   disabled={vouchers >= MAX_PROMO_VOUCHERS}
                   onClick={() => onVouchers(Math.min(MAX_PROMO_VOUCHERS, vouchers + 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition disabled:opacity-40"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            )}
+            {c.kind === "tebus_murah" && !off && (
+              <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Jumlah orang">
+                <span className="text-[11px] text-muted-foreground">Orang</span>
+                <button
+                  type="button"
+                  aria-label="Kurangi orang"
+                  disabled={people <= 1}
+                  onClick={() => onPeople(Math.max(1, people - 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-foreground transition hover:border-foreground disabled:opacity-40"
+                >
+                  <Minus size={14} />
+                </button>
+                <span className="min-w-5 text-center text-sm font-bold tabular-nums" aria-live="polite">
+                  {people}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Tambah orang"
+                  disabled={people >= MAX_PROMO_PEOPLE}
+                  onClick={() => onPeople(Math.min(MAX_PROMO_PEOPLE, people + 1))}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition disabled:opacity-40"
                 >
                   <Plus size={14} />

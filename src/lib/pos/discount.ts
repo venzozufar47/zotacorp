@@ -21,7 +21,7 @@ import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 export type RoundingMode = "floor" | "nearest" | "ceil";
 /**
  * "item_price": produk tertentu dijual di harga promo tetap, sebanyak voucher yang diisi kasir (lihat `computeItemPromos`).
- * "tebus_murah": tiap 1 pcs produk non-promo berhak menebus 1 pcs produk tebus di harga promo.
+ * "tebus_murah": maks 1 pcs produk tebus per orang di harga promo; tiap tebus butuh 1 pcs produk syarat (lihat `computeItemPromos`).
  */
 export type DiscountKind = "percent" | "nominal" | "item_price" | "tebus_murah";
 export type CampaignMode = "otomatis" | "kasir";
@@ -176,24 +176,63 @@ function takeSaving(
   return s;
 }
 
-/** Tebus yang berhak: tiap pcs non-promo (termasuk produk tebus berharga normal) membuka 1 tebus. */
-function tebusCount(others: number, eligible: number): number {
-  return Math.min(eligible, Math.floor((others + eligible) / 2));
+/** Batas wajar jumlah orang per nota (cegah salah ketik). */
+export const MAX_PROMO_PEOPLE = 20;
+
+/** Jumlah orang yang valid (bulat, 1..MAX_PROMO_PEOPLE); tak valid → 1. */
+export function clampPeople(n: unknown): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 1;
+  return Math.min(MAX_PROMO_PEOPLE, Math.max(1, v));
+}
+
+/**
+ * Nota berisi produk hanya-voucher (atau voucher diisi) TIDAK boleh digabung dengan produk lain.
+ * `lines` = SEMUA baris nota (katalog, custom, ready cake). Null = aman.
+ */
+export interface VoucherMixed {
+  /** Pcs produk hanya-voucher di nota. */
+  lockedPcs: number;
+  /** Pcs produk lain di nota. */
+  otherPcs: number;
+}
+
+export function voucherMixedProblem(
+  campaigns: (Pick<DiscountCampaignLite, "kind" | "voucherOnlyProductIds"> & CampaignSchedule)[],
+  now: JakartaNow,
+  lines: { productId: string | null; qty: number }[],
+  vouchers: number
+): VoucherMixed | null {
+  const locked = new Set<string>();
+  for (const c of campaigns) {
+    if (c.kind !== "item_price" || !c.voucherOnlyProductIds?.length || !isCampaignLive(c, now)) continue;
+    for (const id of c.voucherOnlyProductIds) locked.add(id);
+  }
+  if (locked.size === 0) return null;
+  let lockedPcs = 0;
+  let otherPcs = 0;
+  for (const l of lines) {
+    if (l.qty <= 0) continue;
+    if (l.productId && locked.has(l.productId)) lockedPcs += l.qty;
+    else otherPcs += l.qty;
+  }
+  const hasVoucher = Number.isFinite(vouchers) && Math.floor(vouchers) > 0;
+  return otherPcs > 0 && (lockedPcs > 0 || hasVoucher) ? { lockedPcs, otherPcs } : null;
 }
 
 /**
  * Hemat semua promo per-item. Dua jenis, ditumpuk (tak saling mengurangi):
  *  - item_price (soft opening): `vouchers` pcs produk promo jadi harga promo (kasir yang mengisi jumlah voucher;
  *    antrean sudah memilah pembeli yang berhak). Pcs promo di atas jumlah voucher tetap harga normal.
- *  - tebus_murah: tiap 1 pcs non-promo membuka 1 tebus produk tebus. Pcs promo soft opening TIDAK dihitung sebagai
- *    syarat (`excludedProductIds`); pcs tebus sendiri yang dibayar harga normal boleh jadi syarat.
+ *  - tebus_murah: maks 1 tebus per orang (`people`), dan tiap tebus butuh 1 pcs produk syarat (harga normal,
+ *    non-minuman). Produk promo soft opening, minuman, dan produk tebus sendiri TIDAK jadi syarat.
  * Pcs termahal dipilih lebih dulu supaya pembeli paling untung.
  */
 export function computeItemPromos(
   campaigns: ItemPromoCampaign[],
   grossTotal: number,
   lines: PromoLine[] | undefined,
-  vouchers: number
+  vouchers: number,
+  people = 1
 ): ItemPromoResult {
   const result: ItemPromoResult = { saving: 0, parts: [], voucherUnused: 0, promoPcsAtFullPrice: 0, tebusRoom: 0, byLine: {} };
   if (!lines || grossTotal <= 0) return result;
@@ -224,16 +263,16 @@ export function computeItemPromos(
         others += l.qty;
       }
       const e = eligiblePrices.length;
-      const t = tebusCount(others, e);
+      // Hak tebus = min(orang, produk syarat). Pcs produk tebus sendiri TIDAK jadi syarat.
+      const cap = Math.min(clampPeople(people), others);
+      const t = Math.min(e, cap);
       const saving = takeSaving(eligiblePrices, t, { id: c.id, kind: "tebus_murah" }, price, result);
       if (saving > 0) {
         result.parts.push({ campaignId: c.id, kind: "tebus_murah", pcs: t, saving });
         result.saving += saving;
       }
       // Sisa tempat: berapa pcs produk tebus lagi bisa ditambah dan semuanya ikut kena harga tebus.
-      let room = 0;
-      while (room < 50 && tebusCount(others, e + room + 1) - t === room + 1) room++;
-      result.tebusRoom += room;
+      result.tebusRoom += Math.max(0, cap - e);
     }
   }
   result.voucherUnused = voucherLeft;
@@ -349,7 +388,8 @@ export function pickBestCampaign<C extends PickableCampaign>(
   now: JakartaNow,
   chosenId?: string | null,
   lines?: PromoLine[],
-  vouchers = 0
+  vouchers = 0,
+  people = 1
 ): PickedCampaign<C> | null {
   let best: PickedCampaign<C> | null = null;
   const itemCampaigns: C[] = [];
@@ -370,7 +410,7 @@ export function pickBestCampaign<C extends PickableCampaign>(
       best = { campaign: c, finalTotal: r.finalTotal, discountAmount: r.discountAmount };
     }
   }
-  const items = computeItemPromos(itemCampaigns, grossTotal, lines, vouchers);
+  const items = computeItemPromos(itemCampaigns, grossTotal, lines, vouchers, people);
   const off = Math.min(items.saving, grossTotal);
   if (off > 0 && (!best || off >= best.discountAmount)) {
     const top = items.parts.reduce((a, b) => (b.saving > a.saving ? b : a));

@@ -14,7 +14,7 @@ import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories"
 import { computeLatestBalance } from "@/lib/cashflow/balance";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
-import { checkVoucherOnly, resolveSaleDiscount } from "./pos-discount.actions";
+import { checkVoucherMixed, checkVoucherOnly, resolveSaleDiscount } from "./pos-discount.actions";
 import { describeDiscount } from "@/lib/pos/discount";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
@@ -716,6 +716,8 @@ export async function createPosSale(input: {
   disabledCampaignIds?: string[];
   /** Jumlah voucher promo soft opening yang berhak diklaim di nota ini (diisi kasir; server membatasi). */
   promoVouchers?: number;
+  /** Jumlah orang di nota ini (batas Tebus Murah: 1 pcs per orang). Bawaan 1; server membatasi. */
+  promoPeople?: number;
   /** Kasir melepas kunci "hanya voucher" untuk nota ini (tombol di tab POS). */
   voucherLockOff?: boolean;
 }): Promise<
@@ -1027,6 +1029,16 @@ export async function createPosSale(input: {
         now
       );
   if (voucherOnlyErr) return { ok: false, error: voucherOnlyErr };
+  // Nota voucher tak boleh dicampur produk lain (antrean voucher dipisah dari antrean reguler).
+  const voucherMixedErr = input.voucherLockOff
+    ? null
+    : await checkVoucherMixed(
+        input.bankAccountId,
+        itemsResolved.map((it) => ({ productId: it.productId, qty: it.qty })),
+        input.promoVouchers ?? 0,
+        now
+      );
+  if (voucherMixedErr) return { ok: false, error: voucherMixedErr };
   const promoLines = itemsResolved
     .filter((it) => it.productId && !it.readyCakeOrderId && it.originalUnitPrice == null)
     .map((it) => ({ productId: it.productId, unitPrice: it.unitPrice, qty: it.qty }));
@@ -1037,7 +1049,8 @@ export async function createPosSale(input: {
     now,
     promoLines,
     input.disabledCampaignIds,
-    input.promoVouchers ?? 0
+    input.promoVouchers ?? 0,
+    input.promoPeople ?? 1
   );
   const campaign = resolved?.campaign ?? null;
   let discountAmount = 0;
