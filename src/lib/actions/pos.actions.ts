@@ -1030,14 +1030,14 @@ export async function createPosSale(input: {
       );
   if (voucherOnlyErr) return { ok: false, error: voucherOnlyErr };
   // Nota voucher tak boleh dicampur produk lain (antrean voucher dipisah dari antrean reguler).
-  // Lepas-kunci tidak membebaskan nota yang memakai voucher: voucher tetap tak boleh dicampur produk lain.
-  const voucherMixedErr = await checkVoucherMixed(
-    input.bankAccountId,
-    itemsResolved.map((it) => ({ productId: it.productId, qty: it.qty })),
-    input.promoVouchers ?? 0,
-    now,
-    !!input.voucherLockOff
-  );
+  const voucherMixedErr = input.voucherLockOff
+    ? null
+    : await checkVoucherMixed(
+        input.bankAccountId,
+        itemsResolved.map((it) => ({ productId: it.productId, qty: it.qty })),
+        input.promoVouchers ?? 0,
+        now
+      );
   if (voucherMixedErr) return { ok: false, error: voucherMixedErr };
   const promoLines = itemsResolved
     .filter((it) => it.productId && !it.readyCakeOrderId && it.originalUnitPrice == null)

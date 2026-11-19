@@ -922,12 +922,13 @@ export function POSClient({
   );
   // Nota voucher tak boleh dicampur produk lain (semua baris: katalog, custom, ready cake). Server menegakkan hal yang sama.
   const voucherMixedText = useMemo(() => {
+    if (voucherLockOff) return null;
     const lines = [
       ...cartLines.map((l) => ({ productId: l.productId, qty: l.qty })),
       ...customItems.map((c) => ({ productId: c.productId ?? null, qty: c.qty })),
       ...readyLines.map(() => ({ productId: null, qty: 1 })),
     ];
-    return voucherMixedProblem(campaigns, liveNow, lines, promoVouchers, voucherLockOff)
+    return voucherMixedProblem(campaigns, liveNow, lines, promoVouchers)
       ? "Nota voucher tak bisa digabung produk lain. Pisahkan nota."
       : null;
   }, [campaigns, liveNow, cartLines, customItems, readyLines, promoVouchers, voucherLockOff]);
