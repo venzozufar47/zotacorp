@@ -12,14 +12,17 @@ import {
   getShiftCashiers,
   openShift,
   verifyShiftPin,
+  type CarriedOverItem,
   type ShiftExpenseInput,
 } from "@/lib/actions/pos-shift.actions";
-import { describeCashDiff, type IncidentalReport } from "@/lib/pos/shift-math";
+import { describeCashDiff, incidentalReportHasContent, type IncidentalReport } from "@/lib/pos/shift-math";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
 import { ShiftCashStep } from "./ShiftCashStep";
+import { PosShiftClosingStep } from "./PosShiftClosingStep";
+import { CARRYOVER_ERROR_PREFIX, reasonLabel, type CarryoverInput } from "@/lib/pos/carryover";
 import { StockOpnameForm } from "./StockOpnameForm";
 
-type Step = "cashier" | "pin" | "briefing" | "opname" | "cash" | "result";
+type Step = "cashier" | "pin" | "briefing" | "tertunda" | "opname" | "cash" | "result";
 
 interface Props {
   mode: "open" | "close";
@@ -36,7 +39,8 @@ const rp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 /**
  * Alur layar penuh buka/tutup shift:
  *   Buka  : pilih kasir → PIN → (laporan di luar shift) → opname stok → hitung kas → selesai
- *   Tutup : PIN kasir pembuka → opname stok → hitung kas → selesai (POS kembali terkunci)
+ *   Tutup : PIN kasir pembuka → pesanan tertunda (selesaikan atau tunda + alasan) → opname stok → hitung kas → selesai
+ *           (POS kembali terkunci). Langkah pesanan dilewati bila tidak ada yang menggantung.
  * PIN diverifikasi di awal (cepat gagal) dan DIVERIFIKASI ULANG server saat opname & simpan; PIN hanya
  * disimpan di memori komponen ini, tidak pernah ke storage.
  */
@@ -49,6 +53,8 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
   const [pinError, setPinError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [report, setReport] = useState<IncidentalReport | null>(null);
+  const [carried, setCarried] = useState<CarriedOverItem[]>([]);
+  const [carryovers, setCarryovers] = useState<CarryoverInput[]>([]);
   const [skus, setSkus] = useState<OpnameFormSku[] | null>(null);
   const [opnameId, setOpnameId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -100,11 +106,15 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
       setChecking(false);
       if (brief.ok && brief.data?.hasContent) {
         setReport(brief.data.report);
+        setCarried(brief.data.carried);
         setStep("briefing");
         return;
       }
     } else {
       setChecking(false);
+      // Tutup shift: pesanan yang menggantung diselesaikan atau diberi alasan dulu (langkah itu melompat sendiri bila kosong).
+      setStep("tertunda");
+      return;
     }
     setStep("opname");
   }
@@ -136,9 +146,17 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
           cashWithdrawn: v.cashWithdrawn,
           expenses: v.expenses,
           notes: v.notes,
+          carryovers,
         });
     setSaving(false);
     if (!res.ok) {
+      // Ada pesanan baru yang menggantung sejak langkah tadi: kembali ke daftar pesanan.
+      if (res.error.startsWith(CARRYOVER_ERROR_PREFIX)) {
+        toast.error(res.error);
+        setSaveError(null);
+        setStep("tertunda");
+        return;
+      }
       setSaveError(res.error);
       return;
     }
@@ -216,7 +234,18 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
       )}
 
       {step === "briefing" && report && (
-        <BriefingStep report={report} onContinue={() => setStep("opname")} />
+        <BriefingStep report={report} carried={carried} onContinue={() => setStep("opname")} />
+      )}
+
+      {step === "tertunda" && (
+        <PosShiftClosingStep
+          bankAccountId={bankAccountId}
+          basePath={basePath}
+          onContinue={(c) => {
+            setCarryovers(c);
+            setStep("opname");
+          }}
+        />
       )}
 
       {step === "opname" && cashier && (
@@ -313,9 +342,36 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
   );
 }
 
-function BriefingStep({ report, onContinue }: { report: IncidentalReport; onContinue: () => void }) {
+function BriefingStep({ report, carried, onContinue }: { report: IncidentalReport; carried: CarriedOverItem[]; onContinue: () => void }) {
+  const carriedTotal = carried.reduce((n, c) => n + c.amount, 0);
   return (
     <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
+      {carried.length > 0 && (
+        <section className="space-y-1.5 rounded-xl border border-warning/40 bg-warning/10 p-3">
+          <h2 className="flex items-center justify-between gap-2 text-sm font-semibold text-foreground">
+            <span>Ditinggal shift sebelumnya</span>
+            <span className="tabular-nums">{rp(carriedTotal)}</span>
+          </h2>
+          <ul className="divide-y divide-border/60 text-xs">
+            {carried.map((c, i) => (
+              <li key={`${c.label}-${i}`} className="flex items-start justify-between gap-3 py-1.5">
+                <span className="min-w-0">
+                  <span className="font-medium text-foreground">{c.label}</span>
+                  <span className="block text-muted-foreground">
+                    {reasonLabel(c.kind, c.reason)}
+                    {c.note ? ` · ${c.note}` : ""}
+                    {c.count > 1 ? ` · ditunda ${c.count}×` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 tabular-nums text-foreground">{c.kind === "cake" && c.amount === 0 ? "Lunas" : rp(c.amount)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-muted-foreground">Tagih atau serahkan lebih dulu di tab Pesanan.</p>
+        </section>
+      )}
+      {incidentalReportHasContent(report) && (
+      <>
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 text-base font-semibold text-foreground">
           <LockKeyhole size={16} /> Aktivitas di luar shift
@@ -363,6 +419,8 @@ function BriefingStep({ report, onContinue }: { report: IncidentalReport; onCont
             />
           ))}
         </Section>
+      )}
+      </>
       )}
 
       <button

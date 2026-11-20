@@ -9,6 +9,7 @@ import { listCampaignsForPos, resolveSaleDiscount } from "./pos-discount.actions
 import { listStockOnHand } from "./pos-stock.actions";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { MAX_PROMO_VOUCHERS } from "@/lib/pos/discount";
+import { VOUCHER_PRINT_CUSTOMER } from "@/lib/pos/carryover-data";
 
 /** Produk voucher (kampanye harga-per-item yang tanggalnya mencakup hari ini) beserta stok dan harga. */
 export interface VoucherProduct {
@@ -23,7 +24,7 @@ export interface VoucherProduct {
 }
 
 /** Nama pemesan pada nota pending hasil cetak struk; pembeda dari nota settlement ("Voucher"). */
-const PRINT_CUSTOMER = "Voucher (cetak)";
+const PRINT_CUSTOMER = VOUCHER_PRINT_CUSTOMER;
 
 interface PendingPrint {
   saleId: string;

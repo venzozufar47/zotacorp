@@ -215,7 +215,7 @@ function PickupCard({
   );
 }
 
-function PickupDialog({
+export function PickupDialog({
   order,
   paymentMethods,
   authorizers,

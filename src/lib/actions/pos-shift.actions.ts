@@ -35,6 +35,8 @@ import {
   type IncidentalReport,
 } from "@/lib/pos/shift-math";
 import { posBasePathForBranch, type PosBranchName } from "@/lib/pos/branch";
+import { CARRYOVER_ERROR_PREFIX, carryoverError, type CarryoverInput } from "@/lib/pos/carryover";
+import { loadClosingOutstanding } from "@/lib/pos/carryover-data";
 
 /**
  * Shift kasir POS: Buka shift (PIN kasir + opname + hitung kas) → jual → Tutup shift (PIN kasir yang SAMA +
@@ -104,16 +106,32 @@ export async function verifyShiftPin(input: {
   return { ok: true, data: { name: v.name } };
 }
 
-/** Laporan transaksi di luar shift sejak shift terakhir ditutup, untuk kasir yang akan membuka shift. */
+/** Pesanan yang ditinggal shift sebelumnya dan masih menggantung, untuk briefing kasir yang membuka shift. */
+export interface CarriedOverItem {
+  kind: "sale" | "cake";
+  label: string;
+  amount: number;
+  count: number;
+  reason: string;
+  note: string | null;
+}
+
+/** Laporan transaksi di luar shift sejak shift terakhir ditutup + pesanan yang ditinggal, untuk kasir yang akan membuka shift. */
 export async function getOpeningBriefing(
   bankAccountId: string
-): Promise<ActionResult<{ report: IncidentalReport; hasContent: boolean }>> {
+): Promise<ActionResult<{ report: IncidentalReport; carried: CarriedOverItem[]; hasContent: boolean }>> {
   const access = await requireShiftAccess(bankAccountId);
   if (!access.ok) return { ok: false, error: access.error };
   const admin = createAdminClient();
   const prev = await lastClosedShift(admin, bankAccountId);
-  const report = await buildIncidentalReport(admin, bankAccountId, prev?.closedAt ?? null, new Date().toISOString());
-  return { ok: true, data: { report, hasContent: incidentalReportHasContent(report) } };
+  const [report, outstanding] = await Promise.all([
+    buildIncidentalReport(admin, bankAccountId, prev?.closedAt ?? null, new Date().toISOString()),
+    loadClosingOutstanding(bankAccountId).catch(() => null),
+  ]);
+  const carried: CarriedOverItem[] = (outstanding?.items ?? [])
+    .filter((i) => i.carriedCount > 0 && i.lastReason)
+    .map((i) => ({ kind: i.kind, label: i.label, amount: i.amount, count: i.carriedCount, reason: i.lastReason as string, note: i.lastNote }));
+  return { ok: true, data: { report, carried, hasContent: incidentalReportHasContent(report) || carried.length > 0 } };
 }
 
 /**
@@ -573,6 +591,8 @@ export async function closeShift(input: {
   cashWithdrawn?: number;
   expenses: ShiftExpenseInput[];
   notes?: string;
+  /** Alasan untuk tiap pesanan tertunda / custom cake yang ditinggal ke shift berikutnya. Yang lain harus sudah beres. */
+  carryovers?: CarryoverInput[];
 }): Promise<ActionResult<{ diff: number | null; expected: number }>> {
   const access = await requireShiftAccess(input.bankAccountId);
   if (!access.ok) return { ok: false, error: access.error };
@@ -605,6 +625,28 @@ export async function closeShift(input: {
   });
   if (!opname.ok) return { ok: false, error: opname.error };
 
+  // Gerbang pesanan tertunda: tiap pesanan yang masih menggantung harus punya alasan sah. Dihitung ulang di server,
+  // jadi pesanan baru yang muncul sejak langkah tadi ikut tertangkap.
+  const outstanding = await loadClosingOutstanding(input.bankAccountId);
+  const given = new Map((input.carryovers ?? []).map((c) => [`${c.kind}:${c.refId}`, c]));
+  const carryRows: Array<Record<string, unknown>> = [];
+  for (const it of outstanding.items) {
+    const c = given.get(`${it.kind}:${it.refId}`);
+    const err = c ? carryoverError(it.kind, c, it.overdue) : "belum diselesaikan atau diberi alasan";
+    if (!c || err) return { ok: false, error: `${CARRYOVER_ERROR_PREFIX} ${it.label}, ${err ?? "belum diberi alasan"}.` };
+    carryRows.push({
+      bank_account_id: input.bankAccountId,
+      shift_id: shift.id,
+      kind: it.kind,
+      ref_id: it.refId,
+      label: it.label,
+      amount: it.amount,
+      reason_code: c.reasonCode,
+      reason_note: c.note.trim().slice(0, 200) || null,
+      cashier_name: cashier.name,
+    });
+  }
+
   const nowIso = new Date().toISOString();
   let expected: number;
   try {
@@ -625,6 +667,24 @@ export async function closeShift(input: {
   });
   if (!rec.ok) return { ok: false, error: rec.error };
 
+  // Alasan penundaan disimpan sebelum shift ditutup; bila penutupan gagal, dihapus lagi di bawah.
+  let carryIds: string[] = [];
+  if (carryRows.length > 0) {
+    const { data: ins, error: carryErr } = await admin
+      .from("pos_shift_carryovers" as never)
+      .insert(carryRows as never)
+      .select("id");
+    if (carryErr) {
+      for (const c of rec.created) {
+        await admin.from("pos_shift_expenses").delete().eq("id", c.expenseId);
+        await admin.from("cashflow_transactions").delete().eq("id", c.txId);
+        await admin.storage.from(RECEIPT_BUCKET).remove([c.finalPath]);
+      }
+      return { ok: false, error: `Gagal menyimpan alasan pesanan tertunda: ${carryErr.message}` };
+    }
+    carryIds = ((ins ?? []) as unknown as Array<{ id: string }>).map((r) => r.id);
+  }
+
   const { data: closed, error } = await admin
     .from("pos_shifts")
     .update({
@@ -642,7 +702,8 @@ export async function closeShift(input: {
     .select("close_cash_diff")
     .maybeSingle();
   if (error || !closed) {
-    // Ditutup oleh perangkat lain di saat yang sama, atau gagal tulis: batalkan pengeluaran yang baru dibuat.
+    // Ditutup oleh perangkat lain di saat yang sama, atau gagal tulis: batalkan pengeluaran dan alasan yang baru dibuat.
+    if (carryIds.length > 0) await admin.from("pos_shift_carryovers" as never).delete().in("id", carryIds);
     for (const c of rec.created) {
       await admin.from("pos_shift_expenses").delete().eq("id", c.expenseId);
       await admin.from("cashflow_transactions").delete().eq("id", c.txId);

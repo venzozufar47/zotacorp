@@ -214,7 +214,7 @@ function PesananCard({
   );
 }
 
-function CancelPesananDialog({
+export function CancelPesananDialog({
   pesanan,
   authorizers,
   onClose,
@@ -780,7 +780,7 @@ function ProductPickerSheet({
   );
 }
 
-function SettlePesananDialog({
+export function SettlePesananDialog({
   pesanan,
   receiptCtx,
   onReceipt,
