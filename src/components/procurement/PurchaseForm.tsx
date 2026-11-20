@@ -101,6 +101,8 @@ type DraftLine =
       brandId: string | null;
       brandName: string | null;
       newBrandName: string | null;
+      /** Status barang khusus baris ini; null = ikut pilihan "Kondisi barang" nota. */
+      delivery: "langsung" | "dipesan" | null;
     }
   | { key: string; kind: "lain"; category: string; description: string; total: number };
 
@@ -127,6 +129,7 @@ function draftFromView(v: PurchaseView, materials: PurchaseMaterialOption[]): { 
         brandId: l.brandId,
         brandName: l.brandName,
         newBrandName: null,
+        delivery: l.inTransit ? "dipesan" : null,
       });
     } else {
       lines.push({ key: crypto.randomUUID(), kind: "lain", category: l.category, description: l.description, total: l.total });
@@ -181,7 +184,9 @@ export function PurchaseForm({
     editing ? editing.moneySource : !access.pengadaan && access.laci ? "laci" : null
   );
   const [saving, startSaving] = useTransition();
-  const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
+  const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource; inTransit: number } | null>(
+    null
+  );
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
   // Foto dari galeri (screenshot) hanya sah untuk belanja online lewat Saldo Shopee/Seabank; sisanya wajib foto langsung dari kamera.
@@ -190,6 +195,12 @@ export function PurchaseForm({
   const clientIdRef = useRef<string>(crypto.randomUUID());
 
   const total = lines.reduce((s, l) => s + l.total, 0);
+  // Status barang per baris bahan: pilihan baris itu sendiri, atau bawaan nota. Uang laci selalu "di tangan".
+  const effDelivery = (l: DraftLine): "langsung" | "dipesan" =>
+    l.kind !== "bahan" || source === "laci" ? "langsung" : l.delivery ?? delivery;
+  const bahanLines = lines.filter((l): l is Extract<DraftLine, { kind: "bahan" }> => l.kind === "bahan");
+  const transitCount = bahanLines.filter((l) => effDelivery(l) === "dipesan").length;
+  const usedMaterialIds = new Set(bahanLines.map((l) => l.material.id));
   // Edit: saldo yang tampil sudah dikurangi nota ini (bila sumbernya sama) — kembalikan dulu supaya perbandingan adil.
   const walletAvail =
     access.walletBalance == null ? null : access.walletBalance + (editing?.moneySource === "pengadaan" ? editing.total : 0);
@@ -291,7 +302,17 @@ export function PurchaseForm({
       return;
     const payload: PurchaseLineInput[] = lines.map((l) =>
       l.kind === "bahan"
-        ? { kind: "bahan", materialId: l.material.id, qty: l.qty, unit: l.unit, total: l.total, brandId: l.brandId, newBrandName: l.newBrandName }
+        ? {
+            kind: "bahan",
+            materialId: l.material.id,
+            qty: l.qty,
+            unit: l.unit,
+            total: l.total,
+            brandId: l.brandId,
+            newBrandName: l.newBrandName,
+            // Status eksplisit per baris (uang laci: tanpa status, server menganggap barang di tangan).
+            delivery: source === "laci" ? undefined : effDelivery(l),
+          }
         : { kind: "lain", category: l.category, description: l.description, total: l.total }
     );
     startSaving(async () => {
@@ -306,8 +327,8 @@ export function PurchaseForm({
         purchaseDate: date,
         vendor: vendor.trim() || null,
         lines: payload,
-        // Mode edit tidak mengirim pilihan: server mempertahankan status pesanan lama.
-        delivery: editing || source === "laci" || !lines.some((l) => l.kind === "bahan") ? undefined : delivery,
+        // Status tiap baris bahan sudah eksplisit di `lines`; bawaan nota hanya cadangan.
+        delivery: editing || source === "laci" || bahanLines.length === 0 ? undefined : delivery,
       });
       if (!res.ok || !res.data) {
         toast.error(res.ok ? "Gagal menyimpan nota" : res.error);
@@ -348,7 +369,7 @@ export function PurchaseForm({
           return { ...m, brands, defaultBrandId: def };
         })
       );
-      setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged, source });
+      setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged, source, inTransit: transitCount });
       setLines([]);
       setReceiptPath(null);
       setReceiptPreview(null);
@@ -374,6 +395,11 @@ export function PurchaseForm({
                 : "sudah masuk buku kas dan (untuk bahan) stok."}
           </p>
         </div>
+        {done.inTransit > 0 && (
+          <p className="rounded-xl bg-muted px-3 py-2 text-xs text-foreground">
+            {done.inTransit} bahan masih dalam perjalanan — stok bertambah saat dikonfirmasi tiba di tab Belanja.
+          </p>
+        )}
         {done.flagged > 0 && (
           <p className="rounded-xl bg-warning/15 px-3 py-2 text-xs text-foreground">
             {done.flagged} harga bahan jauh dari biasanya — owner akan meninjau. Harga acuan belum diubah.
@@ -595,9 +621,11 @@ export function PurchaseForm({
             </button>
           )}
         </div>
-        {!editing && source !== "laci" && lines.some((l) => l.kind === "bahan") && (
+        {!editing && source !== "laci" && bahanLines.length > 0 && (
           <fieldset className="space-y-1.5 pt-1">
-            <legend className="text-xs font-semibold text-muted-foreground">Kondisi barang</legend>
+            <legend className="text-xs font-semibold text-muted-foreground">
+              Kondisi barang{bahanLines.length > 1 ? " (semua bahan)" : ""}
+            </legend>
             <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Kondisi barang">
               {(
                 [
@@ -609,16 +637,26 @@ export function PurchaseForm({
                   key={o.key}
                   type="button"
                   role="radio"
-                  aria-checked={delivery === o.key}
-                  onClick={() => setDelivery(o.key)}
+                  aria-checked={bahanLines.every((l) => effDelivery(l) === o.key)}
+                  onClick={() => {
+                    // Pilihan di sini berlaku untuk semua bahan: pilihan khusus per baris dihapus.
+                    setDelivery(o.key);
+                    setLines((p) => p.map((x) => (x.kind === "bahan" ? { ...x, delivery: null } : x)));
+                  }}
                   className={`min-h-12 rounded-xl border px-2.5 py-2 text-left transition ${
-                    delivery === o.key
+                    bahanLines.every((l) => effDelivery(l) === o.key)
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border bg-card active:bg-muted"
                   }`}
                 >
                   <span className="block text-[13px] font-bold leading-tight">{o.title}</span>
-                  <span className={`block text-[11px] leading-tight ${delivery === o.key ? "opacity-90" : "text-muted-foreground"}`}>{o.hint}</span>
+                  <span
+                    className={`block text-[11px] leading-tight ${
+                      bahanLines.every((l) => effDelivery(l) === o.key) ? "opacity-90" : "text-muted-foreground"
+                    }`}
+                  >
+                    {o.hint}
+                  </span>
                 </button>
               ))}
             </div>
@@ -671,6 +709,28 @@ export function PurchaseForm({
                           </span>
                         )}
                       </p>
+                      {source !== "laci" && (editing || bahanLines.length > 1) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = effDelivery(l) === "dipesan" ? "langsung" : "dipesan";
+                            setLines((p) =>
+                              p.map((x) =>
+                                x.key === l.key && x.kind === "bahan" ? { ...x, delivery: next === delivery ? null : next } : x
+                              )
+                            );
+                          }}
+                          aria-label={`Status barang ${l.material.name}: ${effDelivery(l) === "dipesan" ? "dipesan, belum tiba" : "sudah di tangan"}. Ketuk untuk mengubah`}
+                          className={cn(
+                            "mt-1 inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold",
+                            effDelivery(l) === "dipesan"
+                              ? "border-warning/60 bg-warning/15 text-foreground"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {effDelivery(l) === "dipesan" ? "Dipesan · belum tiba" : "Di tangan"}
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
@@ -701,11 +761,17 @@ export function PurchaseForm({
             businessUnit={businessUnit}
             materials={materials}
             usageUnits={data.usageUnits}
+            usedMaterialIds={usedMaterialIds}
             onAddMaterial={(m) => setMaterials((p) => [...p, m].sort((a, b) => a.name.localeCompare(b.name, "id")))}
             onCancel={() => setComposer(null)}
-            onAdd={(line) => {
+            onAdd={(line, more) => {
               setLines((p) => [...p, line]);
-              setComposer(null);
+              if (more) {
+                // Tetap di pemilih bahan; beri tanda bahwa baris tadi sudah masuk.
+                toast.success(`${line.kind === "bahan" ? line.material.name : "Baris"} masuk nota · ${lines.length + 1} baris`);
+              } else {
+                setComposer(null);
+              }
             }}
           />
         )}
@@ -909,6 +975,7 @@ function BahanComposer({
   businessUnit,
   materials,
   usageUnits,
+  usedMaterialIds,
   onAddMaterial,
   onAdd,
   onCancel,
@@ -917,8 +984,11 @@ function BahanComposer({
   businessUnit: string;
   materials: PurchaseMaterialOption[];
   usageUnits: { code: string; label: string }[];
+  /** Bahan yang sudah ada di nota ini. Boleh dipilih lagi (mis. merek/harga berbeda): hanya ditandai. */
+  usedMaterialIds: Set<string>;
   onAddMaterial: (m: PurchaseMaterialOption) => void;
-  onAdd: (line: DraftLine) => void;
+  /** `more` = tetap di pemilih bahan untuk menambah bahan berikutnya dari nota yang sama. */
+  onAdd: (line: DraftLine, more: boolean) => void;
   onCancel: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -966,6 +1036,34 @@ function BahanComposer({
     const dev = picked.pending ? null : priceDeviation(perUsage, ref);
     return { q, t, usage, perUsage, ref, dev };
   }, [picked, qty, unit, total]);
+
+  function buildLine(): DraftLine | null {
+    if (!picked || !calc) return null;
+    return {
+      key: crypto.randomUUID(),
+      kind: "bahan",
+      material: picked,
+      qty: calc.q,
+      unit,
+      total: calc.t,
+      perUsage: calc.perUsage,
+      deviation: calc.dev,
+      delivery: null,
+      ...(addingBrand && newBrand.trim()
+        ? { brandId: null, brandName: null, newBrandName: newBrand.trim().replace(/\s+/g, " ") }
+        : { brandId, brandName: picked.brands.find((b) => b.id === brandId)?.name ?? null, newBrandName: null }),
+    };
+  }
+
+  function resetForNext() {
+    setPicked(null);
+    setQuery("");
+    setQty("");
+    setTotal("");
+    setBrandId(null);
+    setAddingBrand(false);
+    setNewBrand("");
+  }
 
   if (proposing) {
     return (
@@ -1030,6 +1128,9 @@ function BahanComposer({
                       {refPriceLabel(m)}
                     </span>
                   </span>
+                  {usedMaterialIds.has(m.id) && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">di nota</span>
+                  )}
                   {m.pending && (
                     <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-semibold">baru</span>
                   )}
@@ -1045,6 +1146,11 @@ function BahanComposer({
       ) : (
         <>
           <MaterialRefCard m={picked} onChange={() => setPicked(null)} />
+          {usedMaterialIds.has(picked.id) && (
+            <p className="rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              Bahan ini sudah ada di nota. Ini akan jadi baris tambahan (mis. merek atau harga lain), bukan menggantikan.
+            </p>
+          )}
 
           <div className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Merek (opsional)</span>
@@ -1199,32 +1305,36 @@ function BahanComposer({
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
-              Batal
-            </Button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+                Batal
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={!calc || (addingBrand && !newBrand.trim())}
+                onClick={() => {
+                  const line = buildLine();
+                  if (line) onAdd(line, false);
+                }}
+              >
+                Tambah ke nota
+              </Button>
+            </div>
             <Button
               type="button"
-              className="flex-1"
+              variant="outline"
+              className="w-full"
               disabled={!calc || (addingBrand && !newBrand.trim())}
-              onClick={() =>
-                calc &&
-                onAdd({
-                  key: crypto.randomUUID(),
-                  kind: "bahan",
-                  material: picked,
-                  qty: calc.q,
-                  unit,
-                  total: calc.t,
-                  perUsage: calc.perUsage,
-                  deviation: calc.dev,
-                  ...(addingBrand && newBrand.trim()
-                    ? { brandId: null, brandName: null, newBrandName: newBrand.trim().replace(/\s+/g, " ") }
-                    : { brandId, brandName: picked.brands.find((b) => b.id === brandId)?.name ?? null, newBrandName: null }),
-                })
-              }
+              onClick={() => {
+                const line = buildLine();
+                if (!line) return;
+                onAdd(line, true);
+                resetForNext();
+              }}
             >
-              Tambah ke nota
+              <Plus size={14} className="mr-1.5" /> Tambah &amp; bahan lain
             </Button>
           </div>
         </>

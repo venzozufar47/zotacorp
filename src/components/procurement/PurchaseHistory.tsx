@@ -20,6 +20,10 @@ import {
 
 const nf = (n: number, max = 2) => n.toLocaleString("id-ID", { maximumFractionDigits: max });
 
+function shortDate(ymd: string): string {
+  return new Date(`${ymd.slice(0, 10)}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+
 function dayLabel(ymd: string, today: string): string {
   if (ymd === today) return "Hari ini";
   const y = new Date(new Date(today + "T00:00:00Z").getTime() - 86_400_000).toISOString().slice(0, 10);
@@ -162,6 +166,7 @@ function PurchaseCard({ p, admin, highlightCategory }: { p: PurchaseView; admin:
   const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
   const flagged = p.lines.filter((l) => l.priceFlag === "tinjau").length;
+  const inTransit = p.lines.filter((l) => l.inTransit).length;
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) {
     start(async () => {
@@ -194,6 +199,7 @@ function PurchaseCard({ p, admin, highlightCategory }: { p: PurchaseView; admin:
             {p.moneySource === "pengadaan" ? "Uang pengadaan · " : p.moneySource === "laci" ? "Uang laci · " : p.moneySource === "shopee" ? `${walletLabel(p.businessUnit)} · ` : ""}
             {p.purchaseTime ? `${p.purchaseTime} · ` : ""}
             {p.createdByName ?? "—"} · {p.lines.length} baris
+            {inTransit > 0 && <span className="font-semibold text-foreground"> · {inTransit} belum tiba</span>}
           </p>
         </div>
         <p className="shrink-0 text-sm font-semibold tabular-nums">{formatRp(p.total)}</p>
@@ -221,6 +227,11 @@ function PurchaseCard({ p, admin, highlightCategory }: { p: PurchaseView; admin:
                         ? ` · ${l.deviation > 0 ? "+" : ""}${Math.round(l.deviation * 100)}% vs biasa`
                         : ""}
                     </p>
+                    {l.inTransit && (
+                      <p className="mt-0.5 inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-semibold">
+                        Belum tiba{l.expectedAt ? ` · est. ${shortDate(l.expectedAt)}` : ""}
+                      </p>
+                    )}
                   </div>
                   <span className="shrink-0 tabular-nums">{formatRp(l.total)}</span>
                 </div>

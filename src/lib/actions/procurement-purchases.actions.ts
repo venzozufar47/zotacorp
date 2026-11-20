@@ -523,6 +523,11 @@ export type PurchaseLineInput =
       brandId?: string | null;
       /** Merek baru: dibuat di server dalam satu paket dengan nota (opsional; diabaikan bila brandId ada). */
       newBrandName?: string | null;
+      /**
+       * Status barang baris ini: "langsung" (sudah di tangan, langsung menambah stok) atau "dipesan" (belum tiba, stok
+       * bertambah saat dikonfirmasi tiba). Kosong = ikut `CreatePurchaseInput.delivery`; satu nota boleh campur.
+       */
+      delivery?: "langsung" | "dipesan";
     }
   | { kind: "lain"; category: string; description: string; total: number };
 
@@ -551,9 +556,9 @@ export interface CreatePurchaseInput {
    */
   viaAudit?: boolean;
   /**
-   * "langsung" (bawaan): barang sudah di tangan, langsung menambah stok. "dipesan": sudah dibayar/dipesan tetapi belum
-   * tiba, stok baru bertambah saat dikonfirmasi tiba (lead time terukur dari sini). Mode edit tanpa nilai ini
-   * mempertahankan status pesanan lama.
+   * Status bawaan untuk baris bahan yang tak menyebut `delivery` sendiri. "langsung" (bawaan): barang sudah di tangan,
+   * langsung menambah stok. "dipesan": sudah dibayar/dipesan tetapi belum tiba, stok baru bertambah saat dikonfirmasi tiba
+   * (lead time terukur dari sini). Mode edit tanpa nilai ini mempertahankan status pesanan lama.
    */
   delivery?: "langsung" | "dipesan";
 }
@@ -724,6 +729,8 @@ async function createPurchaseImpl(
     qtyLabel: string | null;
     brandId: string | null;
     newBrandName: string | null;
+    /** Status yang diminta baris ini (null = ikut bawaan nota). */
+    deliveryReq: "langsung" | "dipesan" | null;
   }
   const calcs: Calc[] = [];
   let sort = 0;
@@ -751,8 +758,11 @@ async function createPurchaseImpl(
         qtyLabel: null,
         brandId: null,
         newBrandName: null,
+        deliveryReq: null,
       });
     } else {
+      if (l.delivery != null && l.delivery !== "langsung" && l.delivery !== "dipesan")
+        return { ok: false, error: "Status barang tidak dikenal" };
       const mat = matById.get(l.materialId);
       // Bahan dari brand lain diperlakukan sama dengan "tidak ada" — jangan jadi oracle.
       if (!mat || mat.business_unit !== input.businessUnit || mat.is_active !== true)
@@ -792,6 +802,7 @@ async function createPurchaseImpl(
         qtyLabel: `${Number(l.qty).toLocaleString("id-ID")} ${l.unit}`,
         brandId,
         newBrandName,
+        deliveryReq: l.delivery ?? null,
       });
     }
   }
@@ -812,12 +823,16 @@ async function createPurchaseImpl(
     if (ex && ex.created_by === gate.userId) return { ok: true, data: { id: ex.id, total: num(ex.total), flagged: 0 } };
     if (ex) return { ok: false, error: "Nota dengan kode ini sudah ada" };
   }
-  if (input.delivery === "dipesan" && input.moneySource === "laci")
+  if (input.moneySource === "laci" && (input.delivery === "dipesan" || calcs.some((c) => c.deliveryReq === "dipesan")))
     return { ok: false, error: "Uang laci hanya untuk belanja yang barangnya langsung di tangan" };
   const purchaseId = replaceId ?? clientId ?? crypto.randomUUID();
   // Pesanan dalam perjalanan: edit tanpa pilihan eksplisit mempertahankan status lama.
   const oldInTransit = (old?.receipts ?? []).filter((r) => r.arrived_at == null);
-  const inTransitMode = input.delivery ? input.delivery === "dipesan" : oldInTransit.length > 0;
+  // Bawaan nota untuk baris tanpa status sendiri. Uang laci selalu "di tangan".
+  const defaultInTransit =
+    input.moneySource === "laci" ? false : input.delivery ? input.delivery === "dipesan" : oldInTransit.length > 0;
+  const lineInTransit = (c: Calc) =>
+    c.kind !== "bahan" ? false : input.moneySource === "laci" ? false : c.deliveryReq ? c.deliveryReq === "dipesan" : defaultInTransit;
   const orderedAtIso = (oldInTransit[0]?.ordered_at as string | undefined) ?? now.toISOString();
   // Mode edit: identitas & waktu catat nota lama dipertahankan (hitungan kas laci per shift dikunci dari created_at).
   const purchaseTime = old ? ((old.head.purchase_time as string | null) ?? jakartaHHMM(now)) : jakartaHHMM(now);
@@ -1158,7 +1173,7 @@ async function createPurchaseImpl(
           notes: "Dari nota belanja pengadaan",
           created_by: ownerId,
           brand_id: c.brandId,
-          ...(inTransitMode
+          ...(lineInTransit(c)
             ? {
                 ordered_at: orderedAtIso,
                 arrived_at: null,
@@ -1300,6 +1315,10 @@ export interface PurchaseLineView {
   materialId: string | null;
   qtyInput: number | null;
   unitInput: string | null;
+  /** Barang baris ini dipesan tetapi belum dikonfirmasi tiba (stok belum bertambah). */
+  inTransit: boolean;
+  /** Perkiraan tiba (YYYY-MM-DD) bila masih dalam perjalanan. */
+  expectedAt: string | null;
 }
 
 export interface PurchaseView {
@@ -1390,6 +1409,26 @@ export async function listPurchases(
     for (const m of (mats ?? []) as Record<string, unknown>[])
       matInfo.set(m.id as string, { name: m.name as string, usageUnit: m.usage_unit as string, content: num(m.content_per_purchase) });
   }
+  // Barang yang masih dalam perjalanan per baris nota. Diambil lewat pesanan yang belum tiba (jumlahnya kecil), bukan
+  // lewat daftar id baris — ratusan id membuat alamat permintaan terlalu panjang.
+  const transitByLine = new Map<string, string | null>();
+  if (lines.some((l) => l.kind === "bahan")) {
+    let tq = admin
+      .from("costing_material_receipts" as never)
+      .select("purchase_line_id, expected_at")
+      .is("arrived_at", null)
+      .not("purchase_line_id", "is", null)
+      .limit(2000);
+    if (businessUnit) tq = tq.eq("business_unit", businessUnit);
+    const { data: transit } = await tq;
+    for (const r of (transit ?? []) as Record<string, unknown>[]) {
+      const id = r.purchase_line_id as string;
+      const cur = transitByLine.get(id);
+      const exp = (r.expected_at as string | null) ?? null;
+      // Tiba sebagian = beberapa pesanan untuk satu baris: pakai perkiraan paling awal.
+      transitByLine.set(id, cur == null || (exp != null && exp < cur) ? exp : cur);
+    }
+  }
   const brandIds = [...new Set(lines.map((l) => l.brand_id as string | null).filter((v): v is string => !!v))];
   const brandNames = new Map<string, string>();
   if (brandIds.length) {
@@ -1440,6 +1479,8 @@ export async function listPurchases(
       materialId: (l.material_id as string | null) ?? null,
       qtyInput: l.qty_input == null ? null : num(l.qty_input),
       unitInput: (l.unit_input as string | null) ?? null,
+      inTransit: transitByLine.has(l.id as string),
+      expectedAt: transitByLine.get(l.id as string) ?? null,
     };
     const arr = byPurchase.get(l.purchase_id as string) ?? [];
     arr.push(view);

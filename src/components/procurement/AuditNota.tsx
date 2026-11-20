@@ -472,6 +472,7 @@ function NoteCard({ p, flags, onZoom }: { p: PurchaseView; flags: ReturnType<typ
                   {l.deviation != null && Math.abs(l.deviation) >= 0.05
                     ? ` · ${l.deviation > 0 ? "+" : ""}${Math.round(l.deviation * 100)}% vs biasa`
                     : ""}
+                  {l.inTransit ? " · belum tiba" : ""}
                 </p>
               </div>
               <span className="shrink-0 tabular-nums">{formatRp(l.total)}</span>
