@@ -21,7 +21,8 @@ export function ReceiptSuccessDialog({
   data: ReceiptData;
   onClose: () => void;
 }) {
-  const cups = drinkCups(data).length;
+  // Pesanan belum dibayar tak memicu checker (sama seperti struk); checker keluar saat dilunasi.
+  const cups = data.method === "pending" ? 0 : drinkCups(data).length;
   const [checkerPrinted, setCheckerPrinted] = useState(false);
   // Nota berisi minuman: dialog tak bisa ditutup sebelum checker dicetak manual
   // (struk utama harus disobek dulu dari printer, jadi tak bisa otomatis).

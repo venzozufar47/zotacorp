@@ -117,6 +117,7 @@ export function ProductCatalogClient({
           isOpenPrice: false,
           notes: null,
           requiresSugarLevel: false,
+          requiresIceLevel: false,
           stockOnly: false,
           stockGroup: null,
           notForSale: false,
@@ -140,6 +141,7 @@ export function ProductCatalogClient({
         | "isOpenPrice"
         | "notes"
         | "requiresSugarLevel"
+        | "requiresIceLevel"
       >
     >
   ) {
@@ -195,6 +197,7 @@ export function ProductCatalogClient({
         active: true,
         sortOrder: maxOrder + 1,
         requiresSugarLevel: false,
+        requiresIceLevel: false,
       };
       setProducts((ps) =>
         ps.map((p) =>
@@ -211,7 +214,7 @@ export function ProductCatalogClient({
     patch: Partial<
       Pick<
         PosProductVariant,
-        "name" | "price" | "active" | "requiresSugarLevel"
+        "name" | "price" | "active" | "requiresSugarLevel" | "requiresIceLevel"
       >
     >
   ) {
@@ -502,6 +505,23 @@ export function ProductCatalogClient({
                     tingkat gula
                   </label>
                 )}
+                {variantCount === 0 && (
+                  <label
+                    className="inline-flex items-center gap-1 text-xs shrink-0"
+                    title="Kasir wajib pilih tingkat es (Less/Normal Ice) sebelum item masuk keranjang"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={p.requiresIceLevel}
+                      onChange={(e) =>
+                        updateField(p.id, {
+                          requiresIceLevel: e.target.checked,
+                        })
+                      }
+                    />
+                    tingkat es
+                  </label>
+                )}
                 <label className="inline-flex items-center gap-1 text-xs shrink-0">
                   <input
                     type="checkbox"
@@ -694,7 +714,10 @@ function VariantSection({
   onUpdate: (
     variantId: string,
     patch: Partial<
-      Pick<PosProductVariant, "name" | "price" | "active" | "requiresSugarLevel">
+      Pick<
+        PosProductVariant,
+        "name" | "price" | "active" | "requiresSugarLevel" | "requiresIceLevel"
+      >
     >
   ) => void;
   onDelete: (variantId: string) => void;
@@ -836,6 +859,19 @@ function VariantSection({
                 }
               />
               gula
+            </label>
+            <label
+              className="inline-flex items-center gap-1 text-[11px] shrink-0"
+              title="Kasir wajib pilih tingkat es (Less/Normal Ice) sebelum item masuk keranjang"
+            >
+              <input
+                type="checkbox"
+                checked={v.requiresIceLevel}
+                onChange={(e) =>
+                  onUpdate(v.id, { requiresIceLevel: e.target.checked })
+                }
+              />
+              es
             </label>
             <button
               type="button"

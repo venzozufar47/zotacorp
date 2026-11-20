@@ -93,11 +93,13 @@ import type { ReadyCakeItem } from "@/lib/actions/pos-ready-cake.actions";
 import type { PosFeedbackToday } from "@/lib/actions/feedback.actions";
 import type { PosDailyRevenueSummary } from "@/lib/actions/pos.actions";
 import {
-  SUGAR_LEVELS,
-  SUGAR_LEVEL_LABELS,
+  isIceLevel,
   isSugarLevel,
+  drinkOptionLabels,
+  type IceLevel,
   type SugarLevel,
 } from "@/lib/pos/sugar-levels";
+import { DrinkOptionsDialog } from "./DrinkOptionsDialog";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
 import { PosTopbarProvider } from "./pos-topbar-context";
@@ -172,7 +174,7 @@ interface CustomLine {
   variantId?: string;
 }
 
-/** Cart key scheme: "p:<productId>[|v:<variantId>][|s:<sugarLevel>]".
+/** Cart key scheme: "p:<productId>[|v:<variantId>][|s:<sugarLevel>][|i:<iceLevel>]".
  *
  *  Segmen gula IKUT jadi bagian key supaya satu minuman dengan tingkat
  *  gula berbeda jadi baris terpisah. Cart adalah `Record<key, qty>`,
@@ -185,11 +187,13 @@ interface CustomLine {
 function cartKey(
   productId: string,
   variantId?: string | null,
-  sugarLevel?: SugarLevel | null
+  sugarLevel?: SugarLevel | null,
+  iceLevel?: IceLevel | null
 ) {
   let k = `p:${productId}`;
   if (variantId) k += `|v:${variantId}`;
   if (sugarLevel) k += `|s:${sugarLevel}`;
+  if (iceLevel) k += `|i:${iceLevel}`;
   return k;
 }
 
@@ -197,19 +201,24 @@ function parseCartKey(key: string): {
   productId: string;
   variantId: string | null;
   sugarLevel: SugarLevel | null;
+  iceLevel: IceLevel | null;
 } {
   let productId = "";
   let variantId: string | null = null;
   let sugarLevel: SugarLevel | null = null;
+  let iceLevel: IceLevel | null = null;
   for (const part of key.split("|")) {
     if (part.startsWith("p:")) productId = part.slice(2);
     else if (part.startsWith("v:")) variantId = part.slice(2);
     else if (part.startsWith("s:")) {
       const s = part.slice(2);
       if (isSugarLevel(s)) sugarLevel = s;
+    } else if (part.startsWith("i:")) {
+      const i = part.slice(2);
+      if (isIceLevel(i)) iceLevel = i;
     }
   }
-  return { productId, variantId, sugarLevel };
+  return { productId, variantId, sugarLevel, iceLevel };
 }
 
 /** Total qty satu SKU (produk + varian) di cart, MENJUMLAHKAN semua
@@ -225,7 +234,7 @@ function cartQtyForSku(
   const base = cartKey(productId, variantId);
   let n = 0;
   for (const [k, q] of Object.entries(cart)) {
-    if (k === base || k.startsWith(`${base}|s:`)) n += q;
+    if (k === base || k.startsWith(`${base}|s:`) || k.startsWith(`${base}|i:`)) n += q;
   }
   return n;
 }
@@ -236,6 +245,17 @@ function sugarRequiredFor(p: PosProduct, variantId: string | null): boolean {
   if (variantId)
     return p.variants.find((v) => v.id === variantId)?.requiresSugarLevel ?? false;
   return p.requiresSugarLevel;
+}
+
+function iceRequiredFor(p: PosProduct, variantId: string | null): boolean {
+  if (variantId)
+    return p.variants.find((v) => v.id === variantId)?.requiresIceLevel ?? false;
+  return p.requiresIceLevel;
+}
+
+/** Minuman yang perlu popup pilihan (gula dan/atau es). */
+function optionsRequiredFor(p: PosProduct, variantId: string | null): boolean {
+  return sugarRequiredFor(p, variantId) || iceRequiredFor(p, variantId);
 }
 
 /**
@@ -414,10 +434,11 @@ export function POSClient({
       if (qty <= 0) continue;
       // `lineByKey` di-index tanpa segmen gula, jadi lookup pakai base
       // key lalu label gulanya ditempel ke nama baris.
-      const { productId, variantId, sugarLevel } = parseCartKey(key);
+      const { productId, variantId, sugarLevel, iceLevel } = parseCartKey(key);
       const info = lineByKey.get(cartKey(productId, variantId));
       if (!info) continue;
-      const optionsLabel = sugarLevel ? SUGAR_LEVEL_LABELS[sugarLevel] : null;
+      const optionLabels = drinkOptionLabels(sugarLevel, iceLevel);
+      const optionsLabel = optionLabels.length > 0 ? optionLabels.join(", ") : null;
       const name = optionsLabel ? `${info.name} — ${optionsLabel}` : info.name;
       // Diskon hanya berlaku kalau nilainya benar-benar di bawah harga
       // normal — sama dengan aturan server, supaya total di layar tak
@@ -619,7 +640,7 @@ export function POSClient({
     }
     if (p.variants.length === 0) {
       // Minuman tanpa varian → pilih tingkat gula dulu.
-      if (sugarRequiredFor(p, null)) {
+      if (optionsRequiredFor(p, null)) {
         setSugarPickerFor({ productId: p.id, variantId: null });
         return;
       }
@@ -630,7 +651,7 @@ export function POSClient({
     // ambiguitas. (Admin mungkin hapus varian lain, sisakan 1.)
     if (p.variants.length === 1) {
       const only = p.variants[0];
-      if (sugarRequiredFor(p, only.id)) {
+      if (optionsRequiredFor(p, only.id)) {
         setSugarPickerFor({ productId: p.id, variantId: only.id });
         return;
       }
@@ -737,7 +758,7 @@ export function POSClient({
     const catalogItems: PosSaleItemInput[] = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
       .map(([key, qty]) => {
-        const { productId, variantId, sugarLevel } = parseCartKey(key);
+        const { productId, variantId, sugarLevel, iceLevel } = parseCartKey(key);
         // Kirim customPrice hanya kalau diskonnya benar-benar di bawah
         // harga normal; server menolak yang tidak.
         const info = lineByKey.get(cartKey(productId, variantId));
@@ -745,8 +766,8 @@ export function POSClient({
         const customPrice =
           info && disc != null && disc < info.price ? disc : undefined;
         const base = variantId
-          ? { productId, variantId, qty, sugarLevel }
-          : { productId, qty, sugarLevel };
+          ? { productId, variantId, qty, sugarLevel, iceLevel }
+          : { productId, qty, sugarLevel, iceLevel };
         return customPrice !== undefined ? { ...base, customPrice } : base;
       });
     const items: PosSaleItemInput[] = [
@@ -863,7 +884,7 @@ export function POSClient({
           qty: l.qty,
           subtotal: l.subtotal,
           note: l.optionsLabel,
-          drink: l.optionsLabel != null,
+          options: l.optionsLabel ? l.optionsLabel.split(", ") : undefined,
         })),
         grossTotal: total + readyTotal,
         discountAmount,
@@ -1534,7 +1555,7 @@ export function POSClient({
           // bayar) dan "-" tidak menemukan baris ber-gula. Untuk produk
           // ini setiap penambahan harus lewat dialog gula (tap kartu),
           // dan penyesuaian qty dilakukan di daftar keranjang.
-          const needsSugarSingle = !hasVariants && sugarRequiredFor(p, null);
+          const needsSugarSingle = !hasVariants && optionsRequiredFor(p, null);
           // Untuk produk tanpa varian (dan bukan open-price), tampilkan
           // [- qty +] pill di card. Open-price tidak punya pill — tiap
           // tap buka dialog harga baru. Variant: tap = modal varian.
@@ -1813,7 +1834,7 @@ export function POSClient({
           onInc={(variantId) => {
             // Minuman → lanjut ke pemilih gula (satu dialog pada satu
             // waktu: tutup variant picker dulu).
-            if (sugarRequiredFor(pickerProduct, variantId)) {
+            if (optionsRequiredFor(pickerProduct, variantId)) {
               setVariantPickerFor(null);
               setSugarPickerFor({ productId: pickerProduct.id, variantId });
               return;
@@ -1832,11 +1853,13 @@ export function POSClient({
           ? p.variants.find((x) => x.id === sugarPickerFor.variantId) ?? null
           : null;
         return (
-          <SugarPickerDialog
+          <DrinkOptionsDialog
             title={v ? `${p.name} — ${v.name}` : p.name}
             price={v ? v.price : p.price}
-            onPick={(level) => {
-              inc(cartKey(p.id, sugarPickerFor.variantId, level));
+            needSugar={sugarRequiredFor(p, sugarPickerFor.variantId)}
+            needIce={iceRequiredFor(p, sugarPickerFor.variantId)}
+            onPick={({ sugarLevel, iceLevel }) => {
+              inc(cartKey(p.id, sugarPickerFor.variantId, sugarLevel, iceLevel));
               setSugarPickerFor(null);
             }}
             onClose={() => setSugarPickerFor(null)}
@@ -2513,7 +2536,7 @@ function VariantPickerDialog({
             // Qty dijumlahkan lintas tingkat gula — satu varian bisa
             // punya beberapa baris cart (No/Less/Normal Sugar).
             const qty = cartQtyForSku(cart, product.id, v.id);
-            const needsSugar = v.requiresSugarLevel;
+            const needsSugar = v.requiresSugarLevel || v.requiresIceLevel;
             // Resolve sisa stok khusus varian ini.
             let remaining: number | null = null;
             if (tracked) {
@@ -2643,69 +2666,6 @@ function VariantPickerDialog({
           className="w-full h-10 rounded-xl bg-primary text-sm text-primary-foreground font-semibold"
         >
           Selesai{totalQty > 0 ? ` · ${totalQty} item` : ""}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Pemilih tingkat gula untuk minuman. WAJIB: menutup dialog = batal
- * menambah, item tidak pernah masuk cart tanpa tingkat gula (server juga
- * menolaknya, jadi UI tidak bisa di-bypass).
- *
- * Tiap pilihan menambah SATU baris cart tersendiri, sehingga 2 gelas
- * minuman sama dengan gula berbeda tetap terpisah di keranjang & struk.
- */
-function SugarPickerDialog({
-  title,
-  price,
-  onPick,
-  onClose,
-}: {
-  title: string;
-  price: number;
-  onPick: (level: SugarLevel) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-3 space-y-2.5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div>
-          <h2 className="truncate font-semibold text-foreground">{title}</h2>
-          <p className="text-xs tabular-nums text-muted-foreground">
-            {formatRp(price)} · pilih tingkat gula (wajib)
-          </p>
-        </div>
-        {/* Tiga pilihan sejajar dalam satu baris: satu tap, tanpa scroll. */}
-        <div
-          className={`grid gap-2 ${
-            SUGAR_LEVELS.length === 3 ? "grid-cols-3" : "grid-cols-1"
-          }`}
-        >
-          {SUGAR_LEVELS.map((level) => (
-            <button
-              key={level}
-              type="button"
-              onClick={() => onPick(level)}
-              className="h-14 rounded-xl border border-border bg-card px-1 text-sm font-semibold leading-tight text-foreground active:bg-muted hover:border-primary transition-colors"
-            >
-              {SUGAR_LEVEL_LABELS[level]}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full h-10 rounded-xl text-sm text-muted-foreground font-semibold hover:bg-muted"
-        >
-          Batal
         </button>
       </div>
     </div>

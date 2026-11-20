@@ -16,7 +16,7 @@ import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { checkVoucherMixed, checkVoucherOnly, resolveSaleDiscount } from "./pos-discount.actions";
 import { describeDiscount } from "@/lib/pos/discount";
-import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
+import { isIceLevel, isSugarLevel, type IceLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
@@ -52,6 +52,7 @@ type PosProductRow = Pick<
   | "is_open_price"
   | "notes"
   | "requires_sugar_level"
+  | "requires_ice_level"
   | "stock_only"
   | "stock_group"
   | "not_for_sale"
@@ -65,6 +66,7 @@ type PosProductVariantRow = Pick<
   | "active"
   | "sort_order"
   | "requires_sugar_level"
+  | "requires_ice_level"
 >;
 
 export type PaymentMethod = "cash" | "qris";
@@ -88,6 +90,8 @@ export interface PosProductVariant {
   /** Minuman racikan → kasir wajib pilih tingkat gula sebelum item
    *  masuk cart. Minuman kemasan (mis. Air Mineral) tetap false. */
   requiresSugarLevel: boolean;
+  /** Wajib pilih tingkat es (Less/Normal Ice), sama aturannya dengan gula. */
+  requiresIceLevel: boolean;
 }
 
 export interface PosProduct {
@@ -122,6 +126,8 @@ export interface PosProduct {
   /** Wajib pilih tingkat gula — dipakai untuk produk TANPA varian.
    *  Kalau produk punya varian, yang menentukan adalah flag di varian. */
   requiresSugarLevel: boolean;
+  /** Wajib pilih tingkat es — produk TANPA varian; produk ber-varian memakai flag varian. */
+  requiresIceLevel: boolean;
   /** Kalau length > 0, UI POS wajib pilih varian sebelum +1 ke cart.
    *  Varian menggantikan `price` (harga base dipakai cuma kalau tak
    *  ada varian sama sekali). */
@@ -181,6 +187,8 @@ export interface PosSaleSummary {
     variantName: string | null;
     /** Tingkat gula minuman (null untuk non-minuman). */
     sugarLevel: SugarLevel | null;
+    /** Tingkat es minuman (null untuk non-minuman / nota lama). */
+    iceLevel: IceLevel | null;
     qty: number;
     unitPrice: number;
     subtotal: number;
@@ -203,6 +211,7 @@ function mapPosProduct(
     isOpenPrice: r.is_open_price,
     notes: r.notes,
     requiresSugarLevel: r.requires_sugar_level,
+    requiresIceLevel: r.requires_ice_level,
     stockOnly: r.stock_only,
     stockGroup: r.stock_group,
     notForSale: r.not_for_sale,
@@ -219,6 +228,7 @@ function mapPosVariant(r: PosProductVariantRow): PosProductVariant {
     active: r.active,
     sortOrder: r.sort_order,
     requiresSugarLevel: r.requires_sugar_level,
+    requiresIceLevel: r.requires_ice_level,
   };
 }
 
@@ -231,7 +241,7 @@ async function fetchVariantsForProducts(
   if (productIds.length === 0) return byProduct;
   let q = supabase
     .from("pos_product_variants")
-    .select("id, product_id, name, price, active, sort_order, requires_sugar_level")
+    .select("id, product_id, name, price, active, sort_order, requires_sugar_level, requires_ice_level")
     .in("product_id", productIds)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
@@ -261,7 +271,7 @@ export async function listActivePosProducts(
   const supabase = await createClient();
   let query = supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, stock_group, not_for_sale")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, requires_ice_level, stock_only, stock_group, not_for_sale")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true);
   // Produk khusus stok (Ready Cake) tidak dijual dari grid keranjang (dijual lewat pemilih kue ready), tetapi HARUS ada
@@ -303,7 +313,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, stock_only, stock_group, not_for_sale")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes, requires_sugar_level, requires_ice_level, stock_only, stock_group, not_for_sale")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
@@ -363,6 +373,7 @@ export async function updatePosProduct(input: {
   /** `null` clear, `string` set, `undefined` skip. Whitespace-only → null. */
   notes?: string | null;
   requiresSugarLevel?: boolean;
+  requiresIceLevel?: boolean;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -383,6 +394,8 @@ export async function updatePosProduct(input: {
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
   if (input.requiresSugarLevel !== undefined)
     patch.requires_sugar_level = input.requiresSugarLevel;
+  if (input.requiresIceLevel !== undefined)
+    patch.requires_ice_level = input.requiresIceLevel;
   if (Object.keys(patch).length === 0) return { ok: true };
 
   const supabase = await createClient();
@@ -503,6 +516,7 @@ export async function updatePosProductVariant(input: {
   active?: boolean;
   sortOrder?: number;
   requiresSugarLevel?: boolean;
+  requiresIceLevel?: boolean;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -521,6 +535,8 @@ export async function updatePosProductVariant(input: {
   if (input.sortOrder !== undefined) patch.sort_order = input.sortOrder;
   if (input.requiresSugarLevel !== undefined)
     patch.requires_sugar_level = input.requiresSugarLevel;
+  if (input.requiresIceLevel !== undefined)
+    patch.requires_ice_level = input.requiresIceLevel;
   if (Object.keys(patch).length === 0) return { ok: true };
 
   const supabase = await createClient();
@@ -650,6 +666,8 @@ export type PosSaleItemInput =
       qty: number;
       /** Wajib bila unit terpilih `requires_sugar_level` (minuman). */
       sugarLevel?: SugarLevel | null;
+      /** Wajib bila unit terpilih `requires_ice_level` (minuman). */
+      iceLevel?: IceLevel | null;
     }
   | {
       productId: string;
@@ -660,6 +678,7 @@ export type PosSaleItemInput =
       customPrice: number;
       qty: number;
       sugarLevel?: SugarLevel | null;
+      iceLevel?: IceLevel | null;
     }
   | { customName: string; customPrice: number; qty: number }
   /** Ready cake dari stok toko: server mengambil harga dan SKU, dan memastikan kue masih ada. qty selalu 1. */
@@ -672,6 +691,7 @@ type CatalogItemInput =
       qty: number;
       customPrice?: undefined;
       sugarLevel?: SugarLevel | null;
+      iceLevel?: IceLevel | null;
     }
   | {
       productId: string;
@@ -679,6 +699,7 @@ type CatalogItemInput =
       customPrice: number;
       qty: number;
       sugarLevel?: SugarLevel | null;
+      iceLevel?: IceLevel | null;
     };
 type CustomItemInput = { customName: string; customPrice: number; qty: number };
 
@@ -788,6 +809,7 @@ export async function createPosSale(input: {
       bank_account_id: string;
       is_open_price: boolean;
       requires_sugar_level: boolean;
+      requires_ice_level: boolean;
       not_for_sale: boolean;
     }
   >();
@@ -800,6 +822,7 @@ export async function createPosSale(input: {
       price: number | string;
       active: boolean;
       requires_sugar_level: boolean;
+      requires_ice_level: boolean;
     }
   >();
   const productHasVariants = new Map<string, boolean>();
@@ -807,7 +830,7 @@ export async function createPosSale(input: {
     const { data: products, error: prodErr } = await supabase
       .from("pos_products")
       .select(
-        "id, name, price, active, bank_account_id, is_open_price, requires_sugar_level, not_for_sale"
+        "id, name, price, active, bank_account_id, is_open_price, requires_sugar_level, requires_ice_level, not_for_sale"
       )
       .in("id", productIds);
     if (prodErr) return { ok: false, error: prodErr.message };
@@ -825,7 +848,7 @@ export async function createPosSale(input: {
     // (b) validasi variantId yang dikirim client.
     const { data: variants } = await supabase
       .from("pos_product_variants")
-      .select("id, product_id, name, price, active, requires_sugar_level")
+      .select("id, product_id, name, price, active, requires_sugar_level, requires_ice_level")
       .in("product_id", productIds)
       .eq("active", true);
     for (const v of variants ?? []) {
@@ -894,6 +917,13 @@ export async function createPosSale(input: {
             error: `Minuman "${unitLabel}" wajib pilih tingkat gula`,
           };
       }
+      if (sugarUnit.requires_ice_level && !isOpenPriceLine) {
+        if (!isIceLevel(it.iceLevel))
+          return {
+            ok: false,
+            error: `Minuman "${unitLabel}" wajib pilih tingkat es`,
+          };
+      }
       // Sengaja TIDAK menolak kalau tingkat gula dikirim untuk unit yang
       // flag-nya mati: admin bisa mematikan flag saat keranjang kasir
       // sudah terisi, dan menolak di situ membuat kasir buntu (prop
@@ -935,6 +965,7 @@ export async function createPosSale(input: {
         variantId: cake.variantId,
         variantName: cake.variantName,
         sugarLevel: null,
+        iceLevel: null,
         unitPrice: cake.priceIdr,
         originalUnitPrice: null,
         qty: 1,
@@ -961,6 +992,7 @@ export async function createPosSale(input: {
         variantId: v?.id ?? null,
         variantName: v?.name ?? null,
         sugarLevel: isSugarLevel(it.sugarLevel) ? it.sugarLevel : null,
+        iceLevel: isIceLevel(it.iceLevel) ? it.iceLevel : null,
         unitPrice,
         originalUnitPrice: isDiscounted ? listPrice : null,
         qty: it.qty,
@@ -980,6 +1012,7 @@ export async function createPosSale(input: {
       variantId: null,
       variantName: null,
       sugarLevel: null,
+      iceLevel: null,
       unitPrice,
       originalUnitPrice: null,
       qty: c.qty,
@@ -1116,7 +1149,7 @@ export async function createPosSale(input: {
   // client — kasir yang override custom item harus konsisten via
   // index pemetaan, tapi untuk MVP custom items tidak men-support
   // per-item override → di-skip).
-  // PENTING: segmen `|s:` harus ikut, karena satu minuman dengan gula
+  // PENTING: segmen `|s:` dan `|i:` harus ikut, karena satu minuman dengan gula
   // berbeda adalah dua baris cart terpisah — kalau dilewatkan, override
   // dine-in/take-away akan nyangkut ke baris yang salah.
   const { error: itemsErr } = await supabase.from("pos_sale_items").insert(
@@ -1126,6 +1159,7 @@ export async function createPosSale(input: {
         cartKey = `p:${it.productId}`;
         if (it.variantId) cartKey += `|v:${it.variantId}`;
         if (it.sugarLevel) cartKey += `|s:${it.sugarLevel}`;
+        if (it.iceLevel) cartKey += `|i:${it.iceLevel}`;
       }
       const overrideValue = cartKey ? overrides[cartKey] : undefined;
       const fulfillment =
@@ -1139,6 +1173,7 @@ export async function createPosSale(input: {
         variant_id: it.variantId,
         variant_name: it.variantName,
         sugar_level: it.sugarLevel,
+        ice_level: it.iceLevel,
         unit_price: it.unitPrice,
         original_unit_price: it.originalUnitPrice,
         qty: it.qty,
@@ -1586,6 +1621,7 @@ export async function listRecentPosSales(
     product_name: string;
     variant_name: string | null;
     sugar_level: string | null;
+    ice_level: string | null;
     qty: number;
     unit_price: number;
     subtotal: number;
@@ -1599,7 +1635,7 @@ export async function listRecentPosSales(
       supabase
         .from("pos_sale_items")
         .select(
-          "sale_id, product_name, variant_name, sugar_level, qty, unit_price, subtotal"
+          "sale_id, product_name, variant_name, sugar_level, ice_level, qty, unit_price, subtotal"
         )
         .in("sale_id", slice)
     )
@@ -1615,6 +1651,7 @@ export async function listRecentPosSales(
       productName: it.product_name,
       variantName: it.variant_name,
       sugarLevel: isSugarLevel(it.sugar_level) ? it.sugar_level : null,
+      iceLevel: isIceLevel(it.ice_level) ? it.ice_level : null,
       qty: it.qty,
       unitPrice: Number(it.unit_price),
       subtotal: Number(it.subtotal),

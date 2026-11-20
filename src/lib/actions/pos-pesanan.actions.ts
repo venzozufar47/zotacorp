@@ -22,7 +22,7 @@ import {
   recordReadyCakeSalePayments,
   reverseReadyCakeSalePayments,
 } from "@/lib/cake-orders/ready-cake-sale-payment";
-import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
+import { isIceLevel, isSugarLevel, type IceLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { settleLeaseFreeFilter } from "@/lib/pos/settle-lease";
 import type { FulfillmentType, SettleVia } from "./pos.actions";
 import { listVoucherOnlyProductIds } from "./pos-discount.actions";
@@ -46,6 +46,7 @@ export interface PendingPesanan {
     variantName: string | null;
     /** Tingkat gula minuman (null untuk non-minuman). */
     sugarLevel: string | null;
+    iceLevel: string | null;
     qty: number;
     unitPrice: number;
     subtotal: number;
@@ -102,6 +103,7 @@ export async function listPendingPesanan(
     product_name: string;
     variant_name: string | null;
     sugar_level: string | null;
+    ice_level: string | null;
     qty: number;
     unit_price: number | string;
     subtotal: number | string;
@@ -110,7 +112,7 @@ export async function listPendingPesanan(
   const { data: itemsRaw } = await supabase
     .from("pos_sale_items")
     .select(
-      "id, sale_id, product_id, variant_id, product_name, variant_name, sugar_level, qty, unit_price, subtotal, fulfillment_type"
+      "id, sale_id, product_id, variant_id, product_name, variant_name, sugar_level, ice_level, qty, unit_price, subtotal, fulfillment_type"
     )
     .in("sale_id", ids);
   const items = (itemsRaw ?? []) as unknown as ItemRow[];
@@ -124,6 +126,7 @@ export async function listPendingPesanan(
       productName: it.product_name,
       variantName: it.variant_name,
       sugarLevel: it.sugar_level,
+      iceLevel: it.ice_level,
       qty: it.qty,
       unitPrice: Number(it.unit_price),
       subtotal: Number(it.subtotal),
@@ -181,6 +184,7 @@ export async function updatePesananItems(input: {
     variantId?: string | null;
     qty: number;
     sugarLevel?: SugarLevel | null;
+    iceLevel?: IceLevel | null;
   }>;
   customerName?: string;
 }): Promise<ActionResult<{ saleId: string }>> {
@@ -230,7 +234,7 @@ export async function updatePesananItems(input: {
   const { data: existingRaw } = await sb
     .from("pos_sale_items")
     .select(
-      "id, product_id, product_name, variant_id, variant_name, sugar_level, unit_price, original_unit_price, qty, fulfillment_type, ready_cake_order_id"
+      "id, product_id, product_name, variant_id, variant_name, sugar_level, ice_level, unit_price, original_unit_price, qty, fulfillment_type, ready_cake_order_id"
     )
     .eq("sale_id", sale.id);
   type ExistingItem = {
@@ -240,6 +244,7 @@ export async function updatePesananItems(input: {
     variant_id: string | null;
     variant_name: string | null;
     sugar_level: string | null;
+    ice_level: string | null;
     unit_price: number;
     original_unit_price: number | null;
     qty: number;
@@ -279,6 +284,7 @@ export async function updatePesananItems(input: {
     variant_id: string | null;
     variant_name: string | null;
     sugar_level: SugarLevel | null;
+    ice_level: IceLevel | null;
     unit_price: number;
     original_unit_price: null;
     qty: number;
@@ -296,7 +302,7 @@ export async function updatePesananItems(input: {
     const { data: productsRaw } = await supabase
       .from("pos_products")
       .select(
-        "id, name, price, active, bank_account_id, is_open_price, requires_sugar_level"
+        "id, name, price, active, bank_account_id, is_open_price, requires_sugar_level, requires_ice_level"
       )
       .in("id", productIds);
     const products = new Map((productsRaw ?? []).map((p) => [p.id, p]));
@@ -307,7 +313,7 @@ export async function updatePesananItems(input: {
       variantIds.length > 0
         ? await supabase
             .from("pos_product_variants")
-            .select("id, product_id, name, price, active, requires_sugar_level")
+            .select("id, product_id, name, price, active, requires_sugar_level, requires_ice_level")
             .in("id", variantIds)
         : { data: [] };
     const variants = new Map((variantsRaw ?? []).map((v) => [v.id, v]));
@@ -341,6 +347,11 @@ export async function updatePesananItems(input: {
           ok: false,
           error: `Minuman "${p.name}" wajib pilih tingkat gula.`,
         };
+      if (sugarUnit.requires_ice_level && !isIceLevel(it.iceLevel))
+        return {
+          ok: false,
+          error: `Minuman "${p.name}" wajib pilih tingkat es.`,
+        };
     }
 
     newRows = input.newItems.map((it) => {
@@ -354,6 +365,7 @@ export async function updatePesananItems(input: {
         variant_id: v?.id ?? null,
         variant_name: v?.name ?? null,
         sugar_level: isSugarLevel(it.sugarLevel) ? it.sugarLevel : null,
+        ice_level: isIceLevel(it.iceLevel) ? it.iceLevel : null,
         unit_price: unitPrice,
         original_unit_price: null,
         qty: it.qty,

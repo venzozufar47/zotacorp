@@ -29,7 +29,7 @@ import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
+import { drinkOptionLabels } from "@/lib/pos/sugar-levels";
 import { loadPosGate, isPosUsable } from "@/lib/pos/shift-gate";
 
 function formatDateLong(iso: string): string {
@@ -343,8 +343,7 @@ export default async function PosRiwayatPage({
                     .map((it) => {
                       const parts = [it.productName];
                       if (it.variantName) parts.push(it.variantName);
-                      const sugar = sugarLevelLabel(it.sugarLevel);
-                      if (sugar) parts.push(sugar);
+                      parts.push(...drinkOptionLabels(it.sugarLevel, it.iceLevel));
                       return `${it.qty}× ${parts.join(" ")}`;
                     })
                     .join(", ")}
@@ -374,10 +373,10 @@ export default async function PosRiwayatPage({
                         — {it.variantName}
                       </span>
                     )}
-                    {sugarLevelLabel(it.sugarLevel) && (
+                    {drinkOptionLabels(it.sugarLevel, it.iceLevel).length > 0 && (
                       <span className="text-muted-foreground">
                         {" "}
-                        — {sugarLevelLabel(it.sugarLevel)}
+                        — {drinkOptionLabels(it.sugarLevel, it.iceLevel).join(", ")}
                       </span>
                     )}
                   </span>

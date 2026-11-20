@@ -3,7 +3,7 @@
  * ikut ke customer. Tanpa harga. Pencocok ke nota utama: nama pemesan + `#id`
  * 8 karakter yang sama dengan footer struk.
  *
- * Penanda minuman = `ReceiptItem.drink` (item dengan tingkat gula). Le Mineral tak
+ * Penanda minuman = `ReceiptItem.options` (item dengan pilihan gula/es). Le Mineral tak
  * ber-gula, jadi otomatis tak masuk. Printer tanpa pemotong: tiap slip ditutup
  * garis putus-putus untuk disobek/digunting.
  */
@@ -17,7 +17,8 @@ const DOUBLE_COLS = 16;
 
 export interface DrinkCup {
   name: string;
-  sugar: string | null;
+  /** Pilihan gula/es, satu entri per baris slip. */
+  options: string[];
 }
 
 /** "Drinks — Matcha Latte" → "Matcha Latte": awalan nama produk induk tak berguna di gelas. */
@@ -29,9 +30,9 @@ function cupName(name: string): string {
 export function drinkCups(data: ReceiptData): DrinkCup[] {
   const cups: DrinkCup[] = [];
   for (const it of data.items) {
-    if (!it.drink) continue;
+    if (!it.options?.length) continue;
     for (let i = 0; i < it.qty; i++) {
-      cups.push({ name: cupName(it.name), sugar: it.note ?? null });
+      cups.push({ name: cupName(it.name), options: it.options });
     }
   }
   return cups;
@@ -51,7 +52,7 @@ export function buildDrinkCheckerBytes(data: ReceiptData): Uint8Array {
     // Bagian untuk bartender: apa yang dibuat.
     b.size("tall").bold(true);
     for (const l of wrapText(cup.name)) b.textLine(l);
-    if (cup.sugar) b.textLine(cup.sugar);
+    for (const o of cup.options) b.textLine(o);
     b.size("normal").bold(false).line();
 
     // Bagian pencocok: siapa pemiliknya.

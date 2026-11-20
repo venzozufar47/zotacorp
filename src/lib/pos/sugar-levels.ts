@@ -33,3 +33,30 @@ export function isSugarLevel(v: unknown): v is SugarLevel {
 export function sugarLevelLabel(v: unknown): string | null {
   return isSugarLevel(v) ? SUGAR_LEVEL_LABELS[v] : null;
 }
+
+/**
+ * Tingkat es (ice) minuman POS. Sama seperti gula: dimensi terpisah dari varian
+ * (tak memengaruhi harga). Hanya dua pilihan — tidak ada "no ice".
+ */
+export type IceLevel = "less_ice" | "normal_ice";
+
+export const ICE_LEVELS: IceLevel[] = ["less_ice", "normal_ice"];
+
+export const ICE_LEVEL_LABELS: Record<IceLevel, string> = {
+  less_ice: "Less Ice",
+  normal_ice: "Normal Ice",
+};
+
+export function isIceLevel(v: unknown): v is IceLevel {
+  return typeof v === "string" && (ICE_LEVELS as string[]).includes(v);
+}
+
+/** Label siap tampil; null/invalid → null supaya caller bisa skip. */
+export function iceLevelLabel(v: unknown): string | null {
+  return isIceLevel(v) ? ICE_LEVEL_LABELS[v] : null;
+}
+
+/** Label pilihan minuman, urut gula lalu ice (mis. ["Less Sugar", "Normal Ice"]); yang kosong dilewati. */
+export function drinkOptionLabels(sugar: unknown, ice: unknown): string[] {
+  return [sugarLevelLabel(sugar), iceLevelLabel(ice)].filter((s): s is string => s != null);
+}

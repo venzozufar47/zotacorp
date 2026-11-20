@@ -34,11 +34,13 @@ import {
 } from "./QrisVerificationPicker";
 import type { PendingPesanan } from "@/lib/actions/pos-pesanan.actions";
 import {
+  drinkOptionLabels,
+  isIceLevel,
   isSugarLevel,
-  SUGAR_LEVELS,
-  sugarLevelLabel,
+  type IceLevel,
   type SugarLevel,
 } from "@/lib/pos/sugar-levels";
+import { DrinkOptionsDialog } from "./DrinkOptionsDialog";
 import {
   authorizerNames,
   POS_OPERATION_LABEL_ID,
@@ -143,8 +145,7 @@ function PesananCard({
   const lines = pesanan.items.map((it) => {
     const parts = [it.productName];
     if (it.variantName) parts.push(it.variantName);
-    const sugar = sugarLevelLabel(it.sugarLevel);
-    if (sugar) parts.push(sugar);
+    parts.push(...drinkOptionLabels(it.sugarLevel, it.iceLevel));
     return { key: it.id, qty: it.qty, label: parts.join(" ") };
   });
   const pcs = lines.reduce((n, l) => n + l.qty, 0);
@@ -376,6 +377,7 @@ interface EditLine {
   productName: string;
   variantName: string | null;
   sugarLevel: string | null;
+  iceLevel: string | null;
   unitPrice: number;
   qty: number;
 }
@@ -407,6 +409,7 @@ function EditPesananDialog({
       productName: it.productName,
       variantName: it.variantName,
       sugarLevel: it.sugarLevel,
+      iceLevel: it.iceLevel,
       unitPrice: it.unitPrice,
       qty: it.qty,
     }))
@@ -426,8 +429,9 @@ function EditPesananDialog({
     product: PosProduct;
     variant: PosProductVariant | null;
     sugarLevel: SugarLevel | null;
+    iceLevel: IceLevel | null;
   }) {
-    const { product, variant, sugarLevel } = picked;
+    const { product, variant, sugarLevel, iceLevel } = picked;
     setLines((ls) => [
       ...ls,
       {
@@ -443,6 +447,7 @@ function EditPesananDialog({
         productName: product.name,
         variantName: variant?.name ?? null,
         sugarLevel,
+        iceLevel,
         unitPrice: variant ? variant.price : product.price,
         qty: 1,
       },
@@ -463,6 +468,7 @@ function EditPesananDialog({
           variantId: l.variantId,
           qty: l.qty,
           sugarLevel: isSugarLevel(l.sugarLevel) ? l.sugarLevel : null,
+          iceLevel: isIceLevel(l.iceLevel) ? l.iceLevel : null,
         }));
       const trimmedName = customerName.trim();
       const res = await updatePesananItems({
@@ -541,9 +547,7 @@ function EditPesananDialog({
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     {formatRp(l.unitPrice)}
-                    {sugarLevelLabel(l.sugarLevel)
-                      ? ` · ${sugarLevelLabel(l.sugarLevel)}`
-                      : ""}
+                    {drinkOptionLabels(l.sugarLevel, l.iceLevel).map((o) => ` · ${o}`).join("")}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -638,6 +642,7 @@ function ProductPickerSheet({
     product: PosProduct;
     variant: PosProductVariant | null;
     sugarLevel: SugarLevel | null;
+    iceLevel: IceLevel | null;
   }) => void;
   onClose: () => void;
 }) {
@@ -645,7 +650,7 @@ function ProductPickerSheet({
   const [step, setStep] = useState<
     | { kind: "list" }
     | { kind: "variant"; product: PosProduct }
-    | { kind: "sugar"; product: PosProduct; variant: PosProductVariant | null }
+    | { kind: "options"; product: PosProduct; variant: PosProductVariant | null }
   >({ kind: "list" });
 
   const filtered = products.filter(
@@ -657,22 +662,33 @@ function ProductPickerSheet({
       setStep({ kind: "variant", product: p });
       return;
     }
-    if (p.requiresSugarLevel) {
-      setStep({ kind: "sugar", product: p, variant: null });
+    if (p.requiresSugarLevel || p.requiresIceLevel) {
+      setStep({ kind: "options", product: p, variant: null });
       return;
     }
-    onPick({ product: p, variant: null, sugarLevel: null });
+    onPick({ product: p, variant: null, sugarLevel: null, iceLevel: null });
   }
   function pickVariant(p: PosProduct, v: PosProductVariant) {
-    if (v.requiresSugarLevel) {
-      setStep({ kind: "sugar", product: p, variant: v });
+    if (v.requiresSugarLevel || v.requiresIceLevel) {
+      setStep({ kind: "options", product: p, variant: v });
       return;
     }
-    onPick({ product: p, variant: v, sugarLevel: null });
+    onPick({ product: p, variant: v, sugarLevel: null, iceLevel: null });
   }
-  function pickSugar(level: SugarLevel) {
-    if (step.kind !== "sugar") return;
-    onPick({ product: step.product, variant: step.variant, sugarLevel: level });
+
+  if (step.kind === "options") {
+    const { product, variant } = step;
+    return (
+      <DrinkOptionsDialog
+        zClass="z-[70]"
+        title={variant ? `${product.name} — ${variant.name}` : product.name}
+        price={variant ? variant.price : product.price}
+        needSugar={variant ? variant.requiresSugarLevel : product.requiresSugarLevel}
+        needIce={variant ? variant.requiresIceLevel : product.requiresIceLevel}
+        onPick={({ sugarLevel, iceLevel }) => onPick({ product, variant, sugarLevel, iceLevel })}
+        onClose={() => setStep({ kind: "list" })}
+      />
+    );
   }
 
   return (
@@ -688,9 +704,7 @@ function ProductPickerSheet({
           <span className="font-display text-base font-bold">
             {step.kind === "list"
               ? "Pilih produk"
-              : step.kind === "variant"
-                ? step.product.name
-                : "Tingkat gula"}
+              : step.product.name}
           </span>
           <button
             type="button"
@@ -761,20 +775,6 @@ function ProductPickerSheet({
           </div>
         )}
 
-        {step.kind === "sugar" && (
-          <div className="flex-1 overflow-y-auto px-4 py-3 grid grid-cols-1 gap-1.5">
-            {SUGAR_LEVELS.map((lvl) => (
-              <button
-                key={lvl}
-                type="button"
-                onClick={() => pickSugar(lvl)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted"
-              >
-                {sugarLevelLabel(lvl)}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -851,8 +851,8 @@ export function SettlePesananDialog({
             name: it.variantName ? `${it.productName} — ${it.variantName}` : it.productName,
             qty: it.qty,
             subtotal: it.subtotal,
-            note: sugarLevelLabel(it.sugarLevel),
-            drink: sugarLevelLabel(it.sugarLevel) != null,
+            note: drinkOptionLabels(it.sugarLevel, it.iceLevel).join(", ") || null,
+            options: drinkOptionLabels(it.sugarLevel, it.iceLevel),
           })),
           grossTotal: total,
           discountAmount: 0,

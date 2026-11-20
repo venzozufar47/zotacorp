@@ -11,7 +11,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { COLS, EscPosBuilder } from "./escpos";
 import { DEFAULT_LABELS, type ReceiptLabels } from "./receipt-settings";
-import { sugarLevelLabel } from "./sugar-levels";
+import { drinkOptionLabels } from "./sugar-levels";
 
 /**
  * Pecah teks menjadi baris ≤ COLS karakter, memutus di batas KATA (bukan
@@ -56,9 +56,9 @@ export interface ReceiptItem {
    *  lebar kertas — kalau digabung ke nama, "Less Sugar" bisa terpotong
    *  jadi "Less" dan struk kehilangan gunanya sebagai acuan barista. */
   note?: string | null;
-  /** Item minuman (wajib pilih gula) — memicu checker bartender. `note` tak
-   *  cukup sebagai penanda: custom cake memakainya untuk spesifikasi. */
-  drink?: boolean;
+  /** Pilihan minuman (mis. ["Less Sugar", "Normal Ice"]); isi = item minuman, memicu checker
+   *  bartender. `note` tak cukup sebagai penanda: custom cake memakainya untuk spesifikasi. */
+  options?: string[];
 }
 
 export interface ReceiptData {
@@ -249,8 +249,8 @@ export function receiptDataFromSummary(
         : it.productName,
       qty: it.qty,
       subtotal: it.subtotal,
-      note: sugarLevelLabel(it.sugarLevel),
-      drink: sugarLevelLabel(it.sugarLevel) != null,
+      note: drinkOptionLabels(it.sugarLevel, it.iceLevel).join(", ") || null,
+      options: drinkOptionLabels(it.sugarLevel, it.iceLevel),
     })),
     grossTotal: s.grossTotal ?? s.total,
     discountAmount: s.discountAmount,
