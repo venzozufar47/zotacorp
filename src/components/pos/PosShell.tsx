@@ -76,6 +76,7 @@ export function PosShell({
   actions,
   showShiftPill = true,
   shiftSlot,
+  fillHeight = false,
   children,
 }: {
   outletName: string;
@@ -96,6 +97,8 @@ export function PosShell({
   showShiftPill?: boolean;
   /** Mode shift: kendali shift menggantikan pill statis. undefined = pill lama; null = tanpa pill. */
   shiftSlot?: React.ReactNode | null;
+  /** Layar lebar (lg+): main tidak ikut scroll, isinya mengisi sisa tinggi supaya kolom di dalamnya scroll sendiri-sendiri. */
+  fillHeight?: boolean;
   children: React.ReactNode;
 }) {
   const visible = insightsOnly
@@ -164,9 +167,11 @@ export function PosShell({
       </aside>
 
       {/* Main */}
-      <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+      <main
+        className={`min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0${fillHeight ? " lg:flex lg:flex-col lg:overflow-hidden" : ""}`}
+      >
         {(title || actions) && (
-          <div className="flex items-start justify-between gap-3 px-3 sm:px-5 py-4 border-b border-border bg-background sticky top-0 z-10 backdrop-blur">
+          <div className={`flex items-start justify-between gap-3 px-3 sm:px-5 py-4 border-b border-border bg-background sticky top-0 z-10 backdrop-blur${fillHeight ? " lg:shrink-0" : ""}`}>
             <div className="min-w-0">
               {title && (
                 <h1 className="font-bold text-foreground text-base sm:text-lg leading-tight truncate">
@@ -184,7 +189,7 @@ export function PosShell({
             )}
           </div>
         )}
-        {children}
+        {fillHeight ? <div className="lg:flex-1 lg:min-h-0">{children}</div> : children}
       </main>
 
       {/* Mobile bottom nav */}

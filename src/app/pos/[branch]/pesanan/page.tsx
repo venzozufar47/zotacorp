@@ -68,6 +68,7 @@ export default async function PesananPage({
       title="Pesanan tertunda"
       subtitle="kue custom siap diambil + pesanan menunggu pembayaran"
       shiftSlot={view.shiftSlot}
+      fillHeight
     >
       <PesananBoard
         pickups={cakeBoard.pickups}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { CakeSlice, Clock } from "lucide-react";
 import type { PendingPesanan } from "@/lib/actions/pos-pesanan.actions";
 import type { CakePickupOrder, CakePickupPaymentMethod } from "@/lib/actions/pos-cake-pickup.actions";
 import type { PosProduct } from "@/lib/actions/pos.actions";
@@ -10,6 +11,22 @@ import { autoPrintReceipt, type ReceiptContext } from "@/lib/pos/receipt-flow";
 import { CakePickupList } from "./CakePickupList";
 import { PesananList } from "./PesananList";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
+
+/** Satu kolom: judul + jumlah tetap di atas, isi scroll sendiri di lg+ (di layar sempit mengalir biasa). */
+function Column({ icon, title, count, children }: { icon: ReactNode; title: string; count: number; children: ReactNode }) {
+  return (
+    <section className="flex min-h-0 flex-col lg:rounded-2xl lg:border lg:border-border lg:bg-muted/30">
+      <div className="mb-2 flex shrink-0 items-center gap-2 text-foreground lg:mb-0 lg:border-b lg:border-border lg:px-4 lg:py-3">
+        {icon}
+        <h2 className="text-sm font-bold">{title}</h2>
+        {count > 0 && (
+          <span className="ml-auto rounded-full bg-foreground px-2 py-0.5 text-[11px] font-bold tabular-nums text-background">{count}</span>
+        )}
+      </div>
+      <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-3">{children}</div>
+    </section>
+  );
+}
 
 /**
  * Isi halaman Pesanan: serah terima custom cake dan pesanan tertunda. Memegang satu dialog struk bersama, supaya setelah
@@ -45,17 +62,22 @@ export function PesananBoard({
 
   return (
     <>
-      {/* Cake didahulukan: customer-nya sedang berdiri di konter, sementara pesanan tertunda bisa menunggu. */}
-      <div className="max-w-3xl mx-auto px-3 sm:px-5 py-5 space-y-6">
-        <CakePickupList
-          pickups={pickups}
-          paymentMethods={paymentMethods}
-          authorizers={cakeAuthorizers}
-          receiptCtx={ctx}
-          onReceipt={onReceipt}
-        />
-        <section>
-          <h2 className="text-sm font-bold text-foreground mb-2">Pesanan tertunda</h2>
+      {/*
+        Dua kolom di tablet landscape (lg+), masing-masing scroll sendiri dengan judul tetap. Di layar sempit ditumpuk
+        dan halaman scroll biasa. Cake di kiri: customer-nya sedang berdiri di konter, pesanan tertunda bisa menunggu.
+      */}
+      <div className="mx-auto max-w-3xl space-y-6 px-3 py-5 sm:px-5 lg:grid lg:h-full lg:max-w-none lg:grid-cols-2 lg:gap-4 lg:space-y-0 lg:px-5 lg:py-4">
+        <Column icon={<CakeSlice size={16} />} title="Custom cake siap diambil" count={pickups.length}>
+          <CakePickupList
+            hideHeader
+            pickups={pickups}
+            paymentMethods={paymentMethods}
+            authorizers={cakeAuthorizers}
+            receiptCtx={ctx}
+            onReceipt={onReceipt}
+          />
+        </Column>
+        <Column icon={<Clock size={16} />} title="Pesanan tertunda" count={pesanan.length}>
           <PesananList
             pesanan={pesanan}
             authorizers={voidAuthorizers}
@@ -63,7 +85,7 @@ export function PesananBoard({
             receiptCtx={ctx}
             onReceipt={onReceipt}
           />
-        </section>
+        </Column>
       </div>
       {lastReceipt && <ReceiptSuccessDialog data={lastReceipt} onClose={() => setLastReceipt(null)} />}
     </>

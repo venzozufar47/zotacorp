@@ -74,7 +74,10 @@ export function CakePickupList({
   authorizers,
   receiptCtx = null,
   onReceipt,
+  hideHeader = false,
 }: {
+  /** Judul + jumlah dirender induk (kolom dengan header tetap). */
+  hideHeader?: boolean;
   pickups: CakePickupOrder[];
   paymentMethods: CakePickupPaymentMethod[];
   /** Kosong = serah terima tidak butuh PIN. */
@@ -89,17 +92,19 @@ export function CakePickupList({
 
   return (
     <section>
-      <div className="flex items-center gap-2 mb-2">
-        <CakeSlice size={15} className="text-foreground" />
-        <h2 className="text-sm font-bold text-foreground">
-          Custom cake siap diambil
-        </h2>
-        {pickups.length > 0 && (
-          <span className="ml-auto text-[11px] font-semibold text-muted-foreground tabular-nums">
-            {pickups.length}
-          </span>
-        )}
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center gap-2 mb-2">
+          <CakeSlice size={15} className="text-foreground" />
+          <h2 className="text-sm font-bold text-foreground">
+            Custom cake siap diambil
+          </h2>
+          {pickups.length > 0 && (
+            <span className="ml-auto text-[11px] font-semibold text-muted-foreground tabular-nums">
+              {pickups.length}
+            </span>
+          )}
+        </div>
+      )}
 
       {pickups.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-border p-4 text-center text-xs text-muted-foreground">
