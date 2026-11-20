@@ -131,6 +131,7 @@ export async function getPosInsights(
     sale_date: string;
     sale_time: string | null;
     payment_method: string;
+    payment_status: string;
     total: number;
     voided_at: string | null;
   };
@@ -141,7 +142,7 @@ export async function getPosInsights(
     while (true) {
       const { data, error } = await supabase
         .from("pos_sales")
-        .select("id, sale_date, sale_time, payment_method, total, voided_at")
+        .select("id, sale_date, sale_time, payment_method, payment_status, total, voided_at")
         .eq("bank_account_id", bankAccountId)
         .gte("sale_date", fromDate)
         .lte("sale_date", today)
@@ -156,8 +157,10 @@ export async function getPosInsights(
     }
   }
 
-  const activeSales = sales.filter((s) => !s.voided_at);
-  const voidedCount = sales.length - activeSales.length;
+  // Omset = uang yang sudah diterima di POS (cash/QRIS lunas), sama dengan kartu "Omset hari ini". Pesanan pending
+  // (belum lunas) dan nota yang dibayar lewat admin (uang di luar POS) tidak dihitung.
+  const activeSales = sales.filter((s) => !s.voided_at && s.payment_status === "paid" && (s.payment_method === "cash" || s.payment_method === "qris"));
+  const voidedCount = sales.filter((s) => s.voided_at).length;
   const activeIds = activeSales.map((s) => s.id);
 
   // Items untuk active sales — chunked + parallel (PostgREST URL cap).
