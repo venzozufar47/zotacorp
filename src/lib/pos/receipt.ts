@@ -18,22 +18,22 @@ import { sugarLevelLabel } from "./sugar-levels";
  * di tengah kata). Menghormati newline eksplisit dari user. Kata yang
  * lebih panjang dari COLS dipotong keras sebagai fallback.
  */
-function wrapText(s: string): string[] {
+export function wrapText(s: string, width = COLS): string[] {
   const out: string[] = [];
   for (const rawLine of s.split("\n")) {
     let line = "";
     for (const word of rawLine.trim().split(/\s+/).filter(Boolean)) {
       let w = word;
-      while (w.length > COLS) {
+      while (w.length > width) {
         if (line) {
           out.push(line);
           line = "";
         }
-        out.push(w.slice(0, COLS));
-        w = w.slice(COLS);
+        out.push(w.slice(0, width));
+        w = w.slice(width);
       }
       if (!line) line = w;
-      else if (line.length + 1 + w.length <= COLS) line += " " + w;
+      else if (line.length + 1 + w.length <= width) line += " " + w;
       else {
         out.push(line);
         line = w;
@@ -56,6 +56,9 @@ export interface ReceiptItem {
    *  lebar kertas — kalau digabung ke nama, "Less Sugar" bisa terpotong
    *  jadi "Less" dan struk kehilangan gunanya sebagai acuan barista. */
   note?: string | null;
+  /** Item minuman (wajib pilih gula) — memicu checker bartender. `note` tak
+   *  cukup sebagai penanda: custom cake memakainya untuk spesifikasi. */
+  drink?: boolean;
 }
 
 export interface ReceiptData {
@@ -121,7 +124,7 @@ function methodLabel(m: ReceiptMethod, L: ReceiptLabels): string {
   return L.methodPending;
 }
 
-function fulfillmentLabel(
+export function fulfillmentLabel(
   f: ReceiptFulfillment,
   L: ReceiptLabels
 ): string | null {
@@ -247,6 +250,7 @@ export function receiptDataFromSummary(
       qty: it.qty,
       subtotal: it.subtotal,
       note: sugarLevelLabel(it.sugarLevel),
+      drink: sugarLevelLabel(it.sugarLevel) != null,
     })),
     grossTotal: s.grossTotal ?? s.total,
     discountAmount: s.discountAmount,

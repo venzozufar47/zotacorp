@@ -6,6 +6,7 @@ import { PosNavLink } from "@/components/pos/PosNavLink";
 import { PosShell } from "@/components/pos/PosShell";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
 import { ReprintReceiptButton } from "@/components/pos/ReprintReceiptButton";
+import { ReprintDrinkCheckerButton } from "@/components/pos/ReprintDrinkCheckerButton";
 import { ReprintCakeReceiptButton } from "@/components/pos/ReprintCakeReceiptButton";
 import type { ReceiptContext } from "@/lib/pos/receipt-flow";
 import { VoidSaleButton } from "@/components/pos/VoidSaleButton";
@@ -427,6 +428,7 @@ export default async function PosRiwayatPage({
                     content={receiptContent}
                     branch={account.branch}
                   />
+                  <ReprintDrinkCheckerButton sale={s} content={receiptContent} />
                 </li>
               )}
               {canVoid(s) && (

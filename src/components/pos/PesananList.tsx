@@ -852,6 +852,7 @@ export function SettlePesananDialog({
             qty: it.qty,
             subtotal: it.subtotal,
             note: sugarLevelLabel(it.sugarLevel),
+            drink: sugarLevelLabel(it.sugarLevel) != null,
           })),
           grossTotal: total,
           discountAmount: 0,

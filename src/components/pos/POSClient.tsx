@@ -863,6 +863,7 @@ export function POSClient({
           qty: l.qty,
           subtotal: l.subtotal,
           note: l.optionsLabel,
+          drink: l.optionsLabel != null,
         })),
         grossTotal: total + readyTotal,
         discountAmount,
