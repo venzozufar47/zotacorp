@@ -80,6 +80,11 @@ function likelyDuplicate(line: DraftLine, e: RecentExpense): boolean {
   return false;
 }
 
+/** Selisih hari antara dua tanggal YYYY-MM-DD. */
+function dayGap(a: string, b: string): number {
+  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+}
+
 /** Satu baris di draf nota (belum disimpan). */
 type DraftLine =
   | {
@@ -197,22 +202,31 @@ export function PurchaseForm({
   const [sessionExpenses, setSessionExpenses] = useState<RecentExpense[]>([]);
   const dups = useMemo(() => {
     if (editing) return []; // nota yang sedang diedit sudah ada di daftar pengeluaran terbaru: bukan duplikat
-    const pool = [...data.recentExpenses, ...sessionExpenses];
-    const out: { amount: number; label: string; at: string }[] = [];
+    // Nota bertanggal hari ini: bandingkan dengan yang BARU DICATAT (36 jam). Nota susulan bertanggal lampau: bandingkan
+    // dengan pengeluaran BERTANGGAL sama (±1 hari), karena nota aslinya bisa saja dicatat jauh sebelum hari ini.
+    const pool = [...data.recentExpenses, ...sessionExpenses].filter((e) =>
+      date === today ? Date.now() - new Date(e.at).getTime() <= 36 * 3_600_000 : dayGap(e.date, date) <= 1
+    );
+    const out: RecentExpense[] = [];
     for (const l of lines) {
       const hit = pool.find((e) => Math.abs(e.amount - l.total) < 0.5 && likelyDuplicate(l, e));
       if (hit && !out.some((o) => o.amount === hit.amount)) out.push(hit);
     }
     return out;
-  }, [lines, data.recentExpenses, sessionExpenses, editing]);
-  const dupText = (d: { amount: number; label: string; at: string }) =>
-    `${formatRp(d.amount)}${d.label ? ` (“${d.label.slice(0, 40)}”)` : ""}, tercatat ${new Date(d.at).toLocaleString("id-ID", {
+  }, [lines, data.recentExpenses, sessionExpenses, editing, date, today]);
+  const dupText = (d: RecentExpense) => {
+    const notaDate =
+      d.date && d.date !== jakartaDateString(new Date(d.at))
+        ? `bertanggal ${new Date(`${d.date}T12:00:00+07:00`).toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short" })}, `
+        : "";
+    return `${formatRp(d.amount)}${d.label ? ` (“${d.label.slice(0, 40)}”)` : ""}, ${notaDate}diinput ${new Date(d.at).toLocaleString("id-ID", {
       timeZone: "Asia/Jakarta",
       day: "numeric",
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
     })}`;
+  };
 
   const missing = !source
     ? "Pilih sumber uang dulu"
@@ -313,6 +327,7 @@ export function PurchaseForm({
         ...lines.map((l) => ({
           amount: l.total,
           at: nowIso,
+          date,
           label: l.kind === "lain" ? l.description : l.material.name,
         })),
       ]);

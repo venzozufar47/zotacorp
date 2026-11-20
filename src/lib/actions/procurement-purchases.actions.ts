@@ -190,11 +190,16 @@ export interface PurchaseMaterialOption {
 /** Pengeluaran cabang dalam 36 jam terakhir — dasar peringatan "nominal ini sudah tercatat". */
 export interface RecentExpense {
   amount: number;
+  /** Waktu pencatatan (kapan diinput). */
   at: string;
+  /** Tanggal nota/pengeluaran (YYYY-MM-DD) — beda dari `at` untuk nota susulan. */
+  date: string;
   label: string;
 }
 
 const RECENT_EXPENSE_HOURS = 36;
+/** Nota susulan bertanggal lampau dibandingkan dengan pengeluaran bertanggal sama: muat tanggal sejauh ini ke belakang. */
+const RECENT_EXPENSE_DATE_DAYS = 31;
 
 /**
  * Debit buku kas cabang (nota pengadaan, pengeluaran shift, catatan manual) + nota Saldo Shopee (tak masuk buku kas)
@@ -202,34 +207,46 @@ const RECENT_EXPENSE_HOURS = 36;
  */
 async function loadRecentExpenses(admin: Admin, businessUnit: string): Promise<RecentExpense[]> {
   const sinceIso = new Date(Date.now() - RECENT_EXPENSE_HOURS * 3_600_000).toISOString();
+  const sinceDate = jakartaDateString(new Date(Date.now() - RECENT_EXPENSE_DATE_DAYS * 86_400_000));
   const out: RecentExpense[] = [];
   const acct = await resolveCashAccount(admin, businessUnit);
   if (acct) {
     const { data: stmts } = await admin.from("cashflow_statements").select("id").eq("bank_account_id", acct.id);
     const ids = (stmts ?? []).map((s) => s.id);
     if (ids.length > 0) {
+      // Dicatat baru-baru ini ATAU bertanggal dalam sebulan terakhir (nota susulan bertanggal lampau).
       const { data } = await admin
         .from("cashflow_transactions")
-        .select("debit, created_at, description, notes, category")
+        .select("debit, created_at, transaction_date, description, notes, category")
         .in("statement_id", ids)
         .gt("debit", 0)
-        .gte("created_at", sinceIso)
+        .or(`created_at.gte.${sinceIso},transaction_date.gte.${sinceDate}`)
         .order("created_at", { ascending: false })
-        .limit(300);
+        .limit(800);
       for (const t of data ?? []) {
-        out.push({ amount: Number(t.debit), at: t.created_at, label: String(t.notes ?? t.description ?? t.category ?? "") });
+        out.push({
+          amount: Number(t.debit),
+          at: t.created_at,
+          date: String(t.transaction_date ?? "").slice(0, 10) || jakartaDateString(new Date(t.created_at)),
+          label: String(t.notes ?? t.description ?? t.category ?? ""),
+        });
       }
     }
   }
   const { data: shopee } = await admin
     .from("procurement_purchases" as never)
-    .select("total, created_at, vendor")
+    .select("total, created_at, purchase_date, vendor")
     .eq("business_unit", businessUnit)
     .eq("money_source", "shopee")
-    .gte("created_at", sinceIso)
-    .limit(100);
+    .or(`created_at.gte.${sinceIso},purchase_date.gte.${sinceDate}`)
+    .limit(200);
   for (const p of (shopee ?? []) as Record<string, unknown>[]) {
-    out.push({ amount: num(p.total), at: String(p.created_at), label: `Nota ${walletLabel(businessUnit)}${p.vendor ? ` · ${p.vendor}` : ""}` });
+    out.push({
+      amount: num(p.total),
+      at: String(p.created_at),
+      date: String(p.purchase_date ?? "").slice(0, 10) || jakartaDateString(new Date(String(p.created_at))),
+      label: `Nota ${walletLabel(businessUnit)}${p.vendor ? ` · ${p.vendor}` : ""}`,
+    });
   }
   return out;
 }
