@@ -16,14 +16,12 @@ import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 function Column({ icon, title, count, children }: { icon: ReactNode; title: string; count: number; children: ReactNode }) {
   return (
     <section className="flex min-h-0 flex-col lg:rounded-2xl lg:border lg:border-border lg:bg-muted/30">
-      <div className="mb-2 flex shrink-0 items-center gap-2 text-foreground lg:mb-0 lg:border-b lg:border-border lg:px-4 lg:py-3">
+      <div className="mb-2 flex shrink-0 items-center gap-2 text-foreground lg:mb-0 lg:border-b lg:border-border lg:px-3 lg:py-2.5">
         {icon}
-        <h2 className="text-sm font-bold">{title}</h2>
-        {count > 0 && (
-          <span className="ml-auto rounded-full bg-foreground px-2 py-0.5 text-[11px] font-bold tabular-nums text-background">{count}</span>
-        )}
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {count > 0 && <span className="ml-auto text-xs font-semibold tabular-nums text-muted-foreground">{count}</span>}
       </div>
-      <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-3">{children}</div>
+      <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-2">{children}</div>
     </section>
   );
 }

@@ -16,7 +16,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, CakeSlice, Loader2, Phone, TriangleAlert, X } from "lucide-react";
+import { Camera, CakeSlice, ChevronDown, Loader2, Phone, TriangleAlert, X } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   markCakePickedUpAtPos,
@@ -38,8 +38,6 @@ import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import type { ReceiptData } from "@/lib/pos/receipt";
 import { cakeReceiptData, receiptBaseFields, type ReceiptContext } from "@/lib/pos/receipt-flow";
 
-const CARD =
-  "rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]";
 const EYEBROW =
   "text-[10px] uppercase tracking-wider text-muted-foreground font-semibold";
 
@@ -107,11 +105,11 @@ export function CakePickupList({
       )}
 
       {pickups.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-          Belum ada kue yang menunggu diambil.
+        <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+          Tidak ada kue yang menunggu diambil.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {pickups.map((o) => (
             <PickupCard
               key={o.id}
@@ -146,80 +144,73 @@ function PickupCard({
   todayWib: string;
   onOpen: () => void;
 }) {
+  // Tingkat 1: nama, jadwal, status bayar, total, tombol Diambil. Tingkat 2 (diketuk): spesifikasi, ucapan, telepon.
+  const [open, setOpen] = useState(false);
   const outstanding = order.remainingIdr > 0;
+  const greeting = order.greetingCard?.trim();
+  const hasDetail = Boolean(specLine(order) || order.dimensionCm || greeting || order.customerPhone);
+  // Status bayar tetap terlihat di tingkat 1: kurang bayar harus terbaca sebelum kue keluar.
+  const status = order.freeClaim ? (
+    <span className="rounded-full bg-tertiary/40 px-1.5 py-px text-[10px] font-semibold text-foreground">Gratis</span>
+  ) : outstanding ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-1.5 py-px text-[10px] font-bold text-destructive">
+      <TriangleAlert size={10} />
+      Kurang {formatRp(order.remainingIdr)}
+    </span>
+  ) : (
+    <span className="rounded-full bg-success/15 px-1.5 py-px text-[10px] font-semibold text-success">Lunas</span>
+  );
   return (
-    <div className={CARD}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className={EYEBROW}>
-            {scheduleLabel(order.scheduledAt, todayWib)}
-          </div>
-          <h3 className="text-base font-bold text-foreground truncate">
-            {order.isReadyStock ? (
-              <span className="mr-1.5 inline-block rounded-full bg-primary/15 px-1.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-primary">
-                Ready{order.isDiy ? " · DIY" : ""}
-              </span>
-            ) : null}
-            {order.customerName}
-          </h3>
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-base font-bold tabular-nums text-foreground">
-            {formatRp(order.totalIdr)}
-          </div>
-        </div>
-      </div>
-
-      <p className="mt-1 text-xs text-muted-foreground">
-        {specLine(order)}
-        {order.dimensionCm ? (
-          <span className="ml-1.5 inline-block rounded-full border border-border px-1.5 text-[10px] font-semibold text-foreground">
-            {order.dimensionCm} cm
-          </span>
-        ) : null}
-      </p>
-
-      {order.greetingCard?.trim() ? (
-        <p className="mt-1.5 text-xs italic text-foreground/80 line-clamp-2">
-          “{order.greetingCard.trim()}”
-        </p>
-      ) : null}
-
-      {order.customerPhone ? (
-        <a
-          href={`tel:${order.customerPhone}`}
-          className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-2"
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-2 p-2.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          disabled={!hasDetail}
+          aria-label={`Rincian kue ${order.customerName}`}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left hover:bg-muted/50 disabled:hover:bg-transparent"
         >
-          <Phone size={12} /> {order.customerPhone}
-        </a>
-      ) : null}
-
-      {/* Status bayar: kurang bayar dibuat mencolok — kasir harus
-          melihatnya sebelum kue keluar, bukan setelah. */}
-      <div className="mt-3">
-        {order.freeClaim ? (
-          <span className="inline-flex items-center rounded-full bg-tertiary/40 border border-foreground px-2 py-0.5 text-[11px] font-semibold">
-            GRATIS (klaim karyawan)
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""} ${hasDetail ? "" : "opacity-30"}`}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              {order.isReadyStock ? (
+                <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-semibold text-primary">Ready{order.isDiy ? " · DIY" : ""}</span>
+              ) : null}
+              <span className="truncate text-sm font-semibold text-foreground">{order.customerName}</span>
+            </span>
+            <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="truncate">{scheduleLabel(order.scheduledAt, todayWib)}</span>
+              {status}
+            </span>
           </span>
-        ) : outstanding ? (
-          <div className="flex items-center gap-1.5 rounded-lg border-2 border-foreground bg-destructive/15 px-2.5 py-1.5 text-[12px] font-bold text-foreground">
-            <TriangleAlert size={13} />
-            KURANG BAYAR {formatRp(order.remainingIdr)}
-          </div>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-pop-emerald/20 border border-foreground px-2 py-0.5 text-[11px] font-semibold">
-            ● LUNAS
-          </span>
-        )}
+          <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatRp(order.totalIdr)}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onOpen}
+          className="inline-flex h-11 shrink-0 items-center rounded-lg bg-primary px-3.5 text-sm font-semibold text-primary-foreground hover:opacity-90 active:opacity-80"
+        >
+          Diambil
+        </button>
       </div>
-
-      <button
-        type="button"
-        onClick={onOpen}
-        className="mt-3 w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
-      >
-        Tandai sudah diambil
-      </button>
+      {open && hasDetail && (
+        <div className="space-y-1.5 border-t border-border px-3.5 py-2.5 text-xs">
+          <p className="text-foreground">
+            {specLine(order)}
+            {order.dimensionCm ? <span className="ml-1.5 rounded-full border border-border px-1.5 text-[10px] font-semibold">{order.dimensionCm} cm</span> : null}
+          </p>
+          {greeting ? <p className="italic text-foreground/80">“{greeting}”</p> : null}
+          {order.customerPhone ? (
+            <a href={`tel:${order.customerPhone}`} className="inline-flex min-h-11 items-center gap-1.5 font-medium text-foreground underline underline-offset-2">
+              <Phone size={13} /> {order.customerPhone}
+            </a>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

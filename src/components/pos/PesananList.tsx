@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Camera,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Loader2,
   MessageCircle,
@@ -81,25 +82,16 @@ export function PesananList({
   const [editId, setEditId] = useState<string | null>(null);
   if (pesanan.length === 0) {
     return (
-      <div className="rounded-2xl border-2 border-dashed border-border bg-muted/30 p-10 text-center">
-        <Clock
-          size={28}
-          className="mx-auto text-muted-foreground"
-          strokeWidth={1.8}
-        />
-        <p className="mt-2 text-sm font-medium text-foreground">
-          Belum ada pesanan tertunda.
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Pesanan yang stok-nya sudah keluar tapi belum dibayar akan
-          tampil di sini.
-        </p>
+      <div className="rounded-xl border border-dashed border-border p-6 text-center">
+        <Clock size={20} className="mx-auto text-muted-foreground" strokeWidth={1.8} />
+        <p className="mt-1.5 text-sm text-foreground">Tidak ada pesanan tertunda.</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">Pesanan yang belum dibayar muncul di sini.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {pesanan.map((p) => (
         <PesananCard
           key={p.id}
@@ -146,73 +138,78 @@ function PesananCard({
   onCancel: () => void;
   onEdit: () => void;
 }) {
-  const fulfillmentLabel =
-    pesanan.fulfillmentType === "dine_in" ? "🍽️ Dine-in" : "🥡 Take-away";
-  const itemsLabel = pesanan.items
-    .map((it) => {
-      const parts = [it.productName];
-      if (it.variantName) parts.push(it.variantName);
-      const sugar = sugarLevelLabel(it.sugarLevel);
-      if (sugar) parts.push(sugar);
-      return `${it.qty}× ${parts.join(" ")}`;
-    })
-    .join(" · ");
+  // Tingkat 1: nama, ringkasan, total, satu tombol Bayar. Tingkat 2 (diketuk): rincian item + Edit/Batal.
+  const [open, setOpen] = useState(false);
+  const lines = pesanan.items.map((it) => {
+    const parts = [it.productName];
+    if (it.variantName) parts.push(it.variantName);
+    const sugar = sugarLevelLabel(it.sugarLevel);
+    if (sugar) parts.push(sugar);
+    return { key: it.id, qty: it.qty, label: parts.join(" ") };
+  });
+  const pcs = lines.reduce((n, l) => n + l.qty, 0);
+  const fulfillment = pesanan.fulfillmentType === "dine_in" ? "Dine-in" : pesanan.fulfillmentType === "take_away" ? "Take-away" : null;
+  const meta = [fulfillment, `${pcs} pcs`, timeAgo(pesanan.pendingAt)].filter(Boolean).join(" · ");
   return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            {timeAgo(pesanan.pendingAt)}
-          </p>
-          <h3 className="mt-0.5 text-lg sm:text-xl font-bold text-foreground">
-            {pesanan.customerName ?? "Tanpa nama"}
-          </h3>
-          {pesanan.fulfillmentType && (
-            <span className="inline-flex items-center mt-1 rounded-full bg-muted/60 border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
-              {fulfillmentLabel}
-            </span>
-          )}
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Total
-          </p>
-          <p className="text-lg sm:text-xl font-bold tabular-nums text-foreground">
-            {formatRp(pesanan.total)}
-          </p>
-        </div>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground truncate">{itemsLabel}</p>
-      <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-2 p-2.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={`Rincian pesanan ${pesanan.customerName ?? "tanpa nama"}`}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left hover:bg-muted/50"
+        >
+          <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-foreground">{pesanan.customerName ?? "Tanpa nama"}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{meta}</span>
+          </span>
+          <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatRp(pesanan.total)}</span>
+        </button>
         <button
           type="button"
           onClick={onOpenSettle}
-          className="h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-2"
+          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-semibold text-primary-foreground hover:opacity-90 active:opacity-80"
         >
-          <CheckCircle2 size={14} />
-          Selesaikan pembayaran
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="h-10 px-3 rounded-xl border border-border bg-card text-foreground text-sm font-semibold inline-flex items-center justify-center gap-1.5 hover:bg-muted"
-          title="Edit isi pesanan — ubah qty, tambah/hapus item."
-          aria-label="Edit pesanan"
-        >
-          <Pencil size={14} />
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-10 px-3 rounded-xl border border-destructive/40 bg-card text-destructive text-sm font-semibold inline-flex items-center justify-center gap-1.5 hover:bg-destructive/10"
-          title="Batalkan pesanan — stok kembali, tidak ada cashflow event."
-          aria-label="Batalkan pesanan"
-        >
-          <Trash2 size={14} />
-          Batal
+          <CheckCircle2 size={15} />
+          Bayar
         </button>
       </div>
+      {open && (
+        <div className="space-y-2 border-t border-border px-3.5 py-2.5">
+          <ul className="space-y-0.5 text-xs text-foreground">
+            {lines.map((l) => (
+              <li key={l.key} className="flex gap-2">
+                <span className="w-9 shrink-0 text-right tabular-nums text-muted-foreground">{l.qty}×</span>
+                <span className="min-w-0">{l.label}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted"
+              title="Ubah jumlah, tambah atau hapus item."
+              aria-label="Edit pesanan"
+            >
+              <Pencil size={14} />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-destructive/40 text-sm font-medium text-destructive hover:bg-destructive/10"
+              title="Stok kembali, tidak ada catatan kas."
+              aria-label="Batalkan pesanan"
+            >
+              <Trash2 size={14} />
+              Batalkan
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
