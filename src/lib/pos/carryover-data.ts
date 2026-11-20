@@ -98,5 +98,7 @@ export async function loadClosingOutstanding(bankAccountId: string): Promise<Clo
       overdue: (h?.count ?? 0) > 0,
     });
   }
+  // Yang paling lama menggantung di atas: itu yang paling perlu ditagih.
+  items.sort((a, b) => b.carriedCount - a.carriedCount || b.ageDays - a.ageDays);
   return { items, pesanan, board };
 }
