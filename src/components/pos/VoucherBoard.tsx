@@ -10,7 +10,7 @@ import { receiptBaseFields, type ReceiptContext } from "@/lib/pos/receipt-flow";
 import { loadReceiptTransport } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 import { concatBytes, voucherReceiptData, VOUCHER_PRINT_BATCH } from "@/lib/pos/voucher-receipt";
-import { settleVoucherSales, type VoucherProduct } from "@/lib/actions/pos-voucher.actions";
+import { recordVoucherPrint, settleVoucherSales, type VoucherProduct } from "@/lib/actions/pos-voucher.actions";
 
 const MAX_PRINT = 500;
 /** Jeda antar kiriman ke printer supaya intent RawBT tidak saling menimpa. */
@@ -52,26 +52,49 @@ export function VoucherBoard({
     const n = qtyFor(p);
     if (n <= 0 || printing) return;
     setPrinting({ id: p.productId, done: 0, total: n });
+    let sent = 0;
+    let printError: string | null = null;
     try {
       const { method } = loadReceiptTransport();
       const one = buildReceiptBytes(voucherReceiptData(receiptBaseFields(receipt), p));
       for (let done = 0; done < n; done += VOUCHER_PRINT_BATCH) {
         const count = Math.min(VOUCHER_PRINT_BATCH, n - done);
         await sendToPrinter(concatBytes(Array.from({ length: count }, () => one)), method);
-        setPrinting({ id: p.productId, done: done + count, total: n });
-        if (done + count < n) await sleep(BATCH_GAP_MS);
+        sent = done + count;
+        setPrinting({ id: p.productId, done: sent, total: n });
+        if (sent < n) await sleep(BATCH_GAP_MS);
       }
-      toast.success(`${n} struk ${p.name} dikirim ke printer`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mencetak");
-    } finally {
-      setPrinting(null);
+      printError = e instanceof Error ? e.message : "Gagal mencetak";
     }
+    // Stok berkurang sebanyak struk yang benar-benar terkirim, seperti pembelian asli.
+    if (sent > 0) {
+      const rec = await recordVoucherPrint({ bankAccountId, productId: p.productId, qty: sent });
+      if (!rec.ok) {
+        toast.error(`${sent} struk sudah tercetak tetapi stok gagal dikurangi: ${rec.error}. Jangan cetak ulang; hubungi admin.`);
+      } else if (printError) {
+        toast.error(`${printError}. ${sent} dari ${n} struk tercetak dan sudah mengurangi stok.`);
+      } else {
+        toast.success(`${sent} struk ${p.name} dicetak, stok berkurang`);
+      }
+      router.refresh();
+    } else if (printError) {
+      toast.error(printError);
+    }
+    setPrinting(null);
   }
 
   const rows = products.map((p) => ({ productId: p.productId, cash: toInt(cash[p.productId] ?? ""), qris: toInt(qris[p.productId] ?? "") }));
   const priceOf = new Map(products.map((p) => [p.productId, p.promoPrice]));
   const totalPcs = rows.reduce((n, r) => n + r.cash + r.qris, 0);
+  const printedTotal = products.reduce((n, p) => n + p.printed, 0);
+  const usedOf = (id: string) => {
+    const r = rows.find((x) => x.productId === id);
+    return r ? r.cash + r.qris : 0;
+  };
+  // Impas = tiap produk: dicetak = cash + qris + sisa (kembali ke stok). Melebihi dicetak = tidak boleh disimpan.
+  const overPrinted = products.some((p) => usedOf(p.productId) > p.printed);
+  const returnedTotal = products.reduce((n, p) => n + Math.max(0, p.printed - usedOf(p.productId)), 0);
   const cashRp = rows.reduce((n, r) => n + r.cash * (priceOf.get(r.productId) ?? 0), 0);
   const qrisRp = rows.reduce((n, r) => n + r.qris * (priceOf.get(r.productId) ?? 0), 0);
 
@@ -83,7 +106,7 @@ export function VoucherBoard({
         setConfirming(false);
         return;
       }
-      toast.success(`Settlement tersimpan: ${res.data.sales} nota`);
+      toast.success(`Settlement tersimpan: ${res.data.sales} nota${res.data.returned > 0 ? `, ${res.data.returned} struk kembali ke stok` : ""}`);
       setCash({});
       setQris({});
       setConfirming(false);
@@ -114,7 +137,7 @@ export function VoucherBoard({
       {step === "cetak" ? (
         <section className="space-y-3" aria-label="Cetak struk voucher">
           <p className="text-xs text-muted-foreground">
-            Satu struk = 1 pcs, sudah berisi harga promo dan tulisan Qris / Cash untuk dicoret kasir. Jumlah awal sama dengan stok tersedia dan hanya bisa dikurangi.
+            Satu struk = 1 pcs, sudah berisi harga promo dan tulisan Qris / Cash untuk dicoret kasir. Mencetak langsung mengurangi stok POS seperti pembelian asli. Jumlah awal sama dengan stok tersedia dan hanya bisa dikurangi.
           </p>
           {products.map((p) => {
             const active = printing?.id === p.productId ? printing : null;
@@ -125,6 +148,7 @@ export function VoucherBoard({
                   <p className="text-base font-bold text-foreground">{p.name}</p>
                   <p className="text-xs tabular-nums text-muted-foreground">
                     {formatRp(p.promoPrice)} · stok {p.onHand}
+                    {p.printed > 0 ? ` · dicetak ${p.printed}` : ""}
                   </p>
                 </div>
                 <div className="mt-3 flex items-end gap-3">
@@ -164,11 +188,19 @@ export function VoucherBoard({
       ) : (
         <section className="space-y-3" aria-label="Settlement voucher">
           <p className="text-xs text-muted-foreground">
-            Isi jumlah voucher yang ditukar per produk. Struk yang tidak terpakai tidak diisi, jadi stoknya tidak berkurang.
+            Isi jumlah voucher yang ditukar per produk. Cash + QRIS tidak boleh melebihi struk yang dicetak; struk tak terpakai kembali ke stok.
           </p>
-          {products.map((p) => (
+          {products.map((p) => {
+            const used = usedOf(p.productId);
+            const sisa = p.printed - used;
+            return (
             <div key={p.productId} className="rounded-2xl border-2 border-border bg-card p-4">
-              <p className="text-base font-bold text-foreground">{p.name}</p>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-base font-bold text-foreground">{p.name}</p>
+                <p className={`text-xs tabular-nums ${sisa < 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                  dicetak {p.printed} · terpakai {used} · {sisa < 0 ? `lebih ${-sisa}` : `sisa ${sisa}`}
+                </p>
+              </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <label className="text-xs font-medium text-muted-foreground">
                   Cash
@@ -200,7 +232,8 @@ export function VoucherBoard({
                 </label>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           <div className="rounded-2xl bg-muted p-4 text-sm tabular-nums" aria-live="polite">
             <div className="flex justify-between text-muted-foreground">
@@ -215,11 +248,19 @@ export function VoucherBoard({
               <span>{totalPcs} voucher</span>
               <span>{formatRp(cashRp + qrisRp)}</span>
             </div>
+            <div className={`mt-1 flex justify-between text-xs ${overPrinted ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+              <span>
+                Dicetak {printedTotal} = terpakai {totalPcs} + sisa {returnedTotal}
+              </span>
+              <span>{overPrinted ? "Tidak impas" : "Impas"}</span>
+            </div>
           </div>
 
           {confirming ? (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Stok dan kas langsung tercatat dan tidak bisa diulang dari layar ini. Yakin angkanya sudah benar?</p>
+              <p className="text-xs text-muted-foreground">
+                Kas tercatat dan {returnedTotal} struk tak terpakai kembali ke stok. Tidak bisa diulang dari layar ini. Yakin angkanya sudah benar?
+              </p>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -244,7 +285,7 @@ export function VoucherBoard({
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              disabled={totalPcs <= 0}
+              disabled={printedTotal <= 0 || overPrinted}
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               <Check size={18} /> Simpan settlement
