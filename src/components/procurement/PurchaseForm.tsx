@@ -28,7 +28,7 @@ import { PURCHASE_UNITS } from "@/lib/costing/unit-options";
 import { parseMoneyId } from "@/lib/utils/parse-number";
 import { NumberHint } from "@/components/shared/NumberHint";
 import { formatRp } from "@/lib/cashflow/format";
-import { compressImageStrict } from "@/lib/images/compress-image";
+import { compressImageStrict, MAX_EDGE_DOCUMENT } from "@/lib/images/compress-image";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { parseDecimalId } from "@/components/admin/costing/fields";
 import { MATERIAL_CATEGORIES, suggestMaterialCategory } from "@/lib/procurement/material-category";
@@ -267,7 +267,7 @@ export function PurchaseForm({
     if (viaGallery && source !== "shopee") return void toast.error(`Galeri hanya untuk belanja lewat ${walletLabel(businessUnit)}. Ambil foto langsung.`);
     setUploading(true);
     try {
-      const small = await compressImageStrict(file, { maxDim: 1600 });
+      const small = await compressImageStrict(file, { maxDim: MAX_EDGE_DOCUMENT });
       const form = new FormData();
       form.set("businessUnit", businessUnit);
       form.set("file", small);

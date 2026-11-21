@@ -897,17 +897,15 @@ async function createPurchaseImpl(
 
   const srcBucket = keepReceipt ? RECEIPT_BUCKET : TMP_BUCKET;
   const srcPath = keepReceipt ? (old!.head.receipt_path as string) : input.receiptPath;
-  const { data: blob, error: dlErr } = await admin.storage.from(srcBucket).download(srcPath);
-  if (dlErr || !blob) return { ok: false, error: "Foto nota tidak ditemukan — ambil ulang fotonya" };
-  const bytes = Buffer.from(await blob.arrayBuffer());
   const ext = srcPath.split(".").pop() ?? "jpg";
-  const contentType = blob.type || "image/jpeg";
+  // Salinan dibuat di sisi Storage (tanpa mengunduh foto ke server): setiap simpan/edit nota dulu
+  // mengunduh foto penuh lalu mengunggahnya N+1 kali, dan unduhan itulah yang membebani egress.
   const upload = async (path: string) =>
-    admin.storage.from(RECEIPT_BUCKET).upload(path, bytes, { contentType, upsert: true });
+    admin.storage.from(srcBucket).copy(srcPath, path, { destinationBucket: RECEIPT_BUCKET });
 
   const mainPath = `${acct.id}/purchase-${purchaseId}/${Date.now()}.${ext}`;
   const up0 = await upload(mainPath);
-  if (up0.error) return { ok: false, error: up0.error.message };
+  if (up0.error) return { ok: false, error: "Foto nota tidak ditemukan — ambil ulang fotonya" };
   created.filePaths.push(mainPath);
 
   if (old) {
