@@ -15,6 +15,7 @@ import { verifyPin } from "@/lib/pos-pin";
 import { isValidPinFormat } from "@/lib/pos-pin-format";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { accountIdsSharingLedger } from "@/lib/pos/ledger";
+import { drawerTransferNet } from "@/lib/procurement/pocket-transfers";
 import { netCash, type CashMovement, type IncidentalReport } from "@/lib/pos/shift-math";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -185,6 +186,10 @@ export async function cashMovementInWindow(
     );
     lateRefunds = refunded.reduce((sum, r) => sum + Number(r.total), 0);
   }
+  // Uang yang dipindahkan petugas pengadaan dari/ke laci (tanpa baris buku kas) ikut menggerakkan isi laci.
+  const moved = await drawerTransferNet(admin, bankAccountId, fromIso, toIso);
+  credits += moved.into;
+  debits += moved.out;
   return { credits, debits, lateRefunds };
 }
 

@@ -22,6 +22,12 @@ import {
   type PosAuthorizerMap,
 } from "@/lib/pos-pin-format";
 import {
+  isOpnameReason,
+  reasonAllowedFor,
+  type OpnameDiffDirection,
+  type OpnameDiffReason,
+} from "@/lib/pos/opname-reasons";
+import {
   isWithdrawalReason,
   WITHDRAWAL_REASON_META,
   type WithdrawalReason,
@@ -105,6 +111,10 @@ export interface StockOpnameItemDetail {
   expectedCount: number;
   diffQty: number;
   diffValue: number;
+  /** Alasan selisih yang dipilih kasir; null = tanpa selisih / opname lama. */
+  diffReason: OpnameDiffReason | null;
+  /** Pasangan produk untuk alasan "tertukar". */
+  diffSwapLabel: string | null;
 }
 
 export interface StockOpnameDetail {
@@ -272,9 +282,22 @@ export async function getStockOpname(
   const { data: items } = await supabase
     .from("pos_stock_opname_items")
     .select(
-      "product_id, variant_id, product_name_snapshot, variant_name_snapshot, unit_price_snapshot, physical_count, expected_count"
+      "product_id, variant_id, product_name_snapshot, variant_name_snapshot, unit_price_snapshot, physical_count, expected_count, diff_reason, diff_swap_label"
     )
-    .eq("opname_id", opnameId);
+    .eq("opname_id", opnameId)
+    .returns<
+      Array<{
+        product_id: string;
+        variant_id: string | null;
+        product_name_snapshot: string;
+        variant_name_snapshot: string | null;
+        unit_price_snapshot: number;
+        physical_count: number;
+        expected_count: number;
+        diff_reason: string | null;
+        diff_swap_label: string | null;
+      }>
+    >();
 
   const detailItems: StockOpnameItemDetail[] = (items ?? []).map((it) => {
     const diffQty = it.physical_count - it.expected_count;
@@ -289,6 +312,8 @@ export async function getStockOpname(
       expectedCount: it.expected_count,
       diffQty,
       diffValue: diffQty * price,
+      diffReason: isOpnameReason(it.diff_reason) ? it.diff_reason : null,
+      diffSwapLabel: it.diff_swap_label,
     };
   });
 
@@ -525,22 +550,28 @@ export async function deleteStockMovement(input: {
   return { ok: true, data: { id: input.movementId } };
 }
 
-export type OpnameDiscrepancyKind = "shortfall" | "surplus";
-
-/** SKU yang selisih — nama saja, tanpa qty, supaya blind-count tetap utuh. */
+/** SKU yang selisih: nama dan arah saja, tanpa qty, supaya blind-count tetap utuh. */
 export interface OpnameDiscrepancySku {
+  productId: string;
+  variantId: string | null;
   productName: string;
   variantName: string | null;
+  direction: OpnameDiffDirection;
 }
 
 export interface OpnameDiscrepancyResult {
-  kind: OpnameDiscrepancyKind;
-  /** SKU yang perlu dihitung ulang. */
+  /** SKU yang selisih, lengkap dengan arahnya (kurang/lebih). */
   skus: OpnameDiscrepancySku[];
-  /** Total nilai Rp shortfall (untuk kind="shortfall"). Surplus
-   *  return 0 — kami tidak reveal nominal supaya tidak silently
-   *  menutupi error produksi yang belum tercatat. */
+  /** Total nilai Rp dari SKU yang kurang (dasar tawaran "bayar selisih"). */
   shortfallValue: number;
+}
+
+/** Penjelasan kasir untuk satu SKU yang selisih. `swapWith` wajib bila reason = tertukar. */
+export interface OpnameResolutionInput {
+  productId: string;
+  variantId?: string | null;
+  reason: OpnameDiffReason;
+  swapWith?: { productId: string; variantId?: string | null };
 }
 
 export async function createStockOpname(input: {
@@ -558,15 +589,13 @@ export async function createStockOpname(input: {
    * mengopname — tidak harus authorizer opname. Menggantikan `pin` di atas. Dicatat di `performed_by`.
    */
   shiftCashier?: { userId: string; pin: string };
-  /** Set true setelah admin/kasir konfirmasi modal discrepancy.
-   *  Tanpa flag ini, opname dengan selisih akan ditolak supaya
-   *  kasir tidak sembarangan commit selisih. */
+  /** Set true setelah kasir menjelaskan selisih di dialog. Tanpa flag ini, opname dengan selisih dikembalikan
+   *  ke klien (ok:true + discrepancy) supaya kasir menjelaskan tiap SKU yang selisih. */
   allowDiscrepancy?: boolean;
-  /** Set true bersama allowDiscrepancy untuk shortfall — insert
-   *  cashflow_transactions di rekening Cash sale (credit =
-   *  shortfallValue, category Penyesuaian) sebagai pembayaran
-   *  selisih oleh kasir. */
-  payShortfallCash?: boolean;
+  /** Alasan per SKU yang selisih — wajib lengkap bila allowDiscrepancy. Selisih tetap terhitung apa adanya
+   *  (stok seharusnya mulai dari hitungan ini); alasan hanya dicatat untuk ditinjau superadmin. SKU ber-alasan
+   *  `bayar_selisih` menambah kredit "Penyesuaian" ke buku kas sebesar nilai selisihnya. */
+  resolutions?: OpnameResolutionInput[];
 }): Promise<
   ActionResult<{
     opnameId?: string;
@@ -674,55 +703,61 @@ export async function createStockOpname(input: {
     aggregateProductIds
   );
 
-  // Hitung selisih per SKU. Surplus = phisik > expected (mungkin
-  // produksi belum tercatat). Shortfall = fisik < expected (loss /
-  // ada hilang). Modal client menampilkan ringkasan minimal.
+  // Hitung selisih per SKU. lebih = fisik > seharusnya (mungkin produksi belum tercatat); kurang = fisik <
+  // seharusnya (hilang / salah beri / penarikan lupa dicatat).
+  const diffs: Array<{ index: number; qty: number; direction: OpnameDiffDirection; detail: OpnameDiscrepancySku }> = [];
   let shortfallValue = 0;
-  let hasShortfall = false;
-  let hasSurplus = false;
-  const shortfallSkus: OpnameDiscrepancySku[] = [];
-  const surplusSkus: OpnameDiscrepancySku[] = [];
   for (let i = 0; i < input.items.length; i++) {
     const it = input.items[i];
     const sku = skus[i];
     const exp = expected.get(skuKey(it.productId, it.variantId ?? null)) ?? 0;
     const diff = it.physicalCount - exp;
-    const label = { productName: sku.productName, variantName: sku.variantName };
     // Gate berbasis QTY, bukan nilai Rp: SKU berharga 0 (mis. Croissant)
     // punya selisih nilai 0 sehingga dulu lolos tanpa gate.
-    if (diff < 0) {
-      hasShortfall = true;
-      shortfallValue += -diff * sku.unitPrice;
-      shortfallSkus.push(label);
-    } else if (diff > 0) {
-      hasSurplus = true;
-      surplusSkus.push(label);
+    if (diff === 0) continue;
+    const direction: OpnameDiffDirection = diff < 0 ? "kurang" : "lebih";
+    if (diff < 0) shortfallValue += -diff * sku.unitPrice;
+    diffs.push({
+      index: i,
+      qty: diff,
+      direction,
+      detail: {
+        productId: it.productId,
+        variantId: it.variantId ?? null,
+        productName: sku.productName,
+        variantName: sku.variantName,
+        direction,
+      },
+    });
+  }
+
+  // Ada selisih dan kasir belum menjelaskan → kembalikan ke klien (ok:true: gate konfirmasi, bukan kegagalan).
+  // Hanya nama + arah yang dikirim, bukan qty, supaya blind-count tetap utuh.
+  if (diffs.length > 0 && !input.allowDiscrepancy) {
+    return { ok: true, data: { discrepancy: { skus: diffs.map((d) => d.detail), shortfallValue } } };
+  }
+
+  // Tiap SKU yang selisih wajib punya alasan yang sah untuk arahnya; "tertukar" wajib menunjuk pasangan di arah
+  // berlawanan. Alasan dicatat di baris opname untuk ditinjau superadmin.
+  const labelOf = (d: OpnameDiscrepancySku) => (d.variantName ? `${d.productName} · ${d.variantName}` : d.productName);
+  const diffBySku = new Map(diffs.map((d) => [skuKey(d.detail.productId, d.detail.variantId), d]));
+  const reasonByIndex = new Map<number, { reason: OpnameDiffReason; swapLabel: string | null }>();
+  let payValue = 0;
+  for (const d of diffs) {
+    const r = (input.resolutions ?? []).find(
+      (x) => skuKey(x.productId, x.variantId ?? null) === skuKey(d.detail.productId, d.detail.variantId)
+    );
+    if (!r || !isOpnameReason(r.reason) || !reasonAllowedFor(r.reason, d.direction))
+      return { ok: false, error: `Alasan selisih ${labelOf(d.detail)} belum dipilih` };
+    let swapLabel: string | null = null;
+    if (r.reason === "tertukar") {
+      const partner = r.swapWith ? diffBySku.get(skuKey(r.swapWith.productId, r.swapWith.variantId ?? null)) : undefined;
+      if (!partner || partner.direction === d.direction)
+        return { ok: false, error: `Pilih produk pasangan yang tertukar untuk ${labelOf(d.detail)}` };
+      swapLabel = labelOf(partner.detail);
     }
-  }
-
-  // Surplus jangan tutupi error produksi — paksa kasir hitung ulang
-  // tanpa opsi bayar. Tidak reveal nilai supaya admin tidak bisa
-  // back-compute expected count.
-  if (hasSurplus && !input.allowDiscrepancy) {
-    // ok:true + discrepancy supaya klien bisa render modal khusus;
-    // bukan error karena ini gate-konfirmasi, bukan kegagalan.
-    return {
-      ok: true,
-      data: {
-        discrepancy: { kind: "surplus", shortfallValue: 0, skus: surplusSkus },
-      },
-    };
-  }
-
-  // Shortfall → blok submit kecuali user explicit konfirmasi via
-  // modal "Bayar selisih" / "Hitung ulang".
-  if (hasShortfall && !input.allowDiscrepancy) {
-    return {
-      ok: true,
-      data: {
-        discrepancy: { kind: "shortfall", shortfallValue, skus: shortfallSkus },
-      },
-    };
+    if (r.reason === "bayar_selisih") payValue += -d.qty * skus[d.index].unitPrice;
+    reasonByIndex.set(d.index, { reason: r.reason, swapLabel });
   }
 
   // Insert header.
@@ -752,11 +787,13 @@ export async function createStockOpname(input: {
       unit_price_snapshot: sku.unitPrice,
       physical_count: it.physicalCount,
       expected_count: expected.get(skuKey(it.productId, it.variantId ?? null)) ?? 0,
+      diff_reason: reasonByIndex.get(i)?.reason ?? null,
+      diff_swap_label: reasonByIndex.get(i)?.swapLabel ?? null,
     };
   });
   const { error: itemErr } = await supabase
     .from("pos_stock_opname_items")
-    .insert(itemRows);
+    .insert(itemRows as never);
   if (itemErr) {
     // Best-effort rollback supaya header tidak orphan.
     await supabase.from("pos_stock_opnames").delete().eq("id", header.id);
@@ -767,7 +804,7 @@ export async function createStockOpname(input: {
   // rekening sale (yang biasanya rekening cash POS) supaya saldo
   // kas fisik bertambah sesuai uang yang kasir setor. Category
   // "Penyesuaian" — standar untuk koreksi cash drawer.
-  if (input.payShortfallCash && shortfallValue > 0) {
+  if (payValue > 0) {
     const opnameDate = jakartaDateString(now);
     const opnameTime = jakartaHHMM(now);
     const [yStr, mStr] = opnameDate.split("-");
@@ -823,9 +860,9 @@ export async function createStockOpname(input: {
         statement_id: statementId,
         transaction_date: opnameDate,
         transaction_time: opnameTime,
-        description: `POS Opname Selisih: bayar selisih Rp ${shortfallValue.toLocaleString("id-ID")}`,
+        description: `POS Opname Selisih: bayar selisih Rp ${payValue.toLocaleString("id-ID")}`,
         debit: 0,
-        credit: shortfallValue,
+        credit: payValue,
         running_balance: null,
         category: "Penyesuaian",
         branch: account?.default_branch ?? "Pare",

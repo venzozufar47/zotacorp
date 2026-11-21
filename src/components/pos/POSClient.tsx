@@ -49,6 +49,7 @@ import {
   type PosSaleItemInput,
 } from "@/lib/actions/pos.actions";
 import { useRouter } from "next/navigation";
+import { POS_CASH_CHANGED_EVENT } from "./PosDrawerChip";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import {
@@ -850,6 +851,7 @@ export function POSClient({
           return;
         }
       }
+      if (method === "cash") window.dispatchEvent(new Event(POS_CASH_CHANGED_EVENT));
       const methodLabel =
         method === "pending"
           ? "Pesanan"

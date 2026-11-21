@@ -15,6 +15,7 @@ import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import {
   buildIncidentalReport,
   cashMovementInWindow,
+  currentDrawerCash,
   findOpenShift,
   lastClosedShift,
   listShiftCashiers,
@@ -132,6 +133,30 @@ export async function getOpeningBriefing(
     .filter((i) => i.carriedCount > 0 && i.lastReason)
     .map((i) => ({ kind: i.kind, label: i.label, amount: i.amount, count: i.carriedCount, reason: i.lastReason as string, note: i.lastNote }));
   return { ok: true, data: { report, carried, hasContent: incidentalReportHasContent(report) || carried.length > 0 } };
+}
+
+/**
+ * Isi laci kasir SEKARANG untuk chip di layar utama POS (dibaca ulang tiap beberapa saat dan setelah penjualan).
+ * balance null = belum ada pembanding (belum pernah ada hitungan tutup shift).
+ */
+export async function getDrawerNow(
+  bankAccountId: string
+): Promise<ActionResult<{ balance: number | null; float: number; state: "open" | "closed" | "unknown" }>> {
+  const access = await requireShiftAccess(bankAccountId);
+  if (!access.ok) return { ok: false, error: access.error };
+  const admin = createAdminClient();
+  try {
+    const [now, { data: acct }] = await Promise.all([
+      currentDrawerCash(admin, bankAccountId),
+      admin.from("bank_accounts").select("drawer_float").eq("id", bankAccountId).maybeSingle(),
+    ]);
+    return {
+      ok: true,
+      data: { balance: now.balance, float: Number(acct?.drawer_float ?? 300_000), state: now.state },
+    };
+  } catch {
+    return { ok: false, error: "Gagal menghitung isi laci" };
+  }
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { exitIncidentalSession, forceCloseShift } from "@/lib/actions/pos-shift.actions";
+import { PosDrawerChip } from "./PosDrawerChip";
 import { PosShiftWizard } from "./PosShiftWizard";
 import { PosRefreshButton, PosTopbarMenu } from "./PosTopbarMenu";
 import { usePosTopbarActions } from "./pos-topbar-context";
@@ -95,6 +96,7 @@ export function PosShiftControls({
         {cashier?.name}
         {openedAtLabel ? <span className="hidden md:inline"> · {openedAtLabel}</span> : null}
       </span>
+      <PosDrawerChip bankAccountId={bankAccountId} />
       <PosRefreshButton />
       {/* Aksi jarang/berisiko dilipat ke menu. Pengeluaran uang laci: dicatat di Pengadaan & Pengeluaran
           (sumber uang: laci kasir). */}

@@ -4,7 +4,7 @@
  * Posisi uang tunai cabang Haengbocake: ISI LACI KASIR dan UANG PENGADAAN (yang dibawa petugas, di luar laci).
  *
  * Uang pengadaan TIDAK dicatat sendiri — diturunkan dari buku, jadi tidak ada angka yang bisa lupa diisi:
- *     uang pengadaan  =  saldo buku kas cabang  −  isi laci kasir sekarang
+ *     uang pengadaan  =  saldo buku kas cabang  −  isi laci kasir sekarang  −  uang yang dipindah ke dompet
  * Isi laci sudah mencakup pemasukan tunai yang belum diambil. "Uang diambil" saat tutup shift hanya memindahkan uang
  * dari laci ke tangan pengadaan, jadi saldo buku tidak berubah; buku baru berkurang saat nota belanja dicatat.
  * Saldo negatif = isi laci lebih besar dari buku: ada pemasukan tunai yang belum masuk buku atau pengeluaran ganda.
@@ -17,6 +17,7 @@ import { currentDrawerCash, type DrawerCashNow } from "@/lib/pos/shift-data";
 import { computeLatestBalance } from "@/lib/cashflow/balance";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { walletTransferNet } from "@/lib/procurement/pocket-transfers";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -24,6 +25,8 @@ const HAENGBOCAKE_BRANDS = ["Haengbocake Pare", "Haengbocake Semarang"] as const
 
 export interface CashPosition {
   businessUnit: string;
+  /** Rekening kas cabang (kunci jendela laci). */
+  accountId: string;
   /** Uang pengadaan = saldo buku − isi laci. null bila isi laci belum diketahui (belum ada hitungan tutup shift). */
   procurementBalance: number | null;
   /** Saldo kas di buku (Keuangan), tanpa QRIS. Hanya diisi untuk owner. */
@@ -85,9 +88,10 @@ async function ledgerCashBalance(admin: Admin, accountId: string): Promise<numbe
 async function buildPosition(admin: Admin, businessUnit: string, withBook: boolean): Promise<CashPosition | null> {
   const acct = await resolveAccount(admin, businessUnit);
   if (!acct) return null;
-  const [drawer, book, { data: lastW }] = await Promise.all([
+  const [drawer, book, walletMoved, { data: lastW }] = await Promise.all([
     currentDrawerCash(admin, acct.id),
     ledgerCashBalance(admin, acct.id),
+    walletTransferNet(admin, businessUnit),
     admin
       .from("pos_shifts")
       .select("closed_at, close_cash_withdrawn")
@@ -100,7 +104,9 @@ async function buildPosition(admin: Admin, businessUnit: string, withBook: boole
   ]);
   return {
     businessUnit,
-    procurementBalance: drawer.balance === null ? null : Math.round(book - drawer.balance),
+    // Uang yang sudah dipindah ke dompet (Shopee/Seabank) tidak ada di buku kas, jadi dikurangkan juga.
+    procurementBalance: drawer.balance === null ? null : Math.round(book - drawer.balance - walletMoved),
+    accountId: acct.id,
     bookBalance: withBook ? book : null,
     lastWithdrawal:
       lastW?.closed_at && Number(lastW.close_cash_withdrawn) > 0

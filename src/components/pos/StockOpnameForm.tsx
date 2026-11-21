@@ -7,9 +7,15 @@ import { ArrowLeft, Check, ClipboardCheck, Plus, X } from "lucide-react";
 import { stockGroupLabel, stockGroupRank } from "@/lib/pos/stock-groups";
 import { toast } from "sonner";
 import type {
-  OpnameDiscrepancySku,
+  OpnameDiscrepancyResult,
   OpnameFormSku,
+  OpnameResolutionInput,
 } from "@/lib/actions/pos-stock.actions";
+import {
+  OPNAME_REASON_LABEL,
+  OPNAME_REASONS_BY_DIRECTION,
+  type OpnameDiffReason,
+} from "@/lib/pos/opname-reasons";
 import { createStockOpname } from "@/lib/actions/pos-stock.actions";
 import {
   authorizerNames,
@@ -164,16 +170,12 @@ export function StockOpnameForm({
   // (shortfall = bayar selisih, surplus = paksa hitung ulang). PIN
   // sudah lulus saat modal muncul, jadi follow-up call (Bayar
   // selisih) tidak butuh PIN lagi.
-  const [discrepancy, setDiscrepancy] = useState<
-    | { kind: "shortfall"; shortfallValue: number; skus: OpnameDiscrepancySku[] }
-    | { kind: "surplus"; skus: OpnameDiscrepancySku[] }
-    | null
-  >(null);
+  const [discrepancy, setDiscrepancy] = useState<OpnameDiscrepancyResult | null>(null);
   const [resolvedPin, setResolvedPin] = useState<string | undefined>(undefined);
 
   function submitWithPin(
     pin: string | undefined,
-    opts?: { allowDiscrepancy?: boolean; payShortfallCash?: boolean }
+    opts?: { allowDiscrepancy?: boolean; resolutions?: OpnameResolutionInput[] }
   ) {
     startTransition(async () => {
       const res = await createStockOpname({
@@ -183,7 +185,7 @@ export function StockOpnameForm({
         pin,
         shiftCashier: shift ? { userId: shift.cashierId, pin: shift.pin } : undefined,
         allowDiscrepancy: opts?.allowDiscrepancy,
-        payShortfallCash: opts?.payShortfallCash,
+        resolutions: opts?.resolutions,
       });
       if (!res.ok) {
         if (pin !== undefined) setPinError(res.error);
@@ -194,15 +196,7 @@ export function StockOpnameForm({
       if (res.data?.discrepancy) {
         setResolvedPin(pin);
         setPinOpen(false);
-        if (res.data.discrepancy.kind === "shortfall") {
-          setDiscrepancy({
-            kind: "shortfall",
-            shortfallValue: res.data.discrepancy.shortfallValue,
-            skus: res.data.discrepancy.skus,
-          });
-        } else {
-          setDiscrepancy({ kind: "surplus", skus: res.data.discrepancy.skus });
-        }
+        setDiscrepancy(res.data.discrepancy);
         return;
       }
       toast.success("Opname tersimpan");
@@ -467,16 +461,8 @@ export function StockOpnameForm({
         <OpnameDiscrepancyDialog
           discrepancy={discrepancy}
           pending={pending}
-          onPayShortfall={() => {
-            if (discrepancy.kind !== "shortfall") return;
-            submitWithPin(resolvedPin, {
-              allowDiscrepancy: true,
-              payShortfallCash: true,
-            });
-          }}
-          onRecount={() => {
-            setDiscrepancy(null);
-          }}
+          onSave={(resolutions) => submitWithPin(resolvedPin, { allowDiscrepancy: true, resolutions })}
+          onRecount={() => setDiscrepancy(null)}
         />
       )}
     </div>
@@ -484,87 +470,152 @@ export function StockOpnameForm({
 }
 
 /**
- * Modal konfirmasi selisih opname. Menampilkan NAMA SKU yang selisih,
- * tapi sengaja tidak expected_count / qty selisih per SKU — hanya total Rp shortfall —
- * supaya blind-count invariant tetap utuh.
+ * Dialog selisih opname: kasir menjelaskan tiap SKU yang selisih di tempat, tanpa kembali ke POS untuk mencatat
+ * penarikan / penjualan susulan. Hanya nama dan arah (kurang/lebih) yang tampil, bukan jumlahnya — hitungan buta
+ * tetap utuh; sistem sendiri yang menyimpan selisih persisnya. Alasan dicatat untuk ditinjau superadmin.
  */
 function OpnameDiscrepancyDialog({
   discrepancy,
   pending,
-  onPayShortfall,
+  onSave,
   onRecount,
 }: {
-  discrepancy:
-    | { kind: "shortfall"; shortfallValue: number; skus: OpnameDiscrepancySku[] }
-    | { kind: "surplus"; skus: OpnameDiscrepancySku[] };
+  discrepancy: OpnameDiscrepancyResult;
   pending: boolean;
-  onPayShortfall: () => void;
+  onSave: (resolutions: OpnameResolutionInput[]) => void;
   onRecount: () => void;
 }) {
-  const isShortfall = discrepancy.kind === "shortfall";
+  const keyOf = (s: { productId: string; variantId: string | null }) => `${s.productId}|${s.variantId ?? "-"}`;
+  const labelOf = (s: OpnameDiscrepancyResult["skus"][number]) =>
+    s.variantName ? `${s.productName} · ${s.variantName}` : s.productName;
+  const [picked, setPicked] = useState<Record<string, { reason?: OpnameDiffReason; swap?: string }>>({});
+
+  const byKey = new Map(discrepancy.skus.map((s) => [keyOf(s), s]));
+
+  function setReason(sku: OpnameDiscrepancyResult["skus"][number], reason: OpnameDiffReason | "") {
+    setPicked((prev) => ({ ...prev, [keyOf(sku)]: reason ? { reason } : {} }));
+  }
+  function setSwap(sku: OpnameDiscrepancyResult["skus"][number], partnerKey: string) {
+    setPicked((prev) => {
+      const next = { ...prev, [keyOf(sku)]: { reason: "tertukar" as const, swap: partnerKey || undefined } };
+      // Pasangan ikut ditandai tertukar dengan SKU ini bila belum punya alasan, supaya cukup memilih sekali.
+      if (partnerKey && !prev[partnerKey]?.reason) next[partnerKey] = { reason: "tertukar", swap: keyOf(sku) };
+      return next;
+    });
+  }
+
+  const complete = discrepancy.skus.every((s) => {
+    const p = picked[keyOf(s)];
+    if (!p?.reason) return false;
+    if (p.reason !== "tertukar") return true;
+    const partner = p.swap ? byKey.get(p.swap) : undefined;
+    return !!partner && partner.direction !== s.direction;
+  });
+  const missing = discrepancy.skus.filter((s) => !picked[keyOf(s)]?.reason).length;
+
+  function save() {
+    onSave(
+      discrepancy.skus.map((s) => {
+        const p = picked[keyOf(s)];
+        const partner = p?.swap ? byKey.get(p.swap) : undefined;
+        return {
+          productId: s.productId,
+          variantId: s.variantId,
+          reason: p!.reason!,
+          swapWith: p?.reason === "tertukar" && partner ? { productId: partner.productId, variantId: partner.variantId } : undefined,
+        };
+      })
+    );
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={() => !pending && onRecount()}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-card border-2 border-foreground shadow-[4px_4px_0_0_var(--foreground)] p-5 space-y-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Jelaskan selisih stok"
+        className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-t-2xl border-2 border-foreground bg-card p-4 shadow-[4px_4px_0_0_var(--foreground)] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-destructive font-semibold">
-            Ada selisih stok
-          </p>
-          <h2 className="mt-1 text-lg font-bold text-foreground">
-            {isShortfall
-              ? "Stok fisik kurang dari seharusnya"
-              : "Stok fisik lebih dari seharusnya"}
-          </h2>
-          {isShortfall && discrepancy.shortfallValue > 0 && (
-            <p className="mt-2 text-sm text-foreground">
-              Total nilai selisih:{" "}
-              <strong className="tabular-nums">
-                Rp {discrepancy.shortfallValue.toLocaleString("id-ID")}
-              </strong>
-            </p>
-          )}
-          <p className="mt-3 text-xs font-medium text-foreground">
-            SKU yang selisih — hitung ulang yang ini:
-          </p>
-          <ul className="mt-1 space-y-0.5 text-sm text-foreground">
-            {discrepancy.skus.map((s) => (
-              <li key={`${s.productName}-${s.variantName ?? ""}`}>
-                • {s.productName}
-                {s.variantName ? ` (${s.variantName})` : ""}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-            {isShortfall
-              ? "Pilih: (1) bayar selisih agar opname tetap tersimpan dan saldo kas bertambah sesuai uang yang disetor, atau (2) hitung ulang stok fisik untuk verifikasi."
-              : "Kemungkinan ada produksi/penerimaan stok yang belum tercatat. Sistem tidak mengizinkan auto-commit selisih surplus — mohon hitung ulang dan/atau cek log produksi."}
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-destructive">Ada selisih stok</p>
+          <h2 className="mt-0.5 text-base font-bold text-foreground">Jelaskan tiap produk yang selisih</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Pilih penyebabnya di sini; tidak perlu kembali ke POS. Superadmin bisa meninjau alasan ini.
           </p>
         </div>
 
-        <div className="flex flex-col gap-2">
-          {isShortfall && (
-            <button
-              type="button"
-              onClick={onPayShortfall}
-              disabled={pending}
-              className="w-full h-11 rounded-xl bg-success text-white font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {pending && (
-                <span className="size-4 border-2 border-white border-r-transparent rounded-full animate-spin" />
-              )}
-              {discrepancy.shortfallValue > 0 ? "Bayar selisih" : "Catat selisih"}
-            </button>
-          )}
+        <ul className="-mx-1 mt-3 flex-1 space-y-2 overflow-y-auto px-1">
+          {discrepancy.skus.map((s) => {
+            const k = keyOf(s);
+            const p = picked[k];
+            const partners = discrepancy.skus.filter((o) => o.direction !== s.direction);
+            const reasons = OPNAME_REASONS_BY_DIRECTION[s.direction];
+            return (
+              <li key={k} className="space-y-1.5 rounded-xl border border-border bg-background/40 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-sm font-medium text-foreground">{labelOf(s)}</span>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      s.direction === "kurang" ? "bg-destructive/10 text-destructive" : "bg-warning/15 text-warning"
+                    }`}
+                  >
+                    {s.direction === "kurang" ? "Kurang" : "Lebih"}
+                  </span>
+                </div>
+                <select
+                  value={p?.reason ?? ""}
+                  onChange={(e) => setReason(s, e.target.value as OpnameDiffReason | "")}
+                  aria-label={`Penyebab selisih ${labelOf(s)}`}
+                  className="h-11 w-full rounded-lg border border-border bg-background px-2 text-sm"
+                >
+                  <option value="">Pilih penyebab…</option>
+                  {reasons
+                    .filter((r) => r !== "tertukar" || partners.length > 0)
+                    .map((r) => (
+                      <option key={r} value={r}>
+                        {OPNAME_REASON_LABEL[r]}
+                      </option>
+                    ))}
+                </select>
+                {p?.reason === "tertukar" && (
+                  <select
+                    value={p.swap ?? ""}
+                    onChange={(e) => setSwap(s, e.target.value)}
+                    aria-label={`Tertukar dengan produk apa (${labelOf(s)})`}
+                    className="h-11 w-full rounded-lg border border-border bg-background px-2 text-sm"
+                  >
+                    <option value="">{s.direction === "kurang" ? "Yang diberikan malah…" : "Yang seharusnya diberikan…"}</option>
+                    {partners.map((o) => (
+                      <option key={keyOf(o)} value={keyOf(o)}>
+                        {labelOf(o)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-3 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={pending || !complete}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {pending && <span className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />}
+            {complete ? "Simpan opname" : `${missing || "Lengkapi"} ${missing ? "produk belum dijelaskan" : "pasangan tertukar"}`}
+          </button>
           <button
             type="button"
             onClick={onRecount}
             disabled={pending}
-            className="w-full h-11 rounded-xl border-2 border-foreground bg-card text-foreground font-semibold hover:bg-muted disabled:opacity-50"
+            className="h-11 w-full rounded-xl border-2 border-foreground bg-card font-semibold text-foreground hover:bg-muted disabled:opacity-50"
           >
             Hitung ulang
           </button>

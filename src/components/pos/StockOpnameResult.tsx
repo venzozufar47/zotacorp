@@ -1,6 +1,7 @@
 import { ArrowLeft, ClipboardCheck } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import { formatRp } from "@/lib/cashflow/format";
+import { OPNAME_REASON_LABEL } from "@/lib/pos/opname-reasons";
 import type { StockOpnameDetail } from "@/lib/actions/pos-stock.actions";
 
 interface Props {
@@ -85,6 +86,12 @@ export function StockOpnameResult({ detail, basePath }: Props) {
                     {it.variantName && (
                       <p className="text-[11px] text-muted-foreground truncate">
                         {it.variantName}
+                      </p>
+                    )}
+                    {it.diffReason && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {OPNAME_REASON_LABEL[it.diffReason]}
+                        {it.diffSwapLabel ? ` · ${it.diffSwapLabel}` : ""}
                       </p>
                     )}
                   </td>

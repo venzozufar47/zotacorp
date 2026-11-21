@@ -304,6 +304,12 @@ export function buildAdminNav({
           color: "bg-pop-amber",
         },
         {
+          href: "/admin/pos/selisih-opname",
+          icon: ClipboardCheck,
+          label: "Selisih Opname",
+          color: "bg-pop-amber",
+        },
+        {
           href: "/admin/scorecard-unit",
           icon: Gauge,
           label: "Scorecard Unit",

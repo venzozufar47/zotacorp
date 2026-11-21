@@ -3,6 +3,8 @@
  * Modul biasa (bukan "use server") supaya dipakai server action dengan klien service-role mereka sendiri.
  */
 
+import { walletTransferNet } from "./pocket-transfers";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Jumlahkan satu kolom lintas halaman (PostgREST membatasi 1000 baris per permintaan, `.limit()` tak menembusnya). */
@@ -22,10 +24,11 @@ async function sumColumn(admin: any, table: string, column: string, filters: Rec
 }
 
 export async function shopeeBalance(admin: any, businessUnit: string): Promise<number> {
-  const [{ data: wallet }, topups, spent] = await Promise.all([
+  const [{ data: wallet }, topups, spent, moved] = await Promise.all([
     admin.from("procurement_shopee_wallets").select("opening_balance").eq("business_unit", businessUnit).maybeSingle(),
     sumColumn(admin, "procurement_shopee_topups", "amount", { business_unit: businessUnit }),
     sumColumn(admin, "procurement_purchases", "total", { business_unit: businessUnit, money_source: "shopee" }),
+    walletTransferNet(admin, businessUnit),
   ]);
-  return Math.round((Number(wallet?.opening_balance ?? 0) + topups - spent) * 100) / 100;
+  return Math.round((Number(wallet?.opening_balance ?? 0) + topups + moved - spent) * 100) / 100;
 }

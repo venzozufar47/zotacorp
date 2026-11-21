@@ -4,6 +4,7 @@ import type { CashPosition } from "@/lib/actions/procurement-wallet.actions";
 import type { ShopeeWallet } from "@/lib/actions/procurement-shopee.actions";
 import { walletName } from "@/lib/procurement/wallet-label";
 import { ShopeeWalletCard } from "./ShopeeWalletCard";
+import { PocketTransferButton } from "./PocketTransferButton";
 
 /**
  * Posisi kas petugas dalam satu baris: uang pengadaan, laci kasir, dan saldo belanja online.
@@ -57,6 +58,13 @@ export function CashStrip({ position, wallet }: { position: CashPosition; wallet
           </p>
         )}
         {wallet && <ShopeeWalletCard wallet={wallet} compact />}
+        {wallet && (
+          <PocketTransferButton
+            businessUnit={position.businessUnit}
+            walletName={walletName(wallet.businessUnit)}
+            balances={{ pengadaan: proc, laci: drawer, dompet: wallet.balance }}
+          />
+        )}
       </div>
     </details>
   );
