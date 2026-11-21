@@ -14,6 +14,11 @@ export interface VoucherReceiptProduct {
   promoPrice: number;
 }
 
+/** Kunci satu SKU voucher: produk polos = productId, produk bervarian = productId|variantId. */
+export function voucherKey(productId: string, variantId: string | null | undefined): string {
+  return variantId ? `${productId}|${variantId}` : productId;
+}
+
 /** Teks metode bayar di struk voucher; kasir mencoret salah satu. */
 export const VOUCHER_METHOD_TEXT = "Qris / Cash";
 

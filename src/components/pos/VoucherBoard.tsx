@@ -46,12 +46,12 @@ export function VoucherBoard({
   const [saving, startSave] = useTransition();
 
   // Tak pernah melebihi stok tersedia: jumlah hanya boleh dikurangi dari stok.
-  const qtyFor = (p: VoucherProduct) => Math.min(MAX_PRINT, p.onHand, printQty[p.productId] != null ? toInt(printQty[p.productId]) : p.onHand);
+  const qtyFor = (p: VoucherProduct) => Math.min(MAX_PRINT, p.onHand, printQty[p.key] != null ? toInt(printQty[p.key]) : p.onHand);
 
   async function onPrint(p: VoucherProduct) {
     const n = qtyFor(p);
     if (n <= 0 || printing) return;
-    setPrinting({ id: p.productId, done: 0, total: n });
+    setPrinting({ id: p.key, done: 0, total: n });
     let sent = 0;
     let printError: string | null = null;
     try {
@@ -61,7 +61,7 @@ export function VoucherBoard({
         const count = Math.min(VOUCHER_PRINT_BATCH, n - done);
         await sendToPrinter(concatBytes(Array.from({ length: count }, () => one)), method);
         sent = done + count;
-        setPrinting({ id: p.productId, done: sent, total: n });
+        setPrinting({ id: p.key, done: sent, total: n });
         if (sent < n) await sleep(BATCH_GAP_MS);
       }
     } catch (e) {
@@ -69,7 +69,7 @@ export function VoucherBoard({
     }
     // Stok berkurang sebanyak struk yang benar-benar terkirim, seperti pembelian asli.
     if (sent > 0) {
-      const rec = await recordVoucherPrint({ bankAccountId, productId: p.productId, qty: sent });
+      const rec = await recordVoucherPrint({ bankAccountId, productId: p.productId, variantId: p.variantId, qty: sent });
       if (!rec.ok) {
         toast.error(`${sent} struk sudah tercetak tetapi stok gagal dikurangi: ${rec.error}. Jangan cetak ulang; hubungi admin.`);
       } else if (printError) {
@@ -84,19 +84,19 @@ export function VoucherBoard({
     setPrinting(null);
   }
 
-  const rows = products.map((p) => ({ productId: p.productId, cash: toInt(cash[p.productId] ?? ""), qris: toInt(qris[p.productId] ?? "") }));
-  const priceOf = new Map(products.map((p) => [p.productId, p.promoPrice]));
+  const rows = products.map((p) => ({ key: p.key, cash: toInt(cash[p.key] ?? ""), qris: toInt(qris[p.key] ?? "") }));
+  const priceOf = new Map(products.map((p) => [p.key, p.promoPrice]));
   const totalPcs = rows.reduce((n, r) => n + r.cash + r.qris, 0);
   const printedTotal = products.reduce((n, p) => n + p.printed, 0);
   const usedOf = (id: string) => {
-    const r = rows.find((x) => x.productId === id);
+    const r = rows.find((x) => x.key === id);
     return r ? r.cash + r.qris : 0;
   };
   // Impas = tiap produk: dicetak = cash + qris + sisa (kembali ke stok). Melebihi dicetak = tidak boleh disimpan.
-  const overPrinted = products.some((p) => usedOf(p.productId) > p.printed);
-  const returnedTotal = products.reduce((n, p) => n + Math.max(0, p.printed - usedOf(p.productId)), 0);
-  const cashRp = rows.reduce((n, r) => n + r.cash * (priceOf.get(r.productId) ?? 0), 0);
-  const qrisRp = rows.reduce((n, r) => n + r.qris * (priceOf.get(r.productId) ?? 0), 0);
+  const overPrinted = products.some((p) => usedOf(p.key) > p.printed);
+  const returnedTotal = products.reduce((n, p) => n + Math.max(0, p.printed - usedOf(p.key)), 0);
+  const cashRp = rows.reduce((n, r) => n + r.cash * (priceOf.get(r.key) ?? 0), 0);
+  const qrisRp = rows.reduce((n, r) => n + r.qris * (priceOf.get(r.key) ?? 0), 0);
 
   function onSave() {
     startSave(async () => {
@@ -140,10 +140,10 @@ export function VoucherBoard({
             Satu struk = 1 pcs, sudah berisi harga promo dan tulisan Qris / Cash untuk dicoret kasir. Mencetak langsung mengurangi stok POS seperti pembelian asli. Jumlah awal sama dengan stok tersedia dan hanya bisa dikurangi.
           </p>
           {products.map((p) => {
-            const active = printing?.id === p.productId ? printing : null;
+            const active = printing?.id === p.key ? printing : null;
             const n = qtyFor(p);
             return (
-              <div key={p.productId} className="rounded-2xl border-2 border-border bg-card p-4">
+              <div key={p.key} className="rounded-2xl border-2 border-border bg-card p-4">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="text-base font-bold text-foreground">{p.name}</p>
                   <p className="text-xs tabular-nums text-muted-foreground">
@@ -157,11 +157,11 @@ export function VoucherBoard({
                     <input
                       inputMode="numeric"
                       className={inputCls + " mt-1"}
-                      value={printQty[p.productId] ?? String(p.onHand)}
+                      value={printQty[p.key] ?? String(p.onHand)}
                       disabled={printing != null}
                       onChange={(e) => {
                         const d = digits(e.target.value);
-                        setPrintQty((s) => ({ ...s, [p.productId]: d === "" ? "" : String(Math.min(p.onHand, toInt(d))) }));
+                        setPrintQty((s) => ({ ...s, [p.key]: d === "" ? "" : String(Math.min(p.onHand, toInt(d))) }));
                       }}
                     />
                   </label>
@@ -191,10 +191,10 @@ export function VoucherBoard({
             Isi jumlah voucher yang ditukar per produk. Cash + QRIS tidak boleh melebihi struk yang dicetak; struk tak terpakai kembali ke stok.
           </p>
           {products.map((p) => {
-            const used = usedOf(p.productId);
+            const used = usedOf(p.key);
             const sisa = p.printed - used;
             return (
-            <div key={p.productId} className="rounded-2xl border-2 border-border bg-card p-4">
+            <div key={p.key} className="rounded-2xl border-2 border-border bg-card p-4">
               <div className="flex items-baseline justify-between gap-2">
                 <p className="text-base font-bold text-foreground">{p.name}</p>
                 <p className={`text-xs tabular-nums ${sisa < 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
@@ -207,12 +207,12 @@ export function VoucherBoard({
                   <input
                     inputMode="numeric"
                     className={inputCls + " mt-1"}
-                    value={cash[p.productId] ?? ""}
+                    value={cash[p.key] ?? ""}
                     placeholder="0"
                     disabled={saving}
                     onChange={(e) => {
                       setConfirming(false);
-                      setCash((s) => ({ ...s, [p.productId]: digits(e.target.value) }));
+                      setCash((s) => ({ ...s, [p.key]: digits(e.target.value) }));
                     }}
                   />
                 </label>
@@ -221,12 +221,12 @@ export function VoucherBoard({
                   <input
                     inputMode="numeric"
                     className={inputCls + " mt-1"}
-                    value={qris[p.productId] ?? ""}
+                    value={qris[p.key] ?? ""}
                     placeholder="0"
                     disabled={saving}
                     onChange={(e) => {
                       setConfirming(false);
-                      setQris((s) => ({ ...s, [p.productId]: digits(e.target.value) }));
+                      setQris((s) => ({ ...s, [p.key]: digits(e.target.value) }));
                     }}
                   />
                 </label>

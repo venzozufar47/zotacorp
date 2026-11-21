@@ -10,10 +10,16 @@ import { listStockOnHand } from "./pos-stock.actions";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { MAX_PROMO_VOUCHERS } from "@/lib/pos/discount";
 import { VOUCHER_PRINT_CUSTOMER } from "@/lib/pos/carryover-data";
+import { voucherKey } from "@/lib/pos/voucher-receipt";
 
 /** Produk voucher (kampanye harga-per-item yang tanggalnya mencakup hari ini) beserta stok dan harga. */
 export interface VoucherProduct {
+  /** Kunci SKU (lihat `voucherKey`): unik per produk atau per varian. */
+  key: string;
   productId: string;
+  /** Terisi untuk produk bervarian (mis. Salt Bread Choco / Ori); satu varian = satu baris voucher. */
+  variantId: string | null;
+  /** Nama tampil + tercetak di struk; produk bervarian "Nama — Varian". */
   name: string;
   normalPrice: number;
   promoPrice: number;
@@ -30,6 +36,7 @@ interface PendingPrint {
   saleId: string;
   createdAt: string;
   productId: string;
+  variantId: string | null;
   qty: number;
 }
 
@@ -48,20 +55,27 @@ async function loadPendingPrints(bankAccountId: string): Promise<PendingPrint[]>
   if (list.length === 0) return [];
   const { data: items } = await sb
     .from("pos_sale_items")
-    .select("sale_id, product_id, qty")
+    .select("sale_id, product_id, variant_id, qty")
     .in(
       "sale_id",
       list.map((x) => x.id)
     );
   const createdAt = new Map(list.map((x) => [x.id, x.created_at]));
-  return ((items ?? []) as Array<{ sale_id: string; product_id: string | null; qty: number }>)
+  return ((items ?? []) as Array<{ sale_id: string; product_id: string | null; variant_id: string | null; qty: number }>)
     .filter((i) => i.product_id)
-    .map((i) => ({ saleId: i.sale_id, createdAt: createdAt.get(i.sale_id) ?? "", productId: i.product_id as string, qty: i.qty }));
+    .map((i) => ({
+      saleId: i.sale_id,
+      createdAt: createdAt.get(i.sale_id) ?? "",
+      productId: i.product_id as string,
+      variantId: i.variant_id,
+      qty: i.qty,
+    }));
 }
 
 /**
  * Daftar produk voucher untuk satu rekening. Sengaja hanya melihat TANGGAL kampanye (bukan jam), karena struk dicetak
- * sebelum toko buka. Produk bervarian dilewati: penjualan voucher belum mendukung pilih varian.
+ * sebelum toko buka. Produk bervarian (stok per varian, mis. Salt Bread) tampil satu baris per varian aktif; produk
+ * bervarian yang stoknya digabung (stockAggregateVariants) dilewati karena variannya baru dipilih saat penyajian.
  */
 export async function listVoucherProducts(bankAccountId: string): Promise<VoucherProduct[]> {
   const [campaigns, products, stock, pending] = await Promise.all([
@@ -78,10 +92,28 @@ export async function listVoucherProducts(bankAccountId: string): Promise<Vouche
   const out: VoucherProduct[] = [];
   for (const p of products) {
     const promo = promoByProduct.get(p.id);
-    if (promo == null || p.variants.length > 0 || p.isOpenPrice) continue;
-    const onHand = stock.find((s) => s.productId === p.id && !s.variantId)?.onHand ?? 0;
-    const printed = pending.filter((x) => x.productId === p.id).reduce((n, x) => n + x.qty, 0);
-    out.push({ productId: p.id, name: p.name, normalPrice: p.price, promoPrice: Math.min(promo, p.price), onHand: Math.max(0, onHand), printed });
+    if (promo == null || p.isOpenPrice) continue;
+    const variants = p.variants.filter((v) => v.active);
+    if (variants.length === 0 && p.variants.length > 0) continue;
+    if (variants.length > 0 && p.stockAggregateVariants) continue;
+    const skus: Array<{ variantId: string | null; name: string; price: number }> =
+      variants.length === 0
+        ? [{ variantId: null, name: p.name, price: p.price }]
+        : variants.map((v) => ({ variantId: v.id, name: `${p.name} — ${v.name}`, price: v.price }));
+    for (const s of skus) {
+      const onHand = stock.find((x) => x.productId === p.id && (x.variantId ?? null) === s.variantId)?.onHand ?? 0;
+      const printed = pending.filter((x) => x.productId === p.id && (x.variantId ?? null) === s.variantId).reduce((n, x) => n + x.qty, 0);
+      out.push({
+        key: voucherKey(p.id, s.variantId),
+        productId: p.id,
+        variantId: s.variantId,
+        name: s.name,
+        normalPrice: s.price,
+        promoPrice: Math.min(promo, s.price),
+        onHand: Math.max(0, onHand),
+        printed,
+      });
+    }
   }
   return out;
 }
@@ -96,11 +128,13 @@ const MAX_SETTLE_QTY = 2000;
 export async function recordVoucherPrint(input: {
   bankAccountId: string;
   productId: string;
+  variantId?: string | null;
   qty: number;
 }): Promise<ActionResult<{ qty: number }>> {
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
   if (!Number.isInteger(input.qty) || input.qty <= 0 || input.qty > MAX_SETTLE_QTY) return { ok: false, error: "Jumlah harus bilangan bulat 1 sampai 2000" };
-  const p = (await listVoucherProducts(input.bankAccountId)).find((x) => x.productId === input.productId);
+  const key = voucherKey(input.productId, input.variantId);
+  const p = (await listVoucherProducts(input.bankAccountId)).find((x) => x.key === key);
   if (!p) return { ok: false, error: "Produk voucher tidak ditemukan atau promonya sudah tidak aktif" };
   if (input.qty > p.onHand) return { ok: false, error: `Stok ${p.name} hanya ${p.onHand}, tidak bisa mencatat ${input.qty} struk` };
   let saved = 0;
@@ -109,7 +143,7 @@ export async function recordVoucherPrint(input: {
     const res = await createPosSale({
       bankAccountId: input.bankAccountId,
       paymentMethod: "pending",
-      items: [{ productId: p.productId, qty }],
+      items: [{ productId: p.productId, ...(p.variantId ? { variantId: p.variantId } : {}), qty }],
       customerName: PRINT_CUSTOMER,
       fulfillmentType: "take_away",
       promoVouchers: qty,
@@ -124,7 +158,8 @@ export async function recordVoucherPrint(input: {
 }
 
 export interface VoucherSettleRow {
-  productId: string;
+  /** Kunci SKU voucher (`VoucherProduct.key`). */
+  key: string;
   cash: number;
   qris: number;
 }
@@ -143,30 +178,39 @@ export async function settleVoucherSales(input: {
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
-  const available = new Map((await listVoucherProducts(input.bankAccountId)).map((p) => [p.productId, p]));
+  const available = new Map((await listVoucherProducts(input.bankAccountId)).map((p) => [p.key, p]));
   const pending = await loadPendingPrints(input.bankAccountId);
   const printedTotal = pending.reduce((n, x) => n + x.qty, 0);
   if (printedTotal === 0) return { ok: false, error: "Belum ada struk voucher yang dicetak, tidak ada yang perlu disettle" };
 
-  type Job = { method: "cash" | "qris"; productId: string; qty: number; normal: number; promo: number; name: string };
+  type Job = { method: "cash" | "qris"; key: string; productId: string; variantId: string | null; qty: number; normal: number; promo: number; name: string };
   const jobs: Job[] = [];
   for (const r of input.rows ?? []) {
     for (const method of ["cash", "qris"] as const) {
       const qty = r[method];
       if (!Number.isInteger(qty) || qty < 0 || qty > MAX_SETTLE_QTY) return { ok: false, error: "Jumlah harus bilangan bulat 0 sampai 2000" };
       if (qty === 0) continue;
-      const p = available.get(r.productId);
+      const p = available.get(r.key);
       if (!p) return { ok: false, error: "Produk voucher tidak ditemukan atau promonya sudah tidak aktif" };
       for (let left = qty; left > 0; left -= MAX_PROMO_VOUCHERS) {
-        jobs.push({ method, productId: p.productId, qty: Math.min(left, MAX_PROMO_VOUCHERS), normal: p.normalPrice, promo: p.promoPrice, name: p.name });
+        jobs.push({
+          method,
+          key: p.key,
+          productId: p.productId,
+          variantId: p.variantId,
+          qty: Math.min(left, MAX_PROMO_VOUCHERS),
+          normal: p.normalPrice,
+          promo: p.promoPrice,
+          name: p.name,
+        });
       }
     }
   }
-  // Acuan keseimbangan: yang ditukar per produk tidak boleh melebihi struk yang dicetak.
+  // Acuan keseimbangan: yang ditukar per SKU tidak boleh melebihi struk yang dicetak.
   const usedByProduct = new Map<string, number>();
-  for (const j of jobs) usedByProduct.set(j.productId, (usedByProduct.get(j.productId) ?? 0) + j.qty);
-  for (const [productId, used] of usedByProduct) {
-    const p = available.get(productId);
+  for (const j of jobs) usedByProduct.set(j.key, (usedByProduct.get(j.key) ?? 0) + j.qty);
+  for (const [key, used] of usedByProduct) {
+    const p = available.get(key);
     if (p && used > p.printed) return { ok: false, error: `${p.name}: cash + qris (${used}) melebihi struk yang dicetak (${p.printed})` };
   }
 
@@ -194,7 +238,7 @@ export async function settleVoucherSales(input: {
     const res = await createPosSale({
       bankAccountId: input.bankAccountId,
       paymentMethod: j.method,
-      items: [{ productId: j.productId, qty: j.qty }],
+      items: [{ productId: j.productId, ...(j.variantId ? { variantId: j.variantId } : {}), qty: j.qty }],
       customerName: "Voucher",
       fulfillmentType: "take_away",
       promoVouchers: j.qty,
