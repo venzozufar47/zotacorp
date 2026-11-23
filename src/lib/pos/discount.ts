@@ -132,24 +132,15 @@ export function voucherOnlyShortfall(
   vouchers: number,
   disabledIds: readonly string[] = []
 ): VoucherOnlyShortfall | null {
-  const locked = new Set<string>();
-  let usable = false;
-  for (const c of campaigns) {
-    if (c.kind !== "item_price" || !c.voucherOnlyProductIds?.length || !isCampaignLive(c, now)) continue;
-    for (const id of c.voucherOnlyProductIds) locked.add(id);
-    if (!disabledIds.includes(c.id)) usable = true;
-  }
-  if (locked.size === 0) return null;
-  const inCart = new Set<string>();
-  let pcs = 0;
-  for (const l of lines) {
-    if (!l.productId || l.qty <= 0 || !locked.has(l.productId)) continue;
-    inCart.add(l.productId);
-    pcs += l.qty;
-  }
-  const v = Number.isFinite(vouchers) ? Math.min(MAX_PROMO_VOUCHERS, Math.max(0, Math.floor(vouchers))) : 0;
-  const allowed = usable ? v : 0;
-  return pcs > allowed ? { productIds: [...inCart], pcs, allowed } : null;
+  // Kunci dicabut (23 Nov 2026): produk promo voucher tetap boleh dijual normal tanpa voucher; pcs di atas jumlah
+  // voucher memakai harga normal. Satu-satunya batasan: nota ber-voucher tak boleh dicampur produk lain
+  // (`voucherMixedProblem`). Fungsi dipertahankan agar pemanggil tak berubah.
+  void campaigns;
+  void now;
+  void lines;
+  void vouchers;
+  void disabledIds;
+  return null;
 }
 
 /** Hemat dari `n` pcs termahal; sekaligus merinci per baris ke `result.byLine`. */
@@ -216,7 +207,8 @@ export function voucherMixedProblem(
     else otherPcs += l.qty;
   }
   const hasVoucher = Number.isFinite(vouchers) && Math.floor(vouchers) > 0;
-  return otherPcs > 0 && (lockedPcs > 0 || hasVoucher) ? { lockedPcs, otherPcs } : null;
+  // Hanya nota yang kasirnya mengisi voucher yang dipisah; produk promo tanpa voucher dijual normal & boleh digabung.
+  return otherPcs > 0 && hasVoucher ? { lockedPcs, otherPcs } : null;
 }
 
 /**
