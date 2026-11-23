@@ -101,6 +101,58 @@ export async function fetchAllPages<T>(
 }
 
 /**
+ * Item penjualan (tidak void) milik satu rekening dalam jendela `created_at` penjualan: (sinceIso, untilIso].
+ *
+ * Sengaja DUA langkah, bukan satu query dengan embed `pos_sales!inner(...)`. Query embed itu diurutkan menurut
+ * `pos_sale_items.id`; rencana generik PostgreSQL lalu memindai seluruh tabel item menurut pkey dan menguji RLS
+ * (`is_admin_or_pos_assignee`) per baris — 3–8 detik di produksi walau jendelanya hanya beberapa penjualan
+ * (membuat buka shift terasa macet setelah PIN). Di sini penjualan dicari dulu lewat indeks rekening (urut
+ * `created_at`, bukan `id`, supaya tak memancing pemindaian pkey), lalu item diambil lewat indeks `sale_id`.
+ */
+export async function fetchSaleItemsInWindow(
+  supabase: PosDbClient,
+  bankAccountId: string,
+  sinceIso: string | null,
+  untilIso: string
+): Promise<{
+  rows: Array<{ product_id: string | null; variant_id: string | null; qty: number; pos_sales: { created_at: string } }>;
+  truncated: boolean;
+}> {
+  const { rows: sales, truncated: salesTruncated } = await fetchAllPages<{ id: string; created_at: string }>(() => {
+    let q = supabase
+      .from("pos_sales")
+      .select("id, created_at")
+      .eq("bank_account_id", bankAccountId)
+      .is("voided_at", null)
+      .lte("created_at", untilIso);
+    if (sinceIso) q = q.gt("created_at", sinceIso);
+    return q;
+  }, "created_at");
+  const createdById = new Map(sales.map((s) => [s.id, s.created_at]));
+  const out: Array<{ product_id: string | null; variant_id: string | null; qty: number; pos_sales: { created_at: string } }> = [];
+  // `.in()` dibatasi panjang URL — potong per 200 id (pola yang sama dengan pembaca item opname).
+  const CHUNK = 200;
+  const ids = sales.map((s) => s.id);
+  let truncated = salesTruncated;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const { rows, truncated: t } = await fetchAllPages<{ sale_id: string; product_id: string | null; variant_id: string | null; qty: number }>(() =>
+      supabase.from("pos_sale_items").select("id, sale_id, product_id, variant_id, qty").in("sale_id", slice)
+    );
+    truncated = truncated || t;
+    for (const it of rows) {
+      out.push({
+        product_id: it.product_id,
+        variant_id: it.variant_id,
+        qty: it.qty,
+        pos_sales: { created_at: createdById.get(it.sale_id) as string },
+      });
+    }
+  }
+  return { rows: out, truncated };
+}
+
+/**
  * Daftar SKU aktif untuk sistem stok.
  *
  * - Produk `track_stock=false` di-skip seluruhnya.
@@ -327,22 +379,7 @@ export async function computeExpectedCounts(
     result.set(key, (result.get(key) ?? 0) + (m.type === "production" ? m.qty : -m.qty));
   }
 
-  const { rows: saleItems } = await fetchAllPages<{
-    product_id: string | null;
-    variant_id: string | null;
-    qty: number;
-  }>(() => {
-    let q = supabase
-      .from("pos_sale_items")
-      .select(
-        "id, product_id, variant_id, qty, pos_sales!inner(bank_account_id, created_at, voided_at)"
-      )
-      .eq("pos_sales.bank_account_id", bankAccountId)
-      .is("pos_sales.voided_at", null)
-      .lte("pos_sales.created_at", untilIso);
-    if (sinceIso) q = q.gt("pos_sales.created_at", sinceIso);
-    return q;
-  });
+  const { rows: saleItems } = await fetchSaleItemsInWindow(supabase, bankAccountId, sinceIso, untilIso);
   for (const it of saleItems) {
     if (!it.product_id) continue;
     const vId = aggregateProductIds.has(it.product_id) ? null : it.variant_id;
@@ -449,23 +486,7 @@ export async function loadStockEventStream(
         if (fromIso) q = q.gt("created_at", fromIso);
         return q;
       }),
-      fetchAllPages<{
-        product_id: string | null;
-        variant_id: string | null;
-        qty: number;
-        pos_sales: { created_at: string };
-      }>(() => {
-        let q = supabase
-          .from("pos_sale_items")
-          .select(
-            "id, product_id, variant_id, qty, pos_sales!inner(bank_account_id, created_at, voided_at)"
-          )
-          .eq("pos_sales.bank_account_id", bankAccountId)
-          .is("pos_sales.voided_at", null)
-          .lte("pos_sales.created_at", toIso);
-        if (fromIso) q = q.gt("pos_sales.created_at", fromIso);
-        return q;
-      }),
+      fetchSaleItemsInWindow(supabase, bankAccountId, fromIso, toIso),
     ]);
 
   const skuKeys = skus.map((s) => skuKey(s.productId, s.variantId));
