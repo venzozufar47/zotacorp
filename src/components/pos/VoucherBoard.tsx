@@ -209,11 +209,11 @@ export function VoucherBoard({
                       <p className="text-xs text-muted-foreground">
                         Berapa struk yang <span className="font-semibold text-foreground">tidak keluar</span> dari printer? Stoknya dikembalikan ({p.printed} tercatat), lalu cetak ulang sebanyak itu. Struk yang sudah keluar tetap tercatat.
                       </p>
-                      <div className="flex items-end gap-2">
+                      <label className="block w-28 text-xs font-medium text-muted-foreground">
+                        Jumlah
                         <input
                           inputMode="numeric"
-                          aria-label="Jumlah struk yang tidak tercetak"
-                          className={inputCls + " w-24 shrink-0"}
+                          className={inputCls + " mt-1"}
                           value={revertQty}
                           disabled={revertBusy}
                           onChange={(e) => {
@@ -221,11 +221,13 @@ export function VoucherBoard({
                             setRevertQty(d === "" ? "" : String(Math.min(p.printed, toInt(d))));
                           }}
                         />
+                      </label>
+                      <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setReverting(null)}
                           disabled={revertBusy}
-                          className="h-12 rounded-xl border-2 border-border px-4 text-sm font-semibold hover:bg-card disabled:opacity-50"
+                          className="h-12 shrink-0 rounded-xl border-2 border-border px-5 text-sm font-semibold hover:bg-card disabled:opacity-50"
                         >
                           Batal
                         </button>
@@ -233,10 +235,10 @@ export function VoucherBoard({
                           type="button"
                           onClick={() => onRevert(p)}
                           disabled={revertBusy || toInt(revertQty) <= 0}
-                          className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                          className="inline-flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-3 font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                         >
-                          {revertBusy ? <Loader2 size={18} className="animate-spin" /> : <Undo2 size={18} />}
-                          {revertBusy ? "Mengembalikan..." : `Revert ${toInt(revertQty)} struk`}
+                          {revertBusy ? <Loader2 size={18} className="shrink-0 animate-spin" /> : <Undo2 size={18} className="shrink-0" />}
+                          <span className="truncate">{revertBusy ? "Mengembalikan..." : `Revert ${toInt(revertQty)} struk`}</span>
                         </button>
                       </div>
                     </div>
@@ -245,7 +247,7 @@ export function VoucherBoard({
                       type="button"
                       onClick={() => openRevert(p)}
                       disabled={printing != null}
-                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
                       <Undo2 size={14} /> Struk gagal tercetak? Revert
                     </button>
