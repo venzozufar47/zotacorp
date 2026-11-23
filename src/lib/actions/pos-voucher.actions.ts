@@ -157,6 +157,82 @@ export async function recordVoucherPrint(input: {
   return { ok: true, data: { qty: saved } };
 }
 
+/**
+ * Batalkan sebagian/seluruh struk yang SUDAH tercatat tetapi gagal tercetak (mis. baterai printer habis di tengah
+ * antrean; RawBT tidak memberi tahu kegagalan, jadi semua struk terlanjur dicatat dan stok terpotong). Stok
+ * dikembalikan dan jumlah cetak bisa diulang dari awal tanpa memotong stok dua kali.
+ *
+ * Nota penahan stok dibuat per chunk (maks MAX_PROMO_VOUCHERS pcs) sehingga tidak bisa dikurangi sebagian. Jadi
+ * semua nota pending SKU ini di-void, lalu sisa yang memang tercetak (`printed - qty`) dicatat ulang sebagai nota
+ * pending baru. Hasil akhirnya: `printed` turun sebanyak `qty`, stok naik sebanyak `qty`.
+ */
+export async function revertVoucherPrint(input: {
+  bankAccountId: string;
+  productId: string;
+  variantId?: string | null;
+  /** Jumlah struk yang TIDAK tercetak dan dikembalikan ke stok. */
+  qty: number;
+}): Promise<ActionResult<{ reverted: number; kept: number }>> {
+  if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
+  if (!Number.isInteger(input.qty) || input.qty <= 0 || input.qty > MAX_SETTLE_QTY) return { ok: false, error: "Jumlah harus bilangan bulat 1 sampai 2000" };
+  const gate = await requireAdminOrPosAssignee(input.bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const variantId = input.variantId ?? null;
+  const pending = (await loadPendingPrints(input.bankAccountId)).filter((x) => x.productId === input.productId && (x.variantId ?? null) === variantId);
+  const printed = pending.reduce((n, x) => n + x.qty, 0);
+  if (printed === 0) return { ok: false, error: "Tidak ada struk tercatat untuk produk ini, tidak ada yang perlu di-revert" };
+  if (input.qty > printed) return { ok: false, error: `Struk tercatat hanya ${printed}, tidak bisa me-revert ${input.qty}` };
+  const kept = printed - input.qty;
+
+  const adminDb = createAdminClient();
+  const saleIds = Array.from(new Set(pending.map((x) => x.saleId)));
+  const { data: closed, error: closeErr } = await adminDb
+    .from("pos_sales")
+    .update({
+      voided_at: new Date().toISOString(),
+      void_reason: "Revert cetak voucher: struk gagal tercetak",
+      voided_by: gate.userId,
+      voided_by_name: "Revert voucher",
+    } as never)
+    .in("id", saleIds)
+    .eq("payment_status", "pending")
+    .eq("customer_name", PRINT_CUSTOMER)
+    .is("voided_at", null)
+    .select("id");
+  if (closeErr) return { ok: false, error: `Gagal membatalkan struk tercatat: ${closeErr.message}` };
+  if ((closed?.length ?? 0) !== saleIds.length) {
+    // Ada nota yang keburu disettle/dibatalkan di tempat lain. Yang sudah ter-void tetap dipulihkan stoknya,
+    // lalu minta kasir memuat ulang supaya angkanya sinkron.
+    for (const c of closed ?? []) {
+      const meta = pending.find((x) => x.saleId === c.id);
+      if (meta) await restoreStockIfAbsorbedByOpname(adminDb, { id: c.id, bank_account_id: input.bankAccountId, created_at: meta.createdAt }, gate.userId, "Auto: stok kembali, revert cetak voucher");
+    }
+    revalidatePath("/pos", "layout");
+    return { ok: false, error: "Sebagian struk berubah saat diproses (mungkin sudah disettle). Muat ulang halaman lalu cek angkanya." };
+  }
+  for (const c of closed ?? []) {
+    const meta = pending.find((x) => x.saleId === c.id);
+    if (meta) {
+      await restoreStockIfAbsorbedByOpname(adminDb, { id: c.id, bank_account_id: input.bankAccountId, created_at: meta.createdAt }, gate.userId, "Auto: stok kembali, revert cetak voucher");
+    }
+  }
+
+  // Struk yang memang tercetak (tidak ikut di-revert) dicatat ulang supaya acuan settlement tetap benar.
+  if (kept > 0) {
+    const rec = await recordVoucherPrint({ bankAccountId: input.bankAccountId, productId: input.productId, variantId, qty: kept });
+    if (!rec.ok) {
+      revalidatePath("/pos", "layout");
+      return {
+        ok: false,
+        error: `Stok sudah dikembalikan, tetapi ${kept} struk yang tercetak gagal dicatat ulang: ${rec.error}. Jangan cetak ulang; hubungi admin.`,
+      };
+    }
+  }
+  revalidatePath("/pos", "layout");
+  return { ok: true, data: { reverted: input.qty, kept } };
+}
+
 export interface VoucherSettleRow {
   /** Kunci SKU voucher (`VoucherProduct.key`). */
   key: string;

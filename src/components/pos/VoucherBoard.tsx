@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Printer, Check, Loader2 } from "lucide-react";
+import { Printer, Check, Loader2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import { buildReceiptBytes } from "@/lib/pos/receipt";
@@ -10,7 +10,7 @@ import { receiptBaseFields, type ReceiptContext } from "@/lib/pos/receipt-flow";
 import { loadReceiptTransport } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 import { concatBytes, voucherReceiptData, VOUCHER_PRINT_BATCH } from "@/lib/pos/voucher-receipt";
-import { recordVoucherPrint, settleVoucherSales, type VoucherProduct } from "@/lib/actions/pos-voucher.actions";
+import { recordVoucherPrint, revertVoucherPrint, settleVoucherSales, type VoucherProduct } from "@/lib/actions/pos-voucher.actions";
 
 const MAX_PRINT = 500;
 /** Jeda antar kiriman ke printer supaya intent RawBT tidak saling menimpa. */
@@ -44,6 +44,10 @@ export function VoucherBoard({
   const [qris, setQris] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [saving, startSave] = useTransition();
+  // Revert struk gagal tercetak: SKU yang panelnya terbuka + jumlah struk yang tidak keluar dari printer.
+  const [reverting, setReverting] = useState<string | null>(null);
+  const [revertQty, setRevertQty] = useState("");
+  const [revertBusy, startRevert] = useTransition();
 
   // Tak pernah melebihi stok tersedia: jumlah hanya boleh dikurangi dari stok.
   const qtyFor = (p: VoucherProduct) => Math.min(MAX_PRINT, p.onHand, printQty[p.key] != null ? toInt(printQty[p.key]) : p.onHand);
@@ -82,6 +86,30 @@ export function VoucherBoard({
       toast.error(printError);
     }
     setPrinting(null);
+  }
+
+  function openRevert(p: VoucherProduct) {
+    setReverting(p.key);
+    setRevertQty(String(p.printed));
+  }
+
+  // Stok dikembalikan lalu jumlah cetak diisi sebanyak yang di-revert, supaya satu ketukan "Cetak" mengulang
+  // persis struk yang gagal tanpa memotong stok dua kali.
+  function onRevert(p: VoucherProduct) {
+    const n = Math.min(p.printed, toInt(revertQty));
+    if (n <= 0) return;
+    startRevert(async () => {
+      const res = await revertVoucherPrint({ bankAccountId, productId: p.productId, variantId: p.variantId, qty: n });
+      if (!res.ok || !res.data) {
+        toast.error(res.ok ? "Gagal me-revert" : res.error);
+        router.refresh();
+        return;
+      }
+      setPrintQty((s) => ({ ...s, [p.key]: String(n) }));
+      setReverting(null);
+      toast.success(`${n} struk ${p.name} dikembalikan ke stok. Tekan Cetak untuk mengulang.`);
+      router.refresh();
+    });
   }
 
   const rows = products.map((p) => ({ key: p.key, cash: toInt(cash[p.key] ?? ""), qris: toInt(qris[p.key] ?? "") }));
@@ -175,6 +203,54 @@ export function VoucherBoard({
                     {active ? `Mencetak ${active.done}/${active.total}` : `Cetak ${n} struk`}
                   </button>
                 </div>
+                {p.printed > 0 && !active && (
+                  reverting === p.key ? (
+                    <div className="mt-3 space-y-2 rounded-xl bg-muted p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Berapa struk yang <span className="font-semibold text-foreground">tidak keluar</span> dari printer? Stoknya dikembalikan ({p.printed} tercatat), lalu cetak ulang sebanyak itu. Struk yang sudah keluar tetap tercatat.
+                      </p>
+                      <div className="flex items-end gap-2">
+                        <input
+                          inputMode="numeric"
+                          aria-label="Jumlah struk yang tidak tercetak"
+                          className={inputCls + " w-24 shrink-0"}
+                          value={revertQty}
+                          disabled={revertBusy}
+                          onChange={(e) => {
+                            const d = digits(e.target.value);
+                            setRevertQty(d === "" ? "" : String(Math.min(p.printed, toInt(d))));
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setReverting(null)}
+                          disabled={revertBusy}
+                          className="h-12 rounded-xl border-2 border-border px-4 text-sm font-semibold hover:bg-card disabled:opacity-50"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRevert(p)}
+                          disabled={revertBusy || toInt(revertQty) <= 0}
+                          className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          {revertBusy ? <Loader2 size={18} className="animate-spin" /> : <Undo2 size={18} />}
+                          {revertBusy ? "Mengembalikan..." : `Revert ${toInt(revertQty)} struk`}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openRevert(p)}
+                      disabled={printing != null}
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+                    >
+                      <Undo2 size={14} /> Struk gagal tercetak? Revert
+                    </button>
+                  )
+                )}
                 {active && (
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={active.total} aria-valuenow={active.done}>
                     <div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${(active.done / active.total) * 100}%` }} />
