@@ -795,8 +795,10 @@ export async function createStockOpname(input: {
     .from("pos_stock_opname_items")
     .insert(itemRows as never);
   if (itemErr) {
-    // Best-effort rollback supaya header tidak orphan.
-    await supabase.from("pos_stock_opnames").delete().eq("id", header.id);
+    // Rollback header supaya tidak yatim. Wajib klien admin: RLS menolak DELETE dari klien kasir secara diam-diam
+    // (204 tanpa baris terhapus), dan header tanpa item dulu membuat stok seluruh cabang terbaca 0.
+    const { error: rbErr } = await createAdminClient().from("pos_stock_opnames").delete().eq("id", header.id);
+    if (rbErr) console.error("[opname] rollback header gagal", header.id, rbErr.message);
     return { ok: false, error: itemErr.message };
   }
 

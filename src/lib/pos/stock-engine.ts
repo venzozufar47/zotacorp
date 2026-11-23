@@ -297,28 +297,38 @@ export async function loadBaselineAt(
   opnameId: string | null;
   itemCount: number;
 }> {
-  const { data: last } = await supabase
+  // Opname TANPA item (header yatim akibat penyimpanan item yang gagal) bukan hitungan stok: dijadikan titik awal ia
+  // membuat semua produk terbaca 0. Jadi lewati dan pakai opname berikutnya yang punya isi.
+  const { data: recent } = await supabase
     .from("pos_stock_opnames")
     .select("id, created_at")
     .eq("bank_account_id", bankAccountId)
     .lte("created_at", beforeIso)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(5);
+  let last: { id: string; created_at: string } | null = null;
+  let items: Array<{ product_id: string; variant_id: string | null; physical_count: number }> = [];
+  for (const cand of recent ?? []) {
+    const { rows } = await fetchAllPages<{
+      product_id: string;
+      variant_id: string | null;
+      physical_count: number;
+    }>(() =>
+      supabase
+        .from("pos_stock_opname_items")
+        .select("id, product_id, variant_id, physical_count")
+        .eq("opname_id", cand.id)
+    );
+    if (rows.length > 0) {
+      last = cand;
+      items = rows;
+      break;
+    }
+  }
   if (!last) {
     return { cutoffIso: null, baseline: new Map(), opnameId: null, itemCount: 0 };
   }
-  const { rows: items } = await fetchAllPages<{
-    product_id: string;
-    variant_id: string | null;
-    physical_count: number;
-  }>(() =>
-    supabase
-      .from("pos_stock_opname_items")
-      .select("id, product_id, variant_id, physical_count")
-      .eq("opname_id", last.id)
-  );
   const baseline = new Map<SkuKey, number>();
   for (const it of items) {
     const vId = aggregateProductIds?.has(it.product_id) ? null : it.variant_id;
