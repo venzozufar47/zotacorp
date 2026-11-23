@@ -201,35 +201,32 @@ export async function revertVoucherPrint(input: {
     .is("voided_at", null)
     .select("id");
   if (closeErr) return { ok: false, error: `Gagal membatalkan struk tercatat: ${closeErr.message}` };
-  if ((closed?.length ?? 0) !== saleIds.length) {
-    // Ada nota yang keburu disettle/dibatalkan di tempat lain. Yang sudah ter-void tetap dipulihkan stoknya,
-    // lalu minta kasir memuat ulang supaya angkanya sinkron.
-    for (const c of closed ?? []) {
-      const meta = pending.find((x) => x.saleId === c.id);
-      if (meta) await restoreStockIfAbsorbedByOpname(adminDb, { id: c.id, bank_account_id: input.bankAccountId, created_at: meta.createdAt }, gate.userId, "Auto: stok kembali, revert cetak voucher");
-    }
-    revalidatePath("/pos", "layout");
-    return { ok: false, error: "Sebagian struk berubah saat diproses (mungkin sudah disettle). Muat ulang halaman lalu cek angkanya." };
-  }
-  for (const c of closed ?? []) {
+  // Bisa kurang dari saleIds bila ada nota yang keburu disettle/dibatalkan di tempat lain: yang berhasil di-void
+  // tetap dipulihkan stoknya dan sisa tercetaknya dicatat ulang dari nota yang benar-benar ter-void.
+  const closedSales = closed ?? [];
+  const partial = closedSales.length !== saleIds.length;
+  const voidedQty = pending.filter((x) => closedSales.some((c) => c.id === x.saleId)).reduce((n, x) => n + x.qty, 0);
+  for (const c of closedSales) {
     const meta = pending.find((x) => x.saleId === c.id);
     if (meta) {
       await restoreStockIfAbsorbedByOpname(adminDb, { id: c.id, bank_account_id: input.bankAccountId, created_at: meta.createdAt }, gate.userId, "Auto: stok kembali, revert cetak voucher");
     }
   }
+  const keepQty = partial ? Math.max(0, voidedQty - input.qty) : kept;
 
   // Struk yang memang tercetak (tidak ikut di-revert) dicatat ulang supaya acuan settlement tetap benar.
-  if (kept > 0) {
-    const rec = await recordVoucherPrint({ bankAccountId: input.bankAccountId, productId: input.productId, variantId, qty: kept });
+  if (keepQty > 0) {
+    const rec = await recordVoucherPrint({ bankAccountId: input.bankAccountId, productId: input.productId, variantId, qty: keepQty });
     if (!rec.ok) {
       revalidatePath("/pos", "layout");
       return {
         ok: false,
-        error: `Stok sudah dikembalikan, tetapi ${kept} struk yang tercetak gagal dicatat ulang: ${rec.error}. Jangan cetak ulang; hubungi admin.`,
+        error: `Stok sudah dikembalikan, tetapi ${keepQty} struk yang tercetak gagal dicatat ulang: ${rec.error}. Jangan cetak ulang; hubungi admin.`,
       };
     }
   }
   revalidatePath("/pos", "layout");
+  if (partial) return { ok: false, error: "Sebagian struk berubah saat diproses (mungkin sudah disettle). Muat ulang halaman lalu cek angkanya." };
   return { ok: true, data: { reverted: input.qty, kept } };
 }
 
