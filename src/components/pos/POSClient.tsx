@@ -1376,6 +1376,11 @@ export function POSClient({
           />
         )}
 
+        {voucherBlockText && (
+          <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+            {voucherBlockText}
+          </p>
+        )}
         <button
           type="button"
           disabled={payDisabled}
