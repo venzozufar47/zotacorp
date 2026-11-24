@@ -99,6 +99,7 @@ export async function updateSession(request: NextRequest) {
       pathname === "/set-password" ||
       pathname === "/reset-password" ||
       pathname.startsWith("/login") ||
+      pathname === "/admin/login" ||
       pathname.startsWith("/register") ||
       pathname.startsWith("/api");
     if (publicish) return supabaseResponse;
@@ -121,6 +122,13 @@ export async function updateSession(request: NextRequest) {
   // fragment, lalu LoginForm meneruskan lagi ke sini → loop tak henti.
   // Maka: SELALU loloskan, apa pun status sesi (halaman urus token sendiri).
   if (pathname === "/set-password" || pathname === "/reset-password") {
+    return supabaseResponse;
+  }
+
+  // Login khusus admin: selalu lolos untuk anonim & non-admin (page-nya sendiri
+  // menampilkan tombol keluar bagi yang salah akun). Admin yang sudah masuk
+  // diarahkan ke /admin oleh page.
+  if (pathname === "/admin/login") {
     return supabaseResponse;
   }
 
@@ -147,10 +155,13 @@ export async function updateSession(request: NextRequest) {
     publicRoutes.some((r) => r !== "/" && pathname.startsWith(r));
   const isApi = pathname.startsWith("/api");
 
-  // Not logged in → force to landing (except public routes and API routes)
+  // Not logged in → force to landing (except public routes and API routes).
+  // Beranda admin (/admin persis) diarahkan ke login khusus admin; sub-halaman
+  // (mis. /admin/finance untuk non-admin terdelegasi) tetap ke landing umum.
   if (!userId && !isPublic && !isApi) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname =
+      pathname === "/admin" || pathname === "/admin/" ? "/admin/login" : "/";
     return NextResponse.redirect(url);
   }
 
@@ -240,6 +251,13 @@ export async function updateSession(request: NextRequest) {
         // page-gate-nya sendiri (getCurrentRole !== "admin") jadi lapis
         // kedua kalau viewer coba akses langsung via URL.
         const isMetaAdsPath = pathname === "/admin/ads" || pathname === "/admin/ads/";
+        // Non-admin membuka beranda admin (mis. salah login pakai akun
+        // karyawan) → ke login admin, tempat mereka bisa keluar/ganti akun.
+        if (pathname === "/admin" || pathname === "/admin/") {
+          const url = request.nextUrl.clone();
+          url.pathname = "/admin/login";
+          return NextResponse.redirect(url);
+        }
         if (
           !isFinanceAssigneePath &&
           !isYeoboBoothPath &&
