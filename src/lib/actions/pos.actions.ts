@@ -21,6 +21,8 @@ import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { createAdminClient as createShiftAdminClient } from "./_supabase-admin";
+import { workingDaysBetween } from "@/lib/scorecard/working-days";
+import { scorecardStartFor } from "@/lib/scorecard/start-dates";
 import { resolveDailyRevenueTarget } from "@/lib/pos/daily-revenue-target";
 import { saleShiftContext } from "@/lib/pos/shift-data";
 import { resolveLedgerAccountId } from "@/lib/pos/ledger";
@@ -2016,6 +2018,10 @@ export interface PosDailyRevenueSummary {
   totalToday: number;
   /** totalToday / target. Null kalau target null. */
   percent: number | null;
+  /** Penjualan POS lunas sejak tanggal 1 (atau tanggal mulai cabang) s.d. hari ini. Null kalau gagal dibaca. */
+  monthTotal: number | null;
+  /** Target s.d. HARI INI: target harian × hari kerja yang sudah berjalan. Null kalau target null. */
+  monthTarget: number | null;
 }
 
 /**
@@ -2058,6 +2064,31 @@ export async function getPosDailyRevenueSummary(
 
   const target = await resolveDailyRevenueTarget(bankAccountId, today);
 
+  // Capaian bulan ini dibaca dari transaksi POS (sama dengan scorecard cabang), bukan dari buku kas.
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const floor = scorecardStartFor(account?.default_branch);
+  const monthFrom = floor && floor > monthStart ? floor : monthStart;
+  const monthTarget = target ? target * workingDaysBetween(monthFrom, today) : null;
+  let monthTotal: number | null = 0;
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+      .from("pos_sales")
+      .select("total")
+      .eq("bank_account_id", bankAccountId)
+      .is("voided_at", null)
+      .eq("payment_status", "paid")
+      .gte("sale_date", monthFrom)
+      .lte("sale_date", today)
+      .order("id", { ascending: true })
+      .range(offset, offset + 999);
+    if (error) {
+      monthTotal = null;
+      break;
+    }
+    for (const r of data ?? []) monthTotal += r.total;
+    if ((data ?? []).length < 1000) break;
+  }
+
   const empty = (): PosDailyRevenueSummary => ({
     today,
     asOf: now.toISOString(),
@@ -2066,6 +2097,8 @@ export async function getPosDailyRevenueSummary(
     qrisToday: 0,
     totalToday: 0,
     percent: target ? 0 : null,
+    monthTotal,
+    monthTarget,
   });
 
   if (!stmt) return { ok: true, data: empty() };
@@ -2122,6 +2155,8 @@ export async function getPosDailyRevenueSummary(
       qrisToday,
       totalToday,
       percent: target ? totalToday / target : null,
+      monthTotal,
+      monthTarget,
     },
   };
 }

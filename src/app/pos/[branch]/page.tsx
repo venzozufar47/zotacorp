@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import { metricWindowStart } from "@/lib/scorecard/month-window";
 import { redirect } from "next/navigation";
 import {
   getCurrentUser,
@@ -86,7 +88,7 @@ export default async function PosPage({
       // paling sering dibuka kasir. Cron per jam menjaganya tetap segar.
       // `.catch(() => null)` seperti listStockOnHand di atas: kegagalan
       // metrik TIDAK boleh mengosongkan layar kasir.
-      getServiceLevelSummary(account.id, 30).catch(() => null),
+      getServiceLevelSummary(account.id, { fromDate: metricWindowStart(jakartaDateString(new Date())), toDate: jakartaDateString(new Date()) }).catch(() => null),
       // Live (bukan snapshot) tapi cuma "hari ini" satu statement —
       // murah. Sama alasan .catch(): kartu target tidak boleh
       // menjatuhkan seluruh layar kasir.

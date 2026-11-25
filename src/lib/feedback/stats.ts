@@ -2,11 +2,12 @@
  * Hitungan feedback untuk scorecard cabang. Modul murni.
  *
  * Warna kartu: dari rata-rata bintang (ambang yang diatur owner). Bila jumlah feedback di jendela 30 hari belum mencapai
- * target (5 per hari), kartu yang seharusnya hijau turun ke kuning; merah hanya karena rata-rata bintang di bawah batas
+ * target (5 per hari kerja), kartu yang seharusnya hijau turun ke kuning; merah hanya karena rata-rata bintang di bawah batas
  * merah, bukan karena jumlah.
  */
 
 import { feedbackBandOf, type BranchThresholds } from "../scorecard/thresholds.ts";
+import { workingDaysBetween } from "../scorecard/working-days.ts";
 import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "./constants.ts";
 
 export type FeedbackBand = "green" | "yellow" | "red";
@@ -14,7 +15,7 @@ export type FeedbackBand = "green" | "yellow" | "red";
 export interface FeedbackWindowStats {
   count: number;
   average: number | null;
-  /** Jumlah hari yang dihitung untuk target: 30, atau lebih sedikit bila feedback pertama baru masuk. */
+  /** Hari kerja yang dihitung untuk target dalam jendela 30 hari (lihat `targetDays`). */
   days: number;
   targetCount: number;
   countMet: boolean;
@@ -25,13 +26,14 @@ const DAY_MS = 86_400_000;
 const dayIndex = (iso: string) => Math.floor(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) / DAY_MS);
 
 /**
- * Jumlah hari target yang berlaku pada jendela yang berakhir di `asOf` (YYYY-MM-DD): 30 hari bergulir, tetapi tidak
- * menghitung hari sebelum feedback pertama cabang itu masuk (supaya bulan peluncuran tidak langsung dihukum).
+ * Jumlah HARI KERJA (Senin–Sabtu bukan tanggal merah) pada jendela 30 hari bergulir yang berakhir di `asOf`
+ * (YYYY-MM-DD), tidak menghitung hari sebelum feedback pertama cabang itu masuk (supaya bulan peluncuran tidak
+ * langsung dihukum). Minimal 1.
  */
 export function targetDays(firstFeedbackDate: string | null, asOf: string, windowDays = FEEDBACK_WINDOW_DAYS): number {
-  if (!firstFeedbackDate) return windowDays;
-  const sinceFirst = dayIndex(asOf) - dayIndex(firstFeedbackDate) + 1;
-  return Math.max(1, Math.min(windowDays, sinceFirst));
+  const windowStart = new Date((dayIndex(asOf) - windowDays + 1) * DAY_MS).toISOString().slice(0, 10);
+  const from = firstFeedbackDate && firstFeedbackDate > windowStart ? firstFeedbackDate : windowStart;
+  return Math.max(1, workingDaysBetween(from, asOf));
 }
 
 export function computeFeedbackStats(

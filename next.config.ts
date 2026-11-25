@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
    * hauling tens of KB of unused code into every route group.
    */
   experimental: {
+    /**
+     * Cache Turbopack di disk (dev) dimatikan: di Windows ia pernah menumpuk jadi 8,9 GB di `.next/dev` dan membuat server
+     * dev memakan ~3,7 GB+ saat dinyalakan ulang. Imbalannya kompilasi pertama setelah restart lebih lambat.
+     */
+    turbopackFileSystemCacheForDev: false,
     optimizePackageImports: [
       "lucide-react",
       "date-fns",

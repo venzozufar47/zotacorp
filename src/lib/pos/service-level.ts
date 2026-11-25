@@ -9,6 +9,7 @@ import {
 } from "./stock-engine";
 import { buildServiceLevelUnits } from "./service-level-groups";
 import { isOffOn } from "./sku-off-dates";
+import type { SlUnitDay } from "./service-level-detail";
 
 /**
  * Metrik Service Level POS — berapa persen produk ready stock,
@@ -97,6 +98,8 @@ export interface ServiceLevelDay {
   partialOpname: boolean;
   /** SKU ready per jam — untuk drill-down dan verifikasi tangan. */
   hourly: number[];
+  /** Rincian per unit; kosong bila hari tidak dihitung. */
+  units: SlUnitDay[];
 }
 
 export interface ServiceLevelWorstSku {
@@ -297,7 +300,7 @@ export async function computeServiceLevel(
     idxByDate.set(g.date, arr);
   });
 
-  // Unit hitung: SKU biasa satu unit; varian produk yang saling menggantikan (mis. Dubai Chewy Cookies Grade A/B) SATU unit
+  // Unit hitung: SKU biasa satu unit; varian produk yang saling menggantikan (mis. Dubai Chewy Cookie Grade A/B) SATU unit
   // yang ready bila salah satu variannya ready (lihat service-level-groups.ts).
   const keyIndex = new Map<SkuKey, number>();
   stream.skuKeys.forEach((k, j) => keyIndex.set(k, j));
@@ -373,7 +376,13 @@ export async function computeServiceLevel(
     const counted =
       idxs.length > 0 && trackedSkus > 0 && hasBaseline && hadActivity;
 
+    const dayUnits: SlUnitDay[] = [];
     if (counted) {
+      for (const cu of countedUnits) {
+        const info = units[cu.u];
+        const out = idxs.filter((i) => !cu.live.some((j) => readyMask[i][j])).length;
+        dayUnits.push({ productId: info.productId, variantId: info.variantId, label: info.label, out, counted: idxs.length });
+      }
       readySum += dayReady;
       totalSkuSamples += trackedSkus * idxs.length;
       totalSamples += idxs.length;
@@ -400,6 +409,7 @@ export async function computeServiceLevel(
       hasBaseline,
       partialOpname,
       hourly,
+      units: dayUnits,
     });
   }
 

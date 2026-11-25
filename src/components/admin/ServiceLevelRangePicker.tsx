@@ -1,5 +1,6 @@
 "use client";
 
+import { isMonthToDate } from "@/lib/scorecard/month-window";
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AlertTriangle, CalendarRange } from "lucide-react";
@@ -74,7 +75,7 @@ export function ServiceLevelRangePicker({
           aria-current={mode === "30d" ? "true" : undefined}
           className={pillClass(mode === "30d")}
         >
-          30 hari
+          {isMonthToDate(today) ? "Bulan ini" : "30 hari"}
         </button>
         <button
           type="button"

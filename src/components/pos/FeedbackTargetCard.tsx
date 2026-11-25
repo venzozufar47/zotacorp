@@ -40,6 +40,7 @@ export function FeedbackTargetCard({
           {summary.count}
           <span className="text-base font-bold text-muted-foreground"> / {summary.target}</span>
         </p>
+        <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">Bulan ini: {summary.monthCount} / {summary.monthTarget}</p>
       </Link>
       <div className="relative z-10 ml-auto flex min-w-0 flex-col items-end gap-1 text-right text-[11px] text-muted-foreground">
         <p>{summary.count >= summary.target ? "Target tercapai" : `${summary.target - summary.count} lagi`}</p>

@@ -9,6 +9,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ASPECT_ALL_GOOD, FEEDBACK_DAILY_TARGET, FEEDBACK_SLUGS, type FeedbackBranch } from "@/lib/feedback/constants";
 import { validateFeedback } from "@/lib/feedback/validate";
 import { wibDayStart } from "@/lib/feedback/store";
+import { targetDays } from "@/lib/feedback/stats";
 import { claimCode, giveFreebie, offerFeedbackFreebie, pendingClaimCount, voidFreebie } from "@/lib/feedback/freebie";
 import { getCurrentUser } from "@/lib/supabase/cached";
 
@@ -266,6 +267,10 @@ export interface PosFeedbackToday {
   /** Jumlah feedback tampil yang masuk hari ini (WIB) untuk cabang outlet. */
   count: number;
   target: number;
+  /** Feedback tampil sejak tanggal 1 bulan ini sampai hari ini. */
+  monthCount: number;
+  /** Target sampai HARI INI: target harian x hari kerja sejak tanggal 1 (atau sejak feedback pertama cabang). */
+  monthTarget: number;
   branch: FeedbackBranch;
   /** Alamat halaman feedback cabang ini (untuk QR / tautan). */
   path: string;
@@ -290,10 +295,21 @@ export async function getPosFeedbackToday(bankAccountId: string): Promise<Action
     .eq("hidden", false)
     .gte("created_at", wibDayStart(today));
   if (error) return { ok: false, error: error.message };
-  const freebiePending = await pendingClaimCount(db, branch);
+  const visible = (columns: string, options?: { count: "exact"; head: true }) =>
+    db.from("customer_feedback" as never).select(columns, options).eq("branch", branch).eq("hidden", false);
+  const [month, first, freebiePending] = await Promise.all([
+    visible("id", { count: "exact", head: true }).gte("created_at", wibDayStart(`${today.slice(0, 7)}-01`)),
+    visible("created_at").order("created_at", { ascending: true }).limit(1),
+    pendingClaimCount(db, branch),
+  ]);
+  if (month.error) return { ok: false, error: month.error.message };
+  const firstAt = ((first.data ?? []) as unknown as { created_at: string }[])[0]?.created_at;
+  const firstDate = firstAt ? jakartaDateString(new Date(firstAt)) : null;
+  // Jendela = tanggal 1 s.d. hari ini; aturan hari kerjanya sama dengan scorecard.
+  const monthTarget = FEEDBACK_DAILY_TARGET * targetDays(firstDate, today, Number(today.slice(8, 10)));
   return {
     ok: true,
-    data: { count: count ?? 0, target: FEEDBACK_DAILY_TARGET, branch, path: `/feedback/${branch.toLowerCase()}`, freebiePending },
+    data: { count: count ?? 0, target: FEEDBACK_DAILY_TARGET, monthCount: month.count ?? 0, monthTarget, branch, path: `/feedback/${branch.toLowerCase()}`, freebiePending },
   };
 }
 

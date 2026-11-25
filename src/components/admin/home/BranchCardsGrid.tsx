@@ -1,5 +1,7 @@
 "use client";
 
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import { isMonthToDate } from "@/lib/scorecard/month-window";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
@@ -351,7 +353,7 @@ export function BranchCardsGrid({
       ),
       opsNode: (
         <>
-          <SectionLabel>Operasional · 30 hari</SectionLabel>
+          <SectionLabel>Operasional · {isMonthToDate(jakartaDateString(new Date())) ? "bulan ini" : "30 hari"}</SectionLabel>
           {sl && (
             <>
               <StatLine label="Service level" value={pct(sl.serviceLevel)} tone={serviceLevelTone(sl.serviceLevel, sl.serviceLevelTarget)} />

@@ -37,7 +37,7 @@ import { isValidPeriod, isValidQuarter, lastDayOf, periodLabel, monthsOfQuarter,
  * bisa menampilkannya transparan.
  *
  * Pengali scorecard = poin empat metrik kartu Scorecard Cabang (`computeMetricsAsOf` mode "month") pada hari terakhir
- * bulan (atau hari ini untuk bulan berjalan): waste & service level 30 hari terakhir, omzet terhadap target bulanan, keluhan.
+ * bulan (atau hari ini untuk bulan berjalan): waste, service level, feedback satu bulan penuh (sebelum Des 2026: 30 hari), omzet terhadap target bulanan, keluhan.
  * Eligibilitas "tidak ada tidak-hadir-tanpa-kabar" SENGAJA TIDAK otomatis (belum ada sumber data mangkir vs izin);
  * SP aktif sepanjang bulan dan akun nonaktif dikecualikan otomatis.
  *

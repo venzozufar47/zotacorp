@@ -10,24 +10,24 @@ const sku = (key: string, productId: string, productName: string, variantId: str
   variantName,
 });
 
-test("varian Dubai Chewy Cookies digabung jadi satu unit; produk lain tetap satu per SKU", () => {
+test("varian Dubai Chewy Cookie digabung jadi satu unit; produk lain tetap satu per SKU", () => {
   const units = buildServiceLevelUnits([
     sku("a", "p1", "Salt Bread", null, null),
-    sku("b", "p2", "Dubai Chewy Cookies", "v1", "Grade A"),
-    sku("c", "p2", "Dubai Chewy Cookies", "v2", "Grade B"),
-    sku("d", "p3", "Fudgy Brownies", "v3", "Large"),
-    sku("e", "p3", "Fudgy Brownies", "v4", "Small"),
+    sku("b", "p2", "Dubai Chewy Cookie", "v1", "Grade A"),
+    sku("c", "p2", "Dubai Chewy Cookie", "v2", "Grade B"),
+    sku("d", "p3", "Ready Cake", "v3", "DIY"),
+    sku("e", "p3", "Ready Cake", "v4", "Reguler"),
   ]);
   assert.equal(units.length, 4);
   assert.deepEqual(units.map((u) => u.members), [["a"], ["b", "c"], ["d"], ["e"]]);
-  assert.equal(units[1].label, "Dubai Chewy Cookies (Grade A / Grade B)");
-  assert.equal(units[2].label, "Fudgy Brownies — Large");
+  assert.equal(units[1].label, "Dubai Chewy Cookie (Grade A / Grade B)");
+  assert.equal(units[2].label, "Ready Cake — DIY");
 });
 
 test("nama produk dicocokkan tanpa membedakan huruf besar/kecil dan spasi", () => {
   const units = buildServiceLevelUnits([
-    sku("b", "p2", "  dubai  chewy cookies ", "v1", "Grade A"),
-    sku("c", "p2", "Dubai Chewy Cookies", "v2", "Grade B"),
+    sku("b", "p2", "  dubai  chewy cookie ", "v1", "Grade A"),
+    sku("c", "p2", "Dubai Chewy Cookie", "v2", "Grade B"),
   ]);
   assert.equal(units.length, 1);
   assert.deepEqual(units[0].members, ["b", "c"]);
@@ -56,17 +56,26 @@ test("varian Salt Bread (Choco/Ori) digabung; Salt Bread tanpa varian (Pare) tet
   assert.equal(units[0].label, "Salt Bread (Choco / Ori)");
 });
 
+test("varian Fudgy Brownies (Large/Small) digabung jadi satu unit", () => {
+  const units = buildServiceLevelUnits([
+    sku("l", "f1", "Fudgy Brownies", "v1", "Large"),
+    sku("s", "f1", "Fudgy Brownies", "v2", "Small"),
+  ]);
+  assert.deepEqual(units.map((u) => u.members), [["l", "s"]]);
+  assert.equal(units[0].label, "Fudgy Brownies (Large / Small)");
+});
+
 test("satu varian saja tidak digabung; produk tanpa varian dan daftar kosong tidak berubah", () => {
   assert.deepEqual(
-    buildServiceLevelUnits([sku("b", "p2", "Dubai Chewy Cookies", "v1", "Grade A")]).map((u) => u.members),
+    buildServiceLevelUnits([sku("b", "p2", "Dubai Chewy Cookie", "v1", "Grade A")]).map((u) => u.members),
     [["b"]]
   );
-  assert.equal(buildServiceLevelUnits([sku("a", "p1", "Dubai Chewy Cookies", null, null)]).length, 1);
+  assert.equal(buildServiceLevelUnits([sku("a", "p1", "Dubai Chewy Cookie", null, null)]).length, 1);
   assert.deepEqual(buildServiceLevelUnits([]), []);
   // Tanpa daftar pengganti: semua SKU berdiri sendiri.
   assert.equal(
     buildServiceLevelUnits(
-      [sku("b", "p2", "Dubai Chewy Cookies", "v1", "Grade A"), sku("c", "p2", "Dubai Chewy Cookies", "v2", "Grade B")],
+      [sku("b", "p2", "Dubai Chewy Cookie", "v1", "Grade A"), sku("c", "p2", "Dubai Chewy Cookie", "v2", "Grade B")],
       []
     ).length,
     2

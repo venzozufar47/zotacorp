@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { combineWasteService } from "@/lib/scorecard/combine";
+import { EARLY_WORKDAYS } from "@/lib/scorecard/month-window";
 import { TILE_STYLE, type TileTone } from "./tile-styles";
 import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
 import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
@@ -44,8 +45,16 @@ export function ScorecardView({
 
       <div className={cn("grid grid-cols-2 gap-2 sm:gap-2.5", items.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
         {items.map((item, i) => {
-          const band = item.kind === "combo" ? item.band : item.metric.band;
-          const meta = BAND_META[band];
+          const early = item.kind === "combo" ? item.waste.early : item.metric.early;
+          const realBand = item.kind === "combo" ? item.band : item.metric.band;
+          const meta = BAND_META[early ? "measuring" : realBand];
+          // Selama "Diukur": hari ke berapa, dan tanda kecil bila angkanya sudah di zona merah.
+          const earlyText = early && (
+            <p className="relative mt-1 text-[10.5px] leading-snug">
+              {early.day === 0 ? "Belum ada hari kerja" : `Hari kerja ke-${early.day} dari ${EARLY_WORKDAYS}`}
+              {realBand === "red" && <span className="font-semibold text-destructive"> · di bawah target</span>}
+            </p>
+          );
           const Icon = meta.Icon;
           const tileCls = cn(
             "animate-fade-up relative rounded-3xl px-3.5 py-3 ring-1 ring-inset ring-white/15 has-[button[aria-expanded=true]]:z-30",
@@ -96,14 +105,16 @@ export function ScorecardView({
                       >
                         {p.metric.displayValue}
                       </p>
+                      {p.metric.early?.prevDisplay && <p className="text-[10px] leading-tight opacity-75">Lalu: {p.metric.early.prevDisplay}</p>}
                     </div>
                   ))}
                 </div>
                 <span className={`relative mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}>
                   <Icon aria-hidden size={12} strokeWidth={2.5} />
                   {meta.label}
-                  {item.driver && ` · ${item.driver === "waste" ? "Waste" : "Service level"}`}
+                  {!early && item.driver && ` · ${item.driver === "waste" ? "Waste" : "Service level"}`}
                 </span>
+                {earlyText}
               </div>
             );
           }
@@ -132,6 +143,8 @@ export function ScorecardView({
                 <Icon aria-hidden size={12} strokeWidth={2.5} />
                 {meta.label}
               </span>
+              {earlyText}
+              {m.early?.prevDisplay && <p className="relative text-[10.5px] leading-snug opacity-75">Bulan lalu: {m.early.prevDisplay}</p>}
             </div>
           );
         })}

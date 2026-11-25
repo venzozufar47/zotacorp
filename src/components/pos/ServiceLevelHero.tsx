@@ -68,12 +68,16 @@ export function ServiceLevelHero({
   size = "compact",
   href,
   days = 30,
+  periodLabel,
 }: {
   summary: ServiceLevelSummary;
   size?: "hero" | "compact";
   href?: string;
   days?: number;
+  /** Pengganti "N hari", mis. "Bulan ini". */
+  periodLabel?: string;
 }) {
+  const period = periodLabel ?? `${days} hari`;
   const pct = summary.percent;
   const t = tone(pct, summary.target);
   const label = pct === null ? "—" : `${(pct * 100).toFixed(1)}%`;
@@ -83,11 +87,11 @@ export function ServiceLevelHero({
   if (size === "compact") {
     const inner = (
       <div
-        className={`flex items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)]`}
+        className={`flex h-full items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)]`}
       >
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Service Level · {days} hari
+            Service Level · {period}
             {href && <CompactLinkPending />}
           </p>
           <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
@@ -108,7 +112,7 @@ export function ServiceLevelHero({
       </div>
     );
     return href ? (
-      <Link prefetch={false} href={href} className="block">
+      <Link prefetch={false} href={href} className="block h-full">
         {inner}
       </Link>
     ) : (
@@ -119,7 +123,7 @@ export function ServiceLevelHero({
   return (
     <div className="rounded-3xl border-2 border-foreground bg-card p-6 sm:p-8 shadow-[4px_4px_0_0_var(--foreground)]">
       <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        Service Level · {days} hari
+        Service Level · {period}
       </p>
       <p
         className={`font-display text-5xl sm:text-6xl font-extrabold tabular-nums leading-none mt-2 ${t.text}`}

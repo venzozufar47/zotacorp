@@ -2,6 +2,8 @@ import {
   getServiceLevelSummary,
   getExpiredWasteSummary,
 } from "@/lib/actions/pos-service-level.actions";
+import { isMonthToDate, metricWindowDays } from "@/lib/scorecard/month-window";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import type { ServiceLevelOutlet } from "@/lib/pos/service-level-access";
 import { serviceLevelTone } from "@/lib/pos/service-level";
 import { wasteTone, WASTE_EXPIRED_TARGET } from "@/lib/pos/waste";
@@ -57,11 +59,15 @@ export async function ServiceLevelPanel({
 }) {
   if (outlets.length === 0) return null;
 
+  const today = jakartaDateString(new Date());
+  const days = metricWindowDays(today);
+  const periodLabel = isMonthToDate(today) ? "bulan ini" : "30 hari";
+
   const summaries = await Promise.all(
     outlets.map(async (o) => {
       const [res, wasteRes] = await Promise.all([
-        getServiceLevelSummary(o.bankAccountId, 30),
-        getExpiredWasteSummary(o.bankAccountId, 30),
+        getServiceLevelSummary(o.bankAccountId, days),
+        getExpiredWasteSummary(o.bankAccountId, days),
       ]);
       return {
         outlet: o,
@@ -108,7 +114,7 @@ export async function ServiceLevelPanel({
                       : `${(summary.percent * 100).toFixed(1)}%`}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    30 hari · target {(summary.target * 100).toFixed(0)}%
+                    {periodLabel} · target {(summary.target * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div className="flex items-baseline gap-3">

@@ -10,6 +10,7 @@ import {
 import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
 import { zonedDateString } from "@/lib/utils/celebrations";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
+import { metricWindowDays } from "@/lib/scorecard/month-window";
 import { getCleaningMonitor } from "./cleaning.actions";
 import {
   getServiceLevelSummary,
@@ -20,7 +21,7 @@ import {
   type StudioHeadRecentResolutionKpi,
 } from "./tickets.actions";
 
-/** Metrik operasional ringkas untuk Home admin (30 hari terakhir). */
+/** Metrik operasional ringkas untuk Home admin (jendela `metricWindowDays`). */
 export interface AdminOpsMetrics {
   outlets: Array<{
     id: string;
@@ -61,8 +62,8 @@ export async function getAdminOpsMetrics(): Promise<AdminOpsMetrics> {
     Promise.all(
       (accounts ?? []).map(async (a) => {
         const [sl, waste] = await Promise.all([
-          getServiceLevelSummary(a.id, 30).catch(() => null),
-          getExpiredWasteSummary(a.id, 30).catch(() => null),
+          getServiceLevelSummary(a.id, metricWindowDays(jakartaDateString(new Date()))).catch(() => null),
+          getExpiredWasteSummary(a.id, metricWindowDays(jakartaDateString(new Date()))).catch(() => null),
         ]);
         return {
           id: a.id,

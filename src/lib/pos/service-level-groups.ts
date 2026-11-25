@@ -1,12 +1,12 @@
 /**
  * Unit hitung Service Level: SKU yang saling menggantikan dihitung SEBAGAI SATU produk. Varian produk-produk di
- * `SL_SUBSTITUTE_PRODUCTS` (mis. Dubai Chewy Cookies Grade A dan Grade B) digabung: unit itu dianggap ready bila SALAH SATU
+ * `SL_SUBSTITUTE_PRODUCTS` (mis. Dubai Chewy Cookie Grade A dan Grade B) digabung: unit itu dianggap ready bila SALAH SATU
  * variannya ready, dan hanya dihitung satu kali di pembilang maupun penyebut. Hanya berlaku untuk metrik Service Level;
  * stok, penjualan, dan opname di POS tetap per varian. Modul murni.
  */
 
 /** Nama produk (tanpa membedakan huruf besar/kecil) yang semua variannya saling menggantikan. */
-export const SL_SUBSTITUTE_PRODUCTS: readonly string[] = ["Dubai Chewy Cookies", "Mille Crepes", "Salt Bread"];
+export const SL_SUBSTITUTE_PRODUCTS: readonly string[] = ["Dubai Chewy Cookie", "Fudgy Brownies", "Mille Crepes", "Salt Bread"];
 
 export interface SlSkuInfo {
   key: string;

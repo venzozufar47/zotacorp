@@ -6,20 +6,14 @@ import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
 import { ServiceLevelCauses } from "@/components/pos/ServiceLevelCauses";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { findPosAccount } from "@/lib/actions/pos.actions";
-import {
-  getServiceLevel,
-  getServiceLevelSummary,
-} from "@/lib/actions/pos-service-level.actions";
+import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
+import { isMonthToDate } from "@/lib/scorecard/month-window";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
 
 /**
- * Halaman detail Service Level di POS.
- *
- * Hero dibaca dari SNAPSHOT (cepat, satu query). Rincian penyebab
- * terbesar dihitung LIVE karena butuh pecahan per-SKU yang tidak
- * disimpan di snapshot — ~3 detik, tapi halaman ini dibuka sengaja,
- * bukan tiap kali kasir melayani.
+ * Halaman detail Service Level di POS. Angka besar, penyebab terbesar, dan rincian per hari berasal dari rekaman harian
+ * yang sama dengan kartu kasir, scorecard, dan admin.
  */
 export default async function PosServiceLevelPage({
   params,
@@ -40,17 +34,15 @@ export default async function PosServiceLevelPage({
   const isAdmin = (await getCurrentRole()) === "admin";
 
   const sp = await searchParams;
-  const days = sp.days === "7" ? 7 : 30;
   const today = jakartaDateString(new Date());
-  const fromDate = jakartaDateMinusDays(today, days - 1);
-
-  const [summaryRes, liveRes] = await Promise.all([
-    getServiceLevelSummary(account.id, days),
-    getServiceLevel(account.id, { fromDate, toDate: today }).catch(() => null),
-  ]);
-
+  // Pilihan bawaan: 30 hari, atau "Bulan ini" sejak aturan tanggal 1 berlaku.
+  const monthMode = isMonthToDate(today);
+  const isDefault = sp.days !== "7";
+  const days = !isDefault ? 7 : monthMode ? Number(today.slice(8, 10)) : 30;
+  const periodLabel = isDefault && monthMode ? "Bulan ini" : `${days} hari`;
+  const summaryRes = await getServiceLevelSummary(account.id, { fromDate: jakartaDateMinusDays(today, days - 1), toDate: today }, { detail: true });
   const summary = summaryRes.ok ? summaryRes.data : null;
-  const live = liveRes && liveRes.ok ? liveRes.data : null;
+  const detail = summary?.detail ?? null;
 
   return (
     <PosShell
@@ -67,7 +59,14 @@ export default async function PosServiceLevelPage({
           dan PosShiftClient yang memakai wrapper yang sama). */}
       <div className="max-w-5xl mx-auto px-3 sm:px-5 py-5 space-y-4">
         {summary ? (
-          <ServiceLevelHero summary={summary} size="hero" days={days} />
+          <>
+            <ServiceLevelHero summary={summary} size="hero" periodLabel={periodLabel} />
+            {summary.computedAt && (
+              <p className="text-[11px] text-muted-foreground">
+                Diperbarui {new Date(summary.computedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} WIB. Dihitung ulang tiap jam.
+              </p>
+            )}
+          </>
         ) : (
           <div className="rounded-2xl border-2 border-foreground bg-card p-5 text-sm text-muted-foreground">
             Metrik belum aktif untuk outlet ini.
@@ -75,42 +74,48 @@ export default async function PosServiceLevelPage({
         )}
 
         <div className="flex gap-2" role="group" aria-label="Rentang waktu">
-          {[7, 30].map((d) => (
+          {[
+            { value: "7", label: "7 hari", active: !isDefault },
+            { value: "30", label: monthMode ? "Bulan ini" : "30 hari", active: isDefault },
+          ].map((o) => (
             <a
-              key={d}
-              href={`${basePath}/service-level?days=${d}`}
-              aria-current={days === d ? "true" : undefined}
+              key={o.value}
+              href={`${basePath}/service-level?days=${o.value}`}
+              aria-current={o.active ? "true" : undefined}
               className={`inline-flex h-9 items-center rounded-full border-2 border-foreground px-4 text-xs font-bold transition ${
-                days === d
+                o.active
                   ? "bg-primary text-primary-foreground"
                   : "bg-card hover:bg-muted"
               }`}
             >
-              {d} hari
+              {o.label}
             </a>
           ))}
         </div>
 
-        {live && live.worstSkus.length > 0 && (
+        {detail && !detail.complete && (
+          <p className="text-xs text-muted-foreground">Rincian penyebab per produk muncul setelah rekaman rentang ini diperbarui.</p>
+        )}
+
+        {summary && detail && detail.causes.length > 0 && (
           <section className="rounded-2xl border-2 border-foreground bg-card p-5">
             <h2 className="font-display text-sm font-bold">Penyebab terbesar</h2>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Seberapa besar tiap produk menurunkan service level ({days} hari
-              terakhir). Jika dijumlah = 100% − service level.
+              Seberapa besar tiap produk menurunkan service level ({periodLabel.toLowerCase()}). Jika dijumlah = 100% − service level.
             </p>
             <ServiceLevelCauses
-              skus={live.worstSkus}
-              lostShare={live.totalSkuSamples > 0 ? live.lostSkuHours / live.totalSkuSamples : 0}
+              skus={detail.causes}
+              lostShare={summary.totalSkuSamples > 0 ? summary.lostSkuHours / summary.totalSkuSamples : 0}
               limit={12}
             />
           </section>
         )}
 
-        {live && (
+        {detail && (
           <section className="rounded-2xl border-2 border-foreground bg-card p-5">
             <h2 className="font-display text-sm font-bold">Per hari</h2>
             <ul className="mt-3 space-y-2">
-              {live.days
+              {detail.days
                 .slice()
                 .reverse()
                 .map((d) => (

@@ -41,6 +41,11 @@ export function DailyRevenueTargetCard({
         >
           {formatRpCompact(summary.totalToday)}
         </p>
+        {summary.monthTotal !== null && summary.monthTarget ? (
+          <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+            Bulan ini: {formatRpCompact(summary.monthTotal)} / {formatRpCompact(summary.monthTarget)}
+          </p>
+        ) : null}
       </div>
       <p className="ml-auto text-right text-[11px] text-muted-foreground">
         target {formatRp(summary.target)}

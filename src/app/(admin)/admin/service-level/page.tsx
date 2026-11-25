@@ -10,7 +10,6 @@ import { ScorecardThresholdsCard } from "@/components/admin/ScorecardThresholdsC
 import { getScorecardThresholds } from "@/lib/actions/scorecard-threshold.actions";
 import { DEFAULT_THRESHOLDS } from "@/lib/scorecard/thresholds";
 import {
-  getServiceLevel,
   getServiceLevelSummary,
   getWaste,
   listServiceLevelOwners,
@@ -18,6 +17,7 @@ import {
   listServiceLevelSkus,
 } from "@/lib/actions/pos-service-level.actions";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
+import { isMonthToDate, metricWindowDays } from "@/lib/scorecard/month-window";
 
 /** Harus sama dengan MAX_SPAN_DAYS di pos-service-level.actions.ts — di
  * sini dipakai untuk memangkas rentang custom SEBELUM dikirim ke action,
@@ -56,7 +56,7 @@ function resolveRange(
   if (sp.range !== "custom") {
     return {
       mode: "30d",
-      fromDate: jakartaDateMinusDays(today, 29),
+      fromDate: jakartaDateMinusDays(today, metricWindowDays(today) - 1),
       toDate: today,
       warning: null,
     };
@@ -105,7 +105,7 @@ function formatTanggalPendek(ymd: string): string {
 /** Label pendek dipakai di judul subsection ("Penyebab terbesar (…)"). */
 function formatRangeLabel(range: ResolvedRange, today: string): string {
   if (range.mode === "7d") return "7 hari";
-  if (range.mode === "30d") return "30 hari";
+  if (range.mode === "30d") return isMonthToDate(today) ? "bulan ini" : "30 hari";
   if (range.fromDate === range.toDate) return formatTanggalPendek(range.fromDate);
   const toLabel = range.toDate === today ? "hari ini" : formatTanggalPendek(range.toDate);
   return `${formatTanggalPendek(range.fromDate)} – ${toLabel}`;
@@ -159,24 +159,20 @@ export default async function ServiceLevelAdminPage({
   // masih jauh lebih murah daripada memecah halaman jadi banyak request.
   const outlets = await Promise.all(
     (accounts ?? []).map(async (a) => {
-      const [summary, owners, exclusions, skus, live, waste] = await Promise.all([
-        getServiceLevelSummary(a.id, { fromDate: range.fromDate, toDate: range.toDate }),
+      const [summary, owners, exclusions, skus, waste] = await Promise.all([
+        getServiceLevelSummary(a.id, { fromDate: range.fromDate, toDate: range.toDate }, { detail: true }),
         listServiceLevelOwners(a.id),
         listServiceLevelExclusions(a.id),
         listServiceLevelSkus(a.id),
-        // Rincian penyebab (worst SKU + per-hari) sama seperti yang
-        // dilihat kasir di POS — dihitung LIVE, jadi hanya untuk outlet
-        // yang aktif supaya tidak buang waktu query di outlet mati.
-        a.service_level_enabled
-          ? getServiceLevel(a.id, { fromDate: range.fromDate, toDate: range.toDate }).catch(
-              () => null
-            )
-          : Promise.resolve(null),
         // Susut dihitung untuk SEMUA outlet, termasuk yang metrik SL-nya
         // mati: penarikan expired tetap terjadi dan tetap layak dilihat.
-        // Murah, jadi tidak perlu digerbangi flag seperti `live`.
         getWaste(a.id, { fromDate: range.fromDate, toDate: range.toDate }).catch(() => null),
       ]);
+      // Penyebab terbesar dan per-hari dari rekaman yang sama dengan angka besarnya.
+      const s = summary.ok ? (summary.data ?? null) : null;
+      const live = s?.detail
+        ? { worstSkus: s.detail.causes, days: s.detail.days, totalSkuSamples: s.totalSkuSamples, lostSkuHours: s.lostSkuHours }
+        : null;
       return {
         id: a.id,
         accountName: a.account_name,
@@ -185,8 +181,8 @@ export default async function ServiceLevelAdminPage({
         openHour: a.service_level_open_hour,
         closeHour: a.service_level_close_hour,
         target: a.service_level_target,
-        summary: summary.ok ? (summary.data ?? null) : null,
-        live: live && live.ok ? (live.data ?? null) : null,
+        summary: s,
+        live,
         waste: waste && waste.ok ? (waste.data ?? null) : null,
         owners,
         exclusions,

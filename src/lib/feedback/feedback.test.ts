@@ -39,11 +39,12 @@ test("urutan tampil dibersihkan: kunci tak dikenal dan duplikat dibuang", () => 
   assert.equal(none.ok && none.data.aspectOrder, null);
 });
 
-test("hari target tidak menghitung hari sebelum feedback pertama", () => {
-  assert.equal(targetDays(null, "2026-11-10"), 30);
+test("hari target hanya hari kerja, dan tidak menghitung hari sebelum feedback pertama", () => {
+  assert.equal(targetDays(null, "2026-11-10"), 26); // 30 hari dikurangi 4 Minggu
   assert.equal(targetDays("2026-11-10", "2026-11-10"), 1);
-  assert.equal(targetDays("2026-11-01", "2026-11-10"), 10);
-  assert.equal(targetDays("2026-09-01", "2026-11-10"), 30);
+  assert.equal(targetDays("2026-11-01", "2026-11-10"), 8); // 1 dan 8 November hari Minggu
+  assert.equal(targetDays("2026-09-01", "2026-11-10"), 26);
+  assert.equal(targetDays("2026-08-01", "2026-08-31"), 23); // jendela 2–31 Agu: 5 Minggu + 17 dan 25 Agu tanggal merah
 });
 
 test("hijau turun ke kuning bila jumlah di bawah target; merah tidak karena jumlah", () => {

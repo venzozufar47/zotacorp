@@ -118,7 +118,8 @@ export async function runServiceLevelSnapshot(opts?: {
         has_baseline: d.hasBaseline,
         partial_opname: d.partialOpname,
         source,
-        detail_json: { hourly: d.hourly },
+        detail_json: { hourly: d.hourly, units: d.units.map((u) => ({ ...u })) },
+        computed_at: result.computedAtIso,
       }));
       if (rows.length === 0) {
         outlets.push({

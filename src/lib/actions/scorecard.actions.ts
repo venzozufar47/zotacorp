@@ -21,6 +21,7 @@ import {
 } from "@/lib/scorecard/thresholds";
 import { loadThresholdsFor } from "@/lib/scorecard/thresholds-store";
 import { SCORECARD_START } from "@/lib/scorecard/start-dates";
+import { earlyWorkday, metricWindowName, metricWindowStart } from "@/lib/scorecard/month-window";
 import { loadFeedbackWindow } from "@/lib/feedback/store";
 import { computeFeedbackStats, targetDays } from "@/lib/feedback/stats";
 import { FEEDBACK_DAILY_TARGET, FEEDBACK_WINDOW_DAYS } from "@/lib/feedback/constants";
@@ -59,11 +60,16 @@ export interface ScorecardMetric {
   ranges?: BandRange[];
   /** Catatan panduan bila rentang belum ada (mis. ambang belum ditentukan). */
   rangesNote?: string;
+  /**
+   * Hanya tampilan: 3 hari kerja pertama bulan berjalan berstatus "Diukur". `band` tetap warna sebenarnya (dipakai bonus
+   * dan peringatan 2 minggu); tampilan memakai warna netral selama field ini ada.
+   */
+  early?: { day: number; prevDisplay: string | null };
 }
 
 export interface BranchScorecard {
   branch: ScorecardBranch;
-  /** Angka tampilan: waste & service level 30 hari terakhir, omzet bulan berjalan. */
+  /** Angka tampilan: jendela lihat `lib/scorecard/month-window`; omzet bulan berjalan. */
   metrics: ScorecardMetric[];
   /** Nama metrik (ukuran mingguan, sesuai SOP) yang merah 2 minggu berturut-turut. */
   twoWeeksRedLabels: string[];
@@ -212,7 +218,8 @@ export async function computeMetricsAsOf(
   asOf: string,
   /**
    * "week" (bawaan; dipakai Kalkulator Bonus & cek 2 minggu merah): 7 hari terakhir bergulir, keluhan 30 hari.
-   * "month" (tampilan scorecard): waste & service level 30 hari terakhir; omzet & keluhan 1 tanggal bulan `asOf` s.d. `asOf`.
+   * "month" (tampilan scorecard & Kalkulator Bonus): waste, service level, dan feedback mengikuti `metricWindowStart`
+   * (mulai Desember 2026 dari tanggal 1; sebelumnya 30 hari); omzet dari tanggal 1 bulan `asOf` s.d. `asOf`.
    */
   period: "week" | "month" = "week",
   /**
@@ -230,10 +237,11 @@ export async function computeMetricsAsOf(
   const clamp = (d: string) => (floor !== null && d < floor ? floor : d);
   const thresholdMonth = monthStartOf(asOf);
   const monthStart = clamp(thresholdMonth);
-  // Tampilan: waste & service level adalah rasio → 30 hari bergulir (selalu cukup data, tidak mulai dari nol tiap
-  // tanggal 1); omzet & keluhan tetap bulan berjalan karena dibandingkan dengan target bulanan.
-  const weekStart = clamp(period === "month" ? addDays(asOf, -29) : addDays(asOf, -6));
-  const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
+  // Ukuran mingguan (peringatan "2 minggu merah") tetap 7 hari bergulir dengan feedback 30 hari.
+  const weekStart = clamp(period === "month" ? metricWindowStart(asOf) : addDays(asOf, -6));
+  const windowName = period === "month" ? metricWindowName(asOf) : "7 hari terakhir";
+  const fbStart = period === "month" ? metricWindowStart(asOf) : addDays(asOf, -(FEEDBACK_WINDOW_DAYS - 1));
+  const fbDays = Math.round((Date.parse(asOf) - Date.parse(fbStart)) / 86_400_000) + 1;
   const daysElapsed = floor !== null && !beforeFloor && floor.slice(0, 7) === asOf.slice(0, 7)
     ? Number(asOf.slice(8, 10)) - Number(floor.slice(8, 10)) + 1
     : Number(asOf.slice(8, 10));
@@ -246,14 +254,19 @@ export async function computeMetricsAsOf(
     // Ambang Waste/Service level/Feedback yang diatur owner (kartu "Ambang warna Scorecard Cabang"); bawaan bila belum ada.
     // Ambang bulan itu: ambang umum, ditimpa target khusus cabang+bulan bila ada (mis. Service level Pare Oktober 2026).
     loadThresholdsFor(createAdminClient(), branch, thresholdMonth),
-    // Feedback customer: 30 hari bergulir, selalu (juga untuk kalkulator bonus), supaya sama dengan yang dilihat di scorecard.
+    // Feedback customer: jendela yang sama dengan waste & service level.
     beforeFloor
       ? Promise.resolve(null)
-      : loadFeedbackWindow(createAdminClient(), branch, clamp(addDays(asOf, -(FEEDBACK_WINDOW_DAYS - 1))), asOf).catch(() => null),
+      : loadFeedbackWindow(createAdminClient(), branch, clamp(fbStart), asOf).catch(() => null),
   ]);
   const fb = fbWindow
-    ? computeFeedbackStats(fbWindow.ratings, targetDays(fbWindow.firstDate, asOf), th)
+    ? computeFeedbackStats(fbWindow.ratings, targetDays(fbWindow.firstDate, asOf, fbDays), th)
     : null;
+
+  // Rentang target feedback ditulis dengan tanggal, supaya tidak terbaca sebagai target sebulan atau target harian.
+  const fbFrom = [fbStart, fbWindow?.firstDate ?? ""].sort()[1];
+  const shortDate = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
 
   const wasteMeasured = wastePct !== null;
   // Target bulanan dibagi per HARI KERJA (Senin–Sabtu; POS tidak aktif Minggu), bukan per hari kalender.
@@ -310,20 +323,20 @@ export async function computeMetricsAsOf(
       ranges: omzetRanges(),
     },
     {
-      // Rata-rata bintang feedback customer 30 hari terakhir. Warna dari ambang bintang; hijau turun ke kuning bila jumlah
-      // feedback di bawah target harian (5/hari). Belum ada feedback = "Diukur" (netral, tidak memengaruhi poin).
+      // Rata-rata bintang feedback customer pada jendela di atas. Warna dari ambang bintang; hijau turun ke kuning bila jumlah
+      // feedback di bawah target (5 per hari kerja). Belum ada feedback = "Diukur" (netral, tidak memengaruhi poin).
       key: "feedback",
       label: "Rata-rata feedback customer",
       value: fb?.average ?? 0,
       displayValue: fb?.average != null ? `${fb.average.toFixed(1).replace(".", ",")} ★` : "Belum ada data",
       band: fb?.band ?? "measuring",
       note: fb
-        ? `${fb.count}/${fb.targetCount} feedback · ${FEEDBACK_WINDOW_DAYS} hari.${
+        ? `${fb.count} dari target ${fb.targetCount} feedback untuk ${shortDate(fbFrom)} – ${shortDate(asOf)}.${
             fb.average != null && !fb.countMet && fb.band === "yellow" && fb.average >= th.fbGreen ? " Kuning: jumlah belum cukup." : ""
           }`
         : undefined,
       ranges: feedbackRanges(th),
-      rangesNote: `Hijau: minimal ${FEEDBACK_DAILY_TARGET} feedback/hari.`,
+      rangesNote: `Hijau: minimal ${FEEDBACK_DAILY_TARGET} feedback/hari kerja (tanpa Minggu dan tanggal merah).`,
     },
   ];
 }
@@ -444,18 +457,32 @@ export async function getBranchScorecard(
           label: prev.label,
           metrics: prevRaw.map((m) => ({
             ...m,
-            label: m.key === "omzet" ? `Omzet ${prev.label} vs target` : m.label.replace(" 30 hari terakhir", ` 30 hari s.d. akhir ${prev.label}`),
+            label: m.key === "omzet" ? `Omzet ${prev.label} vs target` : m.label.replace(" 30 hari terakhir", ` 30 hari s.d. akhir ${prev.label}`).replace(" bulan ini", ` ${prev.label}`),
             note: m.note ? m.note.split(" Hari ini idealnya")[0] : undefined,
           })),
         }
       : undefined;
+
+  // Masa "Diukur": angka tetap tampil, disertai hasil akhir bulan lalu sebagai pembanding.
+  const floor = SCORECARD_START[branch] ?? null;
+  const monthStart = monthStartOf(today);
+  const day = earlyWorkday(floor && floor > monthStart ? floor : monthStart, today);
+  let shown = metrics;
+  if (day !== null) {
+    const last = await computeMetricsAsOf(branch, account.id, dailyTarget, addDays(monthStart, -1), "month", opts);
+    const lastByKey = new Map(last.map((m) => [m.key, m]));
+    shown = metrics.map((m) => {
+      const p = lastByKey.get(m.key);
+      return { ...m, early: { day, prevDisplay: p && p.band !== "measuring" && p.band !== "unset" ? p.displayValue : null } };
+    });
+  }
 
   const prevByKey = new Map(weekPrev.map((m) => [m.key, m]));
   const twoWeeksRedLabels = weekNow
     .filter((m) => m.band === "red" && prevByKey.get(m.key)?.band === "red")
     .map((m) => m.label);
 
-  return { branch, metrics, twoWeeksRedLabels, omzetTarget, prevMonth };
+  return { branch, metrics: shown, twoWeeksRedLabels, omzetTarget, prevMonth };
 }
 
 /**

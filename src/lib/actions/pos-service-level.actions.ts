@@ -10,12 +10,9 @@ import {
   type ActionResult,
 } from "./_gates";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
-import {
-  computeServiceLevel,
-  type ServiceLevelResult,
-} from "@/lib/pos/service-level";
 import { listActiveSkus } from "@/lib/pos/stock-engine";
 import { loadThresholdsFor } from "@/lib/scorecard/thresholds-store";
+import { aggregateCauses, type SlCause, type SlUnitDay } from "@/lib/pos/service-level-detail";
 import { scorecardStartFor } from "@/lib/scorecard/start-dates";
 import { computeWaste, type WasteResult } from "@/lib/pos/waste";
 
@@ -25,14 +22,9 @@ import { computeWaste, type WasteResult } from "@/lib/pos/waste";
  * File terpisah dari pos-stock.actions.ts yang sudah ~1600 baris dan
  * memakai gate berbeda.
  *
- * DUA JALUR BACA yang sengaja dibedakan:
- *  - `getServiceLevel` menghitung LIVE dari tabel POS mentah. Butuh
- *    `requireAdminOrPosAssignee` karena RLS pos_products/pos_sales/
- *    pos_stock_movements memang tertutup untuk non-assignee.
- *  - `getServiceLevelSummary` membaca snapshot yang sudah jadi. Gate-nya
- *    lebih longgar (`requireServiceLevelViewer`) supaya penanggung jawab
- *    metrik yang bukan orang POS tetap bisa melihat angkanya di
- *    dashboard karyawan.
+ * SATU JALUR BACA: semua layar (kasir, detail POS, admin, dashboard) memakai `getServiceLevelSummary`, yang membaca
+ * rekaman harian (diperbarui cron tiap jam). Gate-nya `requireServiceLevelViewer` supaya penanggung jawab metrik yang
+ * bukan orang POS tetap bisa melihat angkanya di dashboard karyawan.
  */
 
 const MAX_SPAN_DAYS = 90;
@@ -59,45 +51,12 @@ function validateRange(
   return { ok: true };
 }
 
-/** Hitung live. Berat (~3 dtk untuk 30 hari) — jangan dipakai di hot path. */
-export async function getServiceLevel(
-  bankAccountId: string,
-  range: { fromDate: string; toDate: string }
-): Promise<ActionResult<ServiceLevelResult>> {
-  const valid = validateRange(range.fromDate, range.toDate);
-  if (!valid.ok) return { ok: false, error: valid.error };
-  const gate = await requireAdminOrPosAssignee(bankAccountId);
-  if (!gate.ok) return { ok: false, error: gate.error };
-
-  const supabase = await createClient();
-  // Cabang yang di-reset (mis. Semarang mulai 16 Nov 2026) hanya dihitung
-  // sejak tanggal mulainya — sama dengan Scorecard Cabang dan ringkasan.
-  const { data: account } = await supabase
-    .from("bank_accounts")
-    .select("default_branch")
-    .eq("id", bankAccountId)
-    .maybeSingle();
-  const floor = scorecardStartFor(account?.default_branch);
-  const fromDate = floor && range.fromDate < floor ? floor : range.fromDate;
-  if (fromDate > range.toDate) {
-    return {
-      ok: false,
-      error: `Service level ${account?.default_branch} dihitung mulai ${floor}.`,
-    };
-  }
-  const data = await computeServiceLevel(supabase, bankAccountId, {
-    fromDate,
-    toDate: range.toDate,
-  });
-  return { ok: true, data };
-}
-
 /**
  * Metrik susut — penyeimbang Service Level. Ringan (dua agregasi pada
  * satu tabel terindeks), jadi aman dipanggil bersamaan untuk semua
  * outlet; lihat header @/lib/pos/waste.
  *
- * Gate-nya `requireAdminOrPosAssignee`, SAMA seperti getServiceLevel dan
+ * Gate-nya `requireAdminOrPosAssignee`, SAMA seperti hitungan POS mentah lainnya dan
  * sengaja BUKAN requireServiceLevelViewer yang lebih longgar: ini baca
  * pos_stock_movements mentah, yang RLS-nya tertutup untuk penanggung
  * jawab metrik non-POS. Kalau gate-nya dilonggarkan, mereka lolos gate
@@ -167,6 +126,15 @@ export interface ServiceLevelSummary {
   hasBackfill: boolean;
   /** Ada hari dengan opname parsial (angka bisa tertekan semu). */
   hasPartialOpname: boolean;
+  /** Kapan rekaman terbaru di rentang ini dihitung (ISO). */
+  computedAt: string | null;
+  /** Hanya diisi bila diminta (`detail: true`): penyebab terbesar dan rincian per hari dari rekaman yang sama. */
+  detail: {
+    /** False = sebagian rekaman dibuat sebelum rincian per produk disimpan, jadi daftar penyebab tidak ditampilkan. */
+    complete: boolean;
+    causes: SlCause[];
+    days: Array<{ date: string; percent: number | null; partialOpname: boolean }>;
+  } | null;
 }
 
 /**
@@ -186,7 +154,9 @@ export interface ServiceLevelSummary {
  */
 export async function getServiceLevelSummary(
   bankAccountId: string,
-  range: number | { fromDate: string; toDate: string } = 30
+  range: number | { fromDate: string; toDate: string } = 30,
+  /** Rincian per produk hanya diambil bila diminta: layar kasir tidak perlu menariknya tiap dibuka. */
+  opts: { detail?: boolean } = {}
 ): Promise<ActionResult<ServiceLevelSummary>> {
   const gate = await requireServiceLevelViewer(bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -214,7 +184,9 @@ export async function getServiceLevelSummary(
     supabase
       .from("pos_service_level_daily")
       .select(
-        "snapshot_date, ready_sum, tracked_skus, sample_count, percent, source, partial_opname"
+        opts.detail
+          ? "snapshot_date, ready_sum, tracked_skus, sample_count, percent, source, partial_opname, computed_at, detail_json"
+          : "snapshot_date, ready_sum, tracked_skus, sample_count, percent, source, partial_opname, computed_at"
       )
       .eq("bank_account_id", bankAccountId)
       .gte("snapshot_date", fromDate)
@@ -245,8 +217,24 @@ export async function getServiceLevelSummary(
   // Reset per cabang (mis. Semarang mulai 16 Nov 2026): baris sebelum
   // tanggal mulai tidak ikut dihitung. Barisnya tidak dihapus.
   const floor = scorecardStartFor(account?.default_branch);
-  for (const r of rows ?? []) {
+  let computedAt: string | null = null;
+  let complete = true;
+  const unitDays: SlUnitDay[][] = [];
+  const dayRows: NonNullable<ServiceLevelSummary["detail"]>["days"] = [];
+  type Row = {
+    snapshot_date: string;
+    ready_sum: number;
+    tracked_skus: number;
+    sample_count: number;
+    percent: number | null;
+    source: string;
+    partial_opname: boolean;
+    computed_at: string;
+    detail_json?: { units?: SlUnitDay[] } | null;
+  };
+  for (const r of (rows ?? []) as unknown as Row[]) {
     if (floor && r.snapshot_date < floor) continue;
+    if (computedAt === null || r.computed_at > computedAt) computedAt = r.computed_at;
     if (r.source === "backfill") hasBackfill = true;
     if (r.partial_opname) hasPartialOpname = true;
     const denom = r.tracked_skus * r.sample_count;
@@ -254,12 +242,16 @@ export async function getServiceLevelSummary(
     // aktivitas). Masuk trend sebagai lubang, bukan sebagai nol.
     if (r.percent === null || denom === 0) {
       trend.push({ date: r.snapshot_date, percent: null });
+      dayRows.push({ date: r.snapshot_date, percent: null, partialOpname: r.partial_opname });
       continue;
     }
     readySum += r.ready_sum;
     totalSkuSamples += denom;
     daysCounted += 1;
     trend.push({ date: r.snapshot_date, percent: r.ready_sum / denom });
+    dayRows.push({ date: r.snapshot_date, percent: r.ready_sum / denom, partialOpname: r.partial_opname });
+    if (r.detail_json?.units) unitDays.push(r.detail_json.units);
+    else complete = false;
   }
 
   return {
@@ -277,6 +269,8 @@ export async function getServiceLevelSummary(
       trend,
       hasBackfill,
       hasPartialOpname,
+      computedAt,
+      detail: opts.detail ? { complete, causes: complete ? aggregateCauses(unitDays, totalSkuSamples) : [], days: dayRows } : null,
     },
   };
 }

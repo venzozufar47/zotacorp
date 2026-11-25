@@ -86,6 +86,8 @@ import {
 import { sendToPrinter } from "@/lib/pos/print-transport";
 import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
+import { isMonthToDate } from "@/lib/scorecard/month-window";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { DailyRevenueTargetCard } from "@/components/pos/DailyRevenueTargetCard";
 import { FeedbackTargetCard } from "@/components/pos/FeedbackTargetCard";
@@ -1498,6 +1500,7 @@ export function POSClient({
                 <ServiceLevelHero
                   summary={serviceLevel}
                   size="compact"
+                  periodLabel={isMonthToDate(jakartaDateString(new Date())) ? "Bulan ini" : undefined}
                   href={`${basePath}/service-level`}
                 />
               </div>

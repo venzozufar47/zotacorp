@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import { isMonthToDate } from "@/lib/scorecard/month-window";
 import { Camera } from "lucide-react";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import type { YeoboUtilization } from "@/lib/actions/admin-home-yeobo.actions";
@@ -111,7 +113,7 @@ export function AdminOpsCard({
             Operasional
           </div>
           <div className="text-[11.5px] text-muted-foreground mt-0.5">
-            30 hari terakhir
+            {isMonthToDate(jakartaDateString(new Date())) ? "Bulan ini" : "30 hari terakhir"}
           </div>
         </div>
       </div>

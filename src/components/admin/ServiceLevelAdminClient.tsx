@@ -24,7 +24,7 @@ import {
   type ServiceLevelOwnerRow,
   type ServiceLevelSummary,
 } from "@/lib/actions/pos-service-level.actions";
-import type { ServiceLevelResult } from "@/lib/pos/service-level";
+import type { SlCause } from "@/lib/pos/service-level-detail";
 import { serviceLevelBandOf, wasteBandOf, type BranchThresholds } from "@/lib/scorecard/thresholds";
 import {
   WASTE_QTY_SANITY_CAP,
@@ -48,8 +48,13 @@ interface Outlet {
   /** Pecahan 0-1. Lihat migrasi 135. */
   target: number;
   summary: ServiceLevelSummary | null;
-  /** Rincian LIVE (penyebab terbesar + per-hari) — sama seperti di POS. */
-  live: ServiceLevelResult | null;
+  /** Penyebab terbesar + per-hari dari rekaman harian — sama seperti di POS. */
+  live: {
+    worstSkus: SlCause[];
+    days: Array<{ date: string; percent: number | null; partialOpname: boolean }>;
+    totalSkuSamples: number;
+    lostSkuHours: number;
+  } | null;
   /** Metrik susut untuk rentang aktif — penyeimbang angka Service Level. */
   waste: WasteResult | null;
   owners: ServiceLevelOwnerRow[];
