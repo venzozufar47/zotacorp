@@ -32,8 +32,8 @@ export default async function AdminSpPage() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Sistem SP</h1>
         <p className="text-sm text-muted-foreground">
-          Teguran serius dan SP1–SP3. Sanksi (SP1–SP3) hanya bisa diterbitkan dari sini. Riwayat lengkap
-          semua catatan pembinaan (termasuk catatan biasa) hanya ada di sini — Owner saja.
+          Catatan biasa, teguran serius, dan SP1–SP3. Sanksi (SP1–SP3) hanya bisa diterbitkan dari sini.
+          Riwayat lengkap semua catatan pembinaan hanya ada di sini — Owner saja.
         </p>
       </div>
       <SpAdminClient

@@ -70,7 +70,9 @@ export function SpAdminClient({
 }) {
   const router = useRouter();
   const [userId, setUserId] = useState("");
-  const [spLevel, setSpLevel] = useState<SpLevel>("teguran");
+  // "catatan" = catatan biasa, disimpan tanpa tingkat (sp_level null).
+  const [level, setLevel] = useState<SpLevel | "catatan">("catatan");
+  const spLevel = level === "catatan" ? null : level;
   const [body, setBody] = useState("");
   const [sopReference, setSopReference] = useState("");
   const [saving, setSaving] = useState(false);
@@ -89,7 +91,7 @@ export function SpAdminClient({
       const res = await createCoachingNote({
         userId,
         body,
-        context: "sp",
+        context: spLevel ? "sp" : "lain",
         spLevel,
         sopReference: sopReference || null,
       });
@@ -110,7 +112,7 @@ export function SpAdminClient({
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Terbitkan teguran / SP</CardTitle>
+          <CardTitle>Tulis catatan / teguran / SP</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
@@ -130,11 +132,12 @@ export function SpAdminClient({
           </div>
           <div>
             <Label>Tingkat</Label>
-            <Select value={spLevel} onValueChange={(v) => v && setSpLevel(v as SpLevel)}>
+            <Select value={level} onValueChange={(v) => v && setLevel(v as SpLevel | "catatan")}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="catatan">{PLAIN_NOTE_LABEL}</SelectItem>
                 {(Object.keys(SP_LEVEL_LABEL) as SpLevel[]).map((k) => (
                   <SelectItem key={k} value={k}>
                     {SP_LEVEL_LABEL[k]}
@@ -142,7 +145,7 @@ export function SpAdminClient({
                 ))}
               </SelectContent>
             </Select>
-            {spLevel !== "teguran" && (
+            {spLevel && spLevel !== "teguran" && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Sanksi — berlaku 6 bulan sejak diterbitkan, dan menggugurkan kelayakan bonus selama
                 aktif.
@@ -150,7 +153,7 @@ export function SpAdminClient({
             )}
           </div>
           <div>
-            <Label htmlFor="sp-body">Fakta kejadian</Label>
+            <Label htmlFor="sp-body">{spLevel ? "Fakta kejadian" : "Isi catatan"}</Label>
             <Textarea id="sp-body" value={body} onChange={(e) => setBody(e.target.value)} />
           </div>
           <div>
@@ -163,7 +166,7 @@ export function SpAdminClient({
             />
           </div>
           <Button onClick={submit} loading={saving} className="w-full">
-            Terbitkan
+            {spLevel ? "Terbitkan" : "Kirim catatan"}
           </Button>
         </CardContent>
       </Card>
