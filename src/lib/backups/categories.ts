@@ -125,7 +125,7 @@ export const CATEGORY_TABLES: Record<BackupCategory, readonly string[]> = {
 export const TABLE_PRIMARY_KEYS: Record<string, string | string[]> = {
   cake_production_slip_items: ["slip_id", "cake_order_id"],
   cake_base_diameter_prices: ["base_option_id", "diameter_id"],
-  bank_account_assignees: ["user_id", "bank_account_id", "scope"],
+  bank_account_assignees: ["bank_account_id", "user_id"],
   employee_locations: ["employee_id", "location_id"],
   whatsapp_templates: "template_key",
   // Composite PK wajib didaftarkan — tanpa ini restore.ts jatuh ke
@@ -133,7 +133,6 @@ export const TABLE_PRIMARY_KEYS: Record<string, string | string[]> = {
   // merge gagal. (pos_service_level_exclusions punya `id` sendiri.)
   pos_service_level_owners: ["bank_account_id", "user_id"],
   pos_service_level_daily: ["bank_account_id", "snapshot_date"],
-  business_unit_roles: ["user_id", "business_unit_id"],
   extra_work_kind_assignments: ["user_id", "kind_id"],
   voice_room_presence: ["room_id", "user_id"],
 };
