@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import { Resend } from "resend";
 import { renderPasswordResetEmail } from "@/lib/email/password-reset-template";
 import type { Database } from "@/lib/supabase/types";

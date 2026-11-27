@@ -14,7 +14,7 @@
  */
 
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 import { recompressJpeg, type CompressOutcome } from "./recompress-jpeg";
 
 /** Bucket yang diproses, berurutan; ukuran terbesar lebih dulu di dalam bucket. */

@@ -37,6 +37,30 @@ const eslintConfig = defineConfig([
     ],
     rules: { "no-restricted-syntax": "off" },
   },
+  {
+    // Klien Supabase hanya dibuat lewat factory, yang memasang paginasi otomatis (lihat paginated-fetch.ts).
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/supabase/factory.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@supabase/supabase-js",
+              importNames: ["createClient"],
+              message: "Impor createClient dari @/lib/supabase/factory agar hasil query tidak terpotong di 1.000 baris.",
+            },
+            {
+              name: "@supabase/ssr",
+              importNames: ["createBrowserClient", "createServerClient"],
+              message: "Impor dari @/lib/supabase/factory agar hasil query tidak terpotong di 1.000 baris.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

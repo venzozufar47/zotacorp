@@ -99,6 +99,7 @@ async function buildBundle(
     version: 1,
     createdAt: now,
     trigger,
+    complete: true,
     categories: {},
   };
   const categories: FullBackupBundle["categories"] = {};
@@ -121,14 +122,14 @@ async function buildBundle(
 
 /**
  * Manual backup. Server merangkum semua kategori jadi satu JSON,
- * upload ke bucket (untuk history), lalu return string JSON +
- * filename — client tinggal trigger download.
+ * upload ke bucket, lalu return URL unduhan bertanda tangan. Isi berkas
+ * tidak dikirim lewat respons action karena melebihi batas ukuran Vercel.
  */
 export async function runBackupNow(): Promise<
   ActionResult<{
     runId: string;
     fileName: string;
-    bundleJson: string;
+    url: string;
     sizeBytes: number;
   }>
 > {
@@ -188,7 +189,13 @@ export async function runBackupNow(): Promise<
 
     await pruneOldBackups().catch(() => {});
     revalidatePath("/admin/backups");
-    return { ok: true, data: { runId, fileName, bundleJson: json, sizeBytes } };
+    const { data: signed, error: signErr } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(fileName, 60 * 10, { download: true });
+    if (signErr || !signed) {
+      return { ok: false, error: "Backup tersimpan, tetapi tautan unduh gagal dibuat. Unduh dari riwayat." };
+    }
+    return { ok: true, data: { runId, fileName, url: signed.signedUrl, sizeBytes } };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await supabase
@@ -387,6 +394,14 @@ export async function restoreFromBundle(input: {
   }
   if (!bundle || bundle.version !== 1 || !bundle.categories) {
     return { ok: false, error: "Format backup tidak dikenali (version != 1)" };
+  }
+
+  // Replace menghapus tabel lebih dulu; dengan berkas terpotong, sisanya hilang permanen.
+  if (input.mode === "replace" && !bundle.manifest?.complete) {
+    return {
+      ok: false,
+      error: "Backup lama ini tidak lengkap (terpotong 1.000 baris per tabel). Mode Replace ditolak.",
+    };
   }
 
   const supabase = adminClient();

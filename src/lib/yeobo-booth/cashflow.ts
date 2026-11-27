@@ -19,7 +19,7 @@
  * yang link sale via admin client (lihat pos.actions.ts:968).
  */
 
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 import {
   YEOBO_BOOTH_REVENUE_CATEGORY,

@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createClient as createServiceClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 import { syncMayar } from "@/lib/actions/cashflow.actions";
 import { checkCronAuth } from "@/lib/utils/cron-auth";

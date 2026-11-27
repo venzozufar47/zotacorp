@@ -1,4 +1,4 @@
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createClient as createServiceClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 
 /**

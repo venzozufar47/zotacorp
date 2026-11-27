@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { computeStreak } from "@/lib/utils/streak";

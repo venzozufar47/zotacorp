@@ -19,7 +19,7 @@
  * permanen yang tak seorang pun tahu asalnya.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 
 /** Berapa lama bukti foto disimpan sebelum dihapus otomatis. */
 export const CLEANING_PHOTO_RETENTION_DAYS = 30;

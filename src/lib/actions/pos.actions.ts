@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import type { Database } from "@/lib/supabase/types";

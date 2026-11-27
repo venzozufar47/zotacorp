@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CATEGORY_TABLES,
   DUMP_ROW_CAP,
+  TABLE_PRIMARY_KEYS,
   type BackupCategory,
   type CategoryBundle,
 } from "./categories";
@@ -24,22 +25,19 @@ export async function dumpCategory(
     tables: {},
   };
   const counts: Record<string, number> = {};
-  let truncated = false;
 
+  // Gagal keras: backup yang kurang baris lebih berbahaya daripada backup yang tercatat gagal.
   for (const table of tables) {
-    const { data, error } = await admin
-      .from(table as never)
-      .select("*")
-      .limit(DUMP_ROW_CAP);
-    if (error) {
-      bundle.tables[table] = [];
-      counts[table] = 0;
-      continue;
-    }
+    let query = admin.from(table as never).select("*", { count: "exact" });
+    for (const col of [TABLE_PRIMARY_KEYS[table] ?? "id"].flat()) query = query.order(col);
+    const { data, count, error } = await query.limit(DUMP_ROW_CAP);
+    if (error) throw new Error(`Backup tabel ${table}: ${error.message}`);
     const rows = data ?? [];
+    if (count === null || rows.length < count) {
+      throw new Error(`Backup tabel ${table} tidak lengkap: ${rows.length} dari ${count ?? "?"} baris`);
+    }
     bundle.tables[table] = rows as unknown[];
     counts[table] = rows.length;
-    if (rows.length >= DUMP_ROW_CAP) truncated = true;
   }
-  return { bundle, counts, truncated };
+  return { bundle, counts, truncated: false };
 }

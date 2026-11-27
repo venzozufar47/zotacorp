@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 import { APP_MARKER } from "@/lib/auth/app-marker";
 import { cleanFullName } from "@/lib/profile/normalize";

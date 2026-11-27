@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 
 /**
  * Client service-role diarahkan ke schema `yeobo` di project ini.

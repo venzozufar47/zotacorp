@@ -91,19 +91,7 @@ export function BackupsAdmin({ settings, runs }: Props) {
         toast.error(res.error);
         return;
       }
-      // Trigger browser download. Isi blob = JSON mentah (bukan gzip yang
-      // disimpan di bucket) → buang suffix .gz dari nama file unduhan.
-      const blob = new Blob([res.data!.bundleJson], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = res.data!.fileName.replace(/\.gz$/, "");
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      window.location.assign(res.data!.url);
       toast.success(
         `Backup berhasil · ${formatBytes(res.data!.sizeBytes)} · file diunduh`
       );

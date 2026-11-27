@@ -26,7 +26,7 @@
  * yatim permanen yang tak seorang pun tahu asalnya.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 
 /** Ambang retensi, disamakan dengan CLEANING_PHOTO_RETENTION_DAYS. */
 export const MEDIA_RETENTION_DAYS = 90;

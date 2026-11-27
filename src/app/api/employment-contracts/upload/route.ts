@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { contractNeedsSignature } from "@/lib/employment-contracts/types";

@@ -126,7 +126,8 @@ export const TABLE_PRIMARY_KEYS: Record<string, string | string[]> = {
   cake_production_slip_items: ["slip_id", "cake_order_id"],
   cake_base_diameter_prices: ["base_option_id", "diameter_id"],
   bank_account_assignees: ["user_id", "bank_account_id", "scope"],
-  pos_stock_opname_items: ["opname_id", "product_id", "variant_id"],
+  employee_locations: ["employee_id", "location_id"],
+  whatsapp_templates: "template_key",
   // Composite PK wajib didaftarkan — tanpa ini restore.ts jatuh ke
   // default 'id' yang tidak dimiliki kedua tabel, dan restore mode
   // merge gagal. (pos_service_level_exclusions punya `id` sendiri.)
@@ -137,14 +138,19 @@ export const TABLE_PRIMARY_KEYS: Record<string, string | string[]> = {
   voice_room_presence: ["room_id", "user_id"],
 };
 
+/** Kolom hasil hitungan database: ikut ter-backup, tetapi ditolak bila ditulis kembali saat restore. */
+export const GENERATED_COLUMNS: Record<string, string[]> = {
+  cashflow_transactions: ["effective_period"],
+};
+
 /** Tabel yang di-share lintas kategori — restore mode 'replace'
  *  otomatis di-downgrade jadi 'merge' untuk tabel ini supaya
  *  referensi domain lain tidak ikut hilang. */
 export const SHARED_TABLES = new Set<string>(["profiles"]);
 
-/** Max rows per tabel saat dump. Manifest mencatat
- *  `truncated: true` jika tabel mencapai cap. */
-export const DUMP_ROW_CAP = 50000;
+/** Max rows per tabel saat dump. Tabel yang melebihinya menggagalkan backup
+ *  (bukan disimpan terpotong). Sama dengan batas paginatedFetch. */
+export const DUMP_ROW_CAP = 200_000;
 
 export type BackupRunStatus = "running" | "success" | "failed";
 export type BackupTrigger = "cron" | "manual";
@@ -173,6 +179,9 @@ export interface BackupManifest {
   version: 1;
   createdAt: string;
   trigger: BackupTrigger;
+  /** True = jumlah baris tiap tabel sudah dicocokkan dengan database. Backup tanpa tanda ini
+   *  (sebelum paginasi diperbaiki) terpotong di 1.000 baris per tabel. */
+  complete?: boolean;
   categories: Partial<
     Record<
       BackupCategory,
@@ -198,6 +207,9 @@ export interface FullBackupBundle {
   version: 1;
   createdAt: string;
   trigger: BackupTrigger;
+  /** True = jumlah baris tiap tabel sudah dicocokkan dengan database. Backup tanpa tanda ini
+   *  (sebelum paginasi diperbaiki) terpotong di 1.000 baris per tabel. */
+  complete?: boolean;
   categories: Partial<Record<BackupCategory, CategoryBundle>>;
   manifest: BackupManifest;
 }

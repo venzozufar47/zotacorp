@@ -14,7 +14,7 @@
  * the "Template notifikasi" card in /admin/settings.
  */
 
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 
 export type TemplateKey =

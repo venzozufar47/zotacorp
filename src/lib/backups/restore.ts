@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CATEGORY_TABLES,
+  GENERATED_COLUMNS,
   SHARED_TABLES,
   TABLE_PRIMARY_KEYS,
   type BackupCategory,
@@ -18,6 +19,9 @@ export interface RestoreReport {
     error?: string;
   }>;
 }
+
+/** Baris per permintaan tulis, supaya tabel besar tidak menabrak batas ukuran/waktu. */
+const WRITE_CHUNK = 1000;
 
 /**
  * Restore satu kategori dari bundle JSON. Mode 'merge' upsert by PK,
@@ -56,7 +60,12 @@ export async function restoreCategory(
   }
 
   for (const table of tables) {
-    const rows = bundle.tables[table] ?? [];
+    const generated = GENERATED_COLUMNS[table] ?? [];
+    const rows = (bundle.tables[table] ?? []).map((row) =>
+      generated.length === 0
+        ? row
+        : Object.fromEntries(Object.entries(row as Record<string, unknown>).filter(([k]) => !generated.includes(k)))
+    );
     if (rows.length === 0) {
       report.perTable.push({ table, inserted: 0, skipped: 0 });
       continue;
@@ -64,45 +73,30 @@ export async function restoreCategory(
     const effectiveMode: RestoreMode =
       mode === "replace" && SHARED_TABLES.has(table) ? "merge" : mode;
 
-    if (effectiveMode === "merge") {
-      const pk = TABLE_PRIMARY_KEYS[table] ?? "id";
-      const onConflict = Array.isArray(pk) ? pk.join(",") : pk;
-      const { error, count } = await admin
-        .from(table as never)
-        .upsert(rows as never, { onConflict, count: "exact" });
+    const pk = TABLE_PRIMARY_KEYS[table] ?? "id";
+    const onConflict = Array.isArray(pk) ? pk.join(",") : pk;
+    let inserted = 0;
+    let failure: string | undefined;
+    let done = 0;
+    for (; done < rows.length; done += WRITE_CHUNK) {
+      const chunk = rows.slice(done, done + WRITE_CHUNK);
+      const query = admin.from(table as never);
+      const { error, count } =
+        effectiveMode === "merge"
+          ? await query.upsert(chunk as never, { onConflict, count: "exact" })
+          : await query.insert(chunk as never, { count: "exact" });
       if (error) {
-        report.perTable.push({
-          table,
-          inserted: 0,
-          skipped: rows.length,
-          error: error.message,
-        });
-        continue;
+        failure = error.message;
+        break;
       }
-      report.perTable.push({
-        table,
-        inserted: count ?? rows.length,
-        skipped: 0,
-      });
-    } else {
-      const { error, count } = await admin
-        .from(table as never)
-        .insert(rows as never, { count: "exact" });
-      if (error) {
-        report.perTable.push({
-          table,
-          inserted: 0,
-          skipped: rows.length,
-          error: error.message,
-        });
-        continue;
-      }
-      report.perTable.push({
-        table,
-        inserted: count ?? rows.length,
-        skipped: 0,
-      });
+      inserted += count ?? chunk.length;
     }
+    report.perTable.push({
+      table,
+      inserted,
+      skipped: failure ? rows.length - done : 0,
+      ...(failure ? { error: failure } : {}),
+    });
   }
 
   return report;

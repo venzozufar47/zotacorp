@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 import type { Database } from "@/lib/supabase/types";
 import { claimPlaceholderInvestor } from "@/lib/investor/claim-placeholder";
 import { APP_MARKER } from "@/lib/auth/app-marker";

@@ -229,7 +229,7 @@ test("slip: draft tidak bisa ditandai lunas, tapi tanda lunas tetap bisa dibatal
 function pesananActions(db: FakeDb) {
   return load("src/lib/actions/pos-pesanan.actions.ts", {
     ...common(db, ADMIN, []),
-    "@supabase/supabase-js": { createClient: () => db },
+    "@/lib/supabase/factory": { createClient: () => db },
     "./_gates": { requireAdminOrPosAssignee: async () => ({ ok: true, userId: ADMIN }) },
     "@/lib/cashflow/categories": { POS_CASH_CATEGORY: "POS Cash", POS_QRIS_CATEGORY: "POS QRIS" },
     "@/lib/utils/jakarta": { jakartaDateString: () => "2026-11-09", jakartaHHMM: () => "10:00" },

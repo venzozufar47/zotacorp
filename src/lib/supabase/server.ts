@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient } from "@/lib/supabase/factory";
 import { cookies } from "next/headers";
 import type { Database } from "./types";
 

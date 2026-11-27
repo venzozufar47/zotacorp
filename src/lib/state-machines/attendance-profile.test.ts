@@ -234,7 +234,7 @@ function profileRoute(db: FakeDb, caller: string) {
   return load("src/app/api/profile/update/route.ts", {
     "next/server": { NextResponse: { json: (body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 }) } },
     "next/cache": { revalidatePath() {} },
-    "@supabase/supabase-js": { createClient: () => db },
+    "@/lib/supabase/factory": { createClient: () => db },
     "@/lib/supabase/server": { createClient: async () => user },
     "@/lib/profile/normalize": { cleanProfileFields: (f: Record<string, unknown>) => ({ values: f, errors: {} }) },
     "@/lib/profile/edit-policy": editPolicy,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@/lib/supabase/factory";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { renderPasswordResetEmail } from "@/lib/email/password-reset-template";

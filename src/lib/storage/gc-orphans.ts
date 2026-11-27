@@ -15,7 +15,7 @@
  * Storage API service-role (bukan SQL) supaya objek fisik ikut terhapus.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/factory";
 
 interface GcResult {
   bucket: string;

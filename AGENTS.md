@@ -9,3 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Sebelum menulis atau mengubah UI, baca [`docs/THEMING.md`](docs/THEMING.md): tiga cakupan tema (Oceanic, POS, custom cake), daftar token, aturan "jangan menulis warna literal di komponen", dan cara menambah token (wajib dipetakan di `@theme inline`).
 <!-- END:theming-rules -->
+
+# Query Supabase
+
+Buat klien hanya lewat `src/lib/supabase/factory.ts` (ditegakkan ESLint). Klien itu mengambil halaman sisa otomatis, karena Data API memotong di 1.000 baris tanpa galat. Relasi tertanam (`select("*, anak(*)")`) tidak tercakup: bila satu induk bisa punya lebih dari 1.000 anak, query tabel anaknya langsung.
