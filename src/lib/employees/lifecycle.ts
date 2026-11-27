@@ -52,7 +52,7 @@ export interface ContractFacts {
 }
 
 /** Peringatan perpanjangan muncul sekian hari sebelum masa kontrak habis. */
-export const RENEWAL_WARN_DAYS = 45;
+export const RENEWAL_WARN_DAYS = 37;
 
 const ID_MONTHS = ["januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember"];
 

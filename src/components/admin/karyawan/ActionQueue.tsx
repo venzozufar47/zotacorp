@@ -14,7 +14,7 @@ const GROUP_TITLE: Record<string, string> = {
   kontrak: "Kontrak",
   gaji: "Setelan gaji belum final",
   sanggahan: "Sanggahan slip",
-  perpanjangan: "Masa kontrak habis",
+  perpanjangan: "Perpanjangan kontrak",
   izin: "Izin menunggu keputusan",
   probation: "Probation perlu diputuskan",
   offboarding: "Checklist keluar belum selesai",
