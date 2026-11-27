@@ -174,8 +174,23 @@ export async function updateSession(request: NextRequest) {
     const onAdminRoute = pathname.startsWith("/admin");
     const onInvestorRoute = pathname.startsWith("/investor");
 
+    // `getClaims()` masih meloloskan sesi yang sudah dicabut server (mis. Keluar di perangkat lain). Halaman terproteksi
+    // menolaknya dan melempar ke "/", lalu "/" melempar balik ke beranda: putaran tanpa henti. Maka sebelum
+    // mengalihkan dari halaman publik, pastikan sesinya ke server auth; bila sudah mati, buang cookie-nya.
+    if (isPublic) {
+      const { error } = await supabase.auth.getUser();
+      if (error && (error.name === "AuthSessionMissingError" || error.status === 401 || error.status === 403)) {
+        for (const c of request.cookies.getAll()) {
+          if (c.name.startsWith("sb-") && c.name.includes("auth-token")) {
+            supabaseResponse.cookies.delete(c.name);
+          }
+        }
+        return supabaseResponse;
+      }
+    }
+
     // Only query profile when we actually need a role-based decision
-    if (isPublic || onAdminRoute || onEmployeeRoute || onInvestorRoute) {
+    if (isPublic ||onAdminRoute || onEmployeeRoute || onInvestorRoute) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("role, is_active, resigned_at")
