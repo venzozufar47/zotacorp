@@ -1,4 +1,6 @@
 export const dynamic = "force-dynamic";
+// Backup manual berjalan sebagai server action di halaman ini.
+export const maxDuration = 300;
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
@@ -29,7 +31,7 @@ export default async function AdminBackupsPage() {
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Backup Database"
-        subtitle="Snapshot semua data app yang bisa di-restore per kategori. Cron jalan tiap hari; cadence diatur di bawah."
+        subtitle="Snapshot semua tabel (kecuali log dan data sementara) yang bisa di-restore per kategori. Akun login dan berkas foto tidak termasuk. Cron jalan tiap hari; cadence diatur di bawah."
       />
       <BackupsAdmin
         settings={settingsRes.ok ? settingsRes.data ?? null : null}

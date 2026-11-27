@@ -12,6 +12,7 @@ import {
   type BackupSettings,
   type FullBackupBundle,
 } from "@/lib/backups/categories";
+import type { CatalogRow } from "@/lib/backups/dynamic";
 import { dumpCategory } from "@/lib/backups/dump";
 import { restoreCategory, type RestoreMode } from "@/lib/backups/restore";
 import { zonedDateString } from "@/lib/utils/celebrations";
@@ -103,8 +104,10 @@ async function buildBundle(
     categories: {},
   };
   const categories: FullBackupBundle["categories"] = {};
+  const { data: catalog, error: catalogError } = await supabase.rpc("backup_table_catalog" as never);
+  if (catalogError) throw new Error(`Daftar tabel: ${catalogError.message}`);
   for (const c of BACKUP_CATEGORIES) {
-    const { bundle, counts, truncated } = await dumpCategory(supabase, c);
+    const { bundle, counts, truncated } = await dumpCategory(supabase, c, catalog as unknown as CatalogRow[]);
     categories[c] = bundle;
     manifest.categories[c] = { tables: counts, truncated };
   }
@@ -406,7 +409,8 @@ export async function restoreFromBundle(input: {
 
   const supabase = adminClient();
   const reports: Awaited<ReturnType<typeof restoreCategory>>[] = [];
-  for (const cat of input.categories) {
+  // Urutan baku (induk lebih dulu), bukan urutan centang di layar.
+  for (const cat of BACKUP_CATEGORIES.filter((c) => input.categories.includes(c))) {
     const part = bundle.categories[cat];
     if (!part) {
       reports.push({

@@ -17,7 +17,9 @@ export type BackupCategory =
   | "whatsapp"
   | "celebration"
   | "business"
-  | "voice";
+  | "voice"
+  | "other"
+  | "yeobo";
 
 export const BACKUP_CATEGORIES: BackupCategory[] = [
   "cake",
@@ -30,7 +32,16 @@ export const BACKUP_CATEGORIES: BackupCategory[] = [
   "celebration",
   "business",
   "voice",
+  // Dinamis dan paling akhir: isinya ditentukan saat backup (lihat dynamic.ts).
+  "other",
+  "yeobo",
 ];
+
+/** Kategori yang daftar tabelnya dibaca dari database, beserta skemanya. */
+export const DYNAMIC_CATEGORIES: Partial<Record<BackupCategory, "public" | "yeobo">> = {
+  other: "public",
+  yeobo: "yeobo",
+};
 
 export const BACKUP_CATEGORY_LABELS: Record<BackupCategory, string> = {
   cake: "Cake orders",
@@ -43,6 +54,8 @@ export const BACKUP_CATEGORY_LABELS: Record<BackupCategory, string> = {
   celebration: "Celebration feed",
   business: "Business units",
   voice: "Voice rooms",
+  other: "Lainnya (semua tabel lain)",
+  yeobo: "Yeobo Space",
 };
 
 /**
@@ -116,6 +129,8 @@ export const CATEGORY_TABLES: Record<BackupCategory, readonly string[]> = {
   celebration: ["celebration_messages", "celebration_push_logs"],
   business: ["business_units", "business_unit_roles"],
   voice: ["voice_rooms", "voice_room_presence"],
+  other: [],
+  yeobo: [],
 };
 
 /**
@@ -195,7 +210,11 @@ export interface BackupManifest {
 /** Per-kategori bagian dalam `FullBackupBundle`. */
 export interface CategoryBundle {
   category: BackupCategory;
+  /** Urutan kuncinya = urutan restore (induk dulu). */
   tables: Record<string, unknown[]>;
+  /** Hanya kategori dinamis: dicatat saat backup supaya restore tidak perlu menebak. */
+  primaryKeys?: Record<string, string[]>;
+  generatedColumns?: Record<string, string[]>;
 }
 
 /**

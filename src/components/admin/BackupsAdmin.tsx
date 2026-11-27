@@ -574,7 +574,7 @@ function RestoreDialog({
                 Replace (truncate dulu)
               </p>
               <p className="text-[11px] text-muted-foreground">
-                Hapus SEMUA baris di tabel kategori yang dipilih, baru insert
+                Hapus SEMUA baris di tabel kategori yang dipilih (kecuali Lainnya dan Yeobo Space, selalu merge), baru insert
                 backup. Data lebih baru dari backup ikut hilang.
               </p>
             </div>

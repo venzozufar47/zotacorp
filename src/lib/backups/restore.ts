@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CATEGORY_TABLES,
+  DYNAMIC_CATEGORIES,
   GENERATED_COLUMNS,
   SHARED_TABLES,
   TABLE_PRIMARY_KEYS,
@@ -36,7 +37,11 @@ export async function restoreCategory(
   bundle: CategoryBundle,
   mode: RestoreMode
 ): Promise<RestoreReport> {
-  const tables = CATEGORY_TABLES[bundle.category];
+  const schema = DYNAMIC_CATEGORIES[bundle.category];
+  // Kategori dinamis selalu merge: menghapus massal tabel yang saling berelasi lintas kategori terlalu berbahaya.
+  if (schema) mode = "merge";
+  const tables = schema ? Object.keys(bundle.tables) : CATEGORY_TABLES[bundle.category];
+  const db = schema === "yeobo" ? (admin.schema("yeobo") as unknown as SupabaseClient) : admin;
   const report: RestoreReport = { category: bundle.category, perTable: [] };
 
   if (mode === "replace") {
@@ -60,7 +65,7 @@ export async function restoreCategory(
   }
 
   for (const table of tables) {
-    const generated = GENERATED_COLUMNS[table] ?? [];
+    const generated = (schema ? bundle.generatedColumns?.[table] : GENERATED_COLUMNS[table]) ?? [];
     const rows = (bundle.tables[table] ?? []).map((row) =>
       generated.length === 0
         ? row
@@ -73,16 +78,16 @@ export async function restoreCategory(
     const effectiveMode: RestoreMode =
       mode === "replace" && SHARED_TABLES.has(table) ? "merge" : mode;
 
-    const pk = TABLE_PRIMARY_KEYS[table] ?? "id";
+    const pk = (schema ? bundle.primaryKeys?.[table] : TABLE_PRIMARY_KEYS[table]) ?? "id";
     const onConflict = Array.isArray(pk) ? pk.join(",") : pk;
     let inserted = 0;
     let failure: string | undefined;
     let done = 0;
     for (; done < rows.length; done += WRITE_CHUNK) {
       const chunk = rows.slice(done, done + WRITE_CHUNK);
-      const query = admin.from(table as never);
+      const query = db.from(table as never);
       const { error, count } =
-        effectiveMode === "merge"
+        effectiveMode === "merge" && onConflict
           ? await query.upsert(chunk as never, { onConflict, count: "exact" })
           : await query.insert(chunk as never, { count: "exact" });
       if (error) {
