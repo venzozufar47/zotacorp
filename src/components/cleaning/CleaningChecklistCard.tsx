@@ -173,6 +173,14 @@ function UnitControls({
 
 export function CleaningChecklistCard({ initial }: Props) {
   const [tasks, setTasks] = useState(initial.tasks);
+  // Sinkronkan state lokal saat server mengirim data baru (mis. setelah check in
+  // dari halaman yang sama → revalidatePath("/dashboard")). `useState(initial…)`
+  // hanya membaca nilai awal, jadi tanpa ini kartu tetap "belum check in".
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
+    setTasks(initial.tasks);
+  }
   // Checklist yang jendelanya BELUM buka tampil ringkas (satu baris); id di sini = sedang dibuka
   // untuk dilihat (mode baca saja — tidak ada tombol isi sampai jendelanya buka).
   const [peeking, setPeeking] = useState<Set<string>>(() => new Set());
@@ -183,7 +191,7 @@ export function CleaningChecklistCard({ initial }: Props) {
       else next.add(id);
       return next;
     });
-  const [checkedIn] = useState(initial.checked_in);
+  const checkedIn = initial.checked_in;
   const [isPending, startTransition] = useTransition();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selfieOpen, setSelfieOpen] = useState(false);
